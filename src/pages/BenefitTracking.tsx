@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,9 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
-import { Search, Users, Activity, Clock, BarChart3 } from 'lucide-react';
+import { Search, Users, Activity, Clock, BarChart3, Gift, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBenefitBalances, useBenefitUsageHistory } from '@/hooks/useBenefits';
 import { BenefitBalancesGrid } from '@/components/benefits/BenefitBalanceCard';
 import { RecordBenefitUsageDrawer } from '@/components/benefits/RecordBenefitUsageDrawer';
@@ -92,7 +92,45 @@ export default function BenefitTracking() {
   // Get usage history
   const { data: usageHistory } = useBenefitUsageHistory(membership?.id || '');
 
-  // Stats
+  const queryClient = useQueryClient();
+
+  // Fetch comps (gifts) granted to the member
+  const { data: comps = [] } = useQuery({
+    queryKey: ['member-comps-tracking', selectedMember?.id],
+    enabled: !!selectedMember?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_comps')
+        .select('id, comp_sessions, used_sessions, reason, created_at, benefit_type_id, benefit_types(name, code)')
+        .eq('member_id', selectedMember!.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Realtime: keep balances, history, and comps in sync as they change
+  useEffect(() => {
+    if (!selectedMember?.id) return;
+    const channel = supabase
+      .channel(`benefit-tracking-${selectedMember.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_comps', filter: `member_id=eq.${selectedMember.id}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['member-comps-tracking', selectedMember.id] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_usage' }, () => {
+        if (membership?.id) {
+          queryClient.invalidateQueries({ queryKey: ['benefit-usage', membership.id] });
+          queryClient.invalidateQueries({ queryKey: ['benefit-usage-history', membership.id] });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedMember?.id, membership?.id, queryClient]);
+
+  const activeComps = comps.filter((c: any) => c.used_sessions < c.comp_sessions);
+  const totalGiftSessions = activeComps.reduce((sum: number, c: any) => sum + (c.comp_sessions - c.used_sessions), 0);
+
+  // Stats — combine plan balance + active gift sessions
   const totalBenefits = balances.length;
   const exhaustedBenefits = balances.filter(b => !b.isUnlimited && b.remaining === 0).length;
   const todayUsage = usageHistory?.filter(u => u.usage_date === new Date().toISOString().split('T')[0]).length || 0;
@@ -232,9 +270,10 @@ export default function BenefitTracking() {
                 icon={Clock}
               />
               <StatCard
-                title="Total Usage"
-                value={usageHistory?.length || 0}
-                icon={Activity}
+                title="Gift Sessions"
+                value={totalGiftSessions}
+                icon={Gift}
+                className={totalGiftSessions > 0 ? 'border-amber-500/50' : ''}
               />
             </div>
 
@@ -242,6 +281,14 @@ export default function BenefitTracking() {
             <Tabs defaultValue="benefits" className="space-y-4">
               <TabsList>
                 <TabsTrigger value="benefits">Benefit Balances</TabsTrigger>
+                <TabsTrigger value="gifts" className="gap-1.5">
+                  <Gift className="h-3.5 w-3.5" /> Gifts
+                  {activeComps.length > 0 && (
+                    <Badge className="ml-1 h-4 px-1.5 text-[10px] bg-amber-500/15 text-amber-600 border-amber-500/30">
+                      {activeComps.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="history">Usage History</TabsTrigger>
               </TabsList>
 
@@ -261,6 +308,71 @@ export default function BenefitTracking() {
                     onRecordUsage={handleRecordUsage}
                   />
                 )}
+              </TabsContent>
+
+              <TabsContent value="gifts">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Gift className="h-5 w-5 text-amber-500" />
+                      Gifts & Complimentary Sessions
+                    </CardTitle>
+                    <CardDescription>
+                      Comp sessions granted to this member. These are consumed before plan benefits.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {comps.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No gifts granted yet
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Granted</TableHead>
+                            <TableHead>Benefit</TableHead>
+                            <TableHead>Total</TableHead>
+                            <TableHead>Used</TableHead>
+                            <TableHead>Remaining</TableHead>
+                            <TableHead>Reason</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {comps.map((c: any) => {
+                            const remaining = c.comp_sessions - c.used_sessions;
+                            const exhausted = remaining <= 0;
+                            return (
+                              <TableRow key={c.id} className={exhausted ? 'opacity-60' : ''}>
+                                <TableCell>{format(new Date(c.created_at), 'dd MMM yyyy')}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="gap-1">
+                                    <Sparkles className="h-3 w-3 text-amber-500" />
+                                    {c.benefit_types?.name || 'Benefit'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{c.comp_sessions}</TableCell>
+                                <TableCell>{c.used_sessions}</TableCell>
+                                <TableCell>
+                                  {exhausted ? (
+                                    <Badge variant="secondary" className="text-[10px]">Exhausted</Badge>
+                                  ) : (
+                                    <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                      {remaining} left
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground max-w-[240px] truncate">
+                                  {c.reason || '-'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="history">
