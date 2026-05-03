@@ -93,18 +93,17 @@ async function runBirthdayWish(rule: any): Promise<{ dispatched: number; error?:
   const today = new Date();
   const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(today.getUTCDate()).padStart(2, "0");
-  // members.dob is date — fetch all and filter mm-dd in JS for safety
   const { data: members, error } = await admin
     .from("members")
-    .select("id, name, dob, branch_id, phone, email")
-    .not("dob", "is", null)
+    .select("id, branch_id, user_id, profiles:profiles!members_user_id_fkey(full_name, date_of_birth)")
     .eq("status", "active")
-    .limit(1000);
+    .limit(2000);
   if (error) return { dispatched: 0, error: error.message };
 
   const todays = (members ?? []).filter((m: any) => {
-    if (!m.dob) return false;
-    const s = String(m.dob);
+    const dob = Array.isArray(m.profiles) ? m.profiles[0]?.date_of_birth : m.profiles?.date_of_birth;
+    if (!dob) return false;
+    const s = String(dob);
     return s.length >= 10 && s.slice(5, 7) === mm && s.slice(8, 10) === dd;
   });
 
