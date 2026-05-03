@@ -314,8 +314,8 @@ Team Incline Fitness`;
           <div>
             <h3>Bill To:</h3>
             <p><strong>${e(memberName)}</strong></p>
-            <p>${e(memberProfile?.email || '')}</p>
-            <p>${e(memberProfile?.phone || '')}</p>
+            <p>${e(guestEmail || '')}</p>
+            <p>${e(guestPhone || '')}</p>
           </div>
           <div style="text-align: right;">
             <h3>Invoice Details:</h3>
