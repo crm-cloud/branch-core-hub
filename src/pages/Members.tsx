@@ -18,7 +18,7 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
   Search, Plus, Users, UserCheck, UserX, CreditCard, Dumbbell, 
   Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal, Snowflake,
-  ChevronLeft, ChevronRight, Download, UsersRound
+  ChevronLeft, ChevronRight, Download, UsersRound, Gift
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -302,6 +302,31 @@ export default function MembersPage() {
     return differenceInDays(new Date(membership.end_date), new Date());
   };
 
+  // Fetch gifted free days (extensions) for active memberships on this page
+  const activeMembershipIds = useMemo(() => {
+    return membersWithMemberships
+      .map((m: any) => getActiveMembership(m.memberships)?.id)
+      .filter(Boolean) as string[];
+  }, [membersWithMemberships]);
+
+  const { data: freeDaysByMembership = {} } = useQuery<Record<string, number>>({
+    queryKey: ['member-free-days', activeMembershipIds],
+    queryFn: async () => {
+      if (activeMembershipIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from('membership_free_days')
+        .select('membership_id, days_added')
+        .in('membership_id', activeMembershipIds);
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      (data || []).forEach((r: any) => {
+        map[r.membership_id] = (map[r.membership_id] || 0) + Number(r.days_added || 0);
+      });
+      return map;
+    },
+    enabled: activeMembershipIds.length > 0,
+  });
+
   const handleViewProfile = (member: any) => {
     setSelectedMember(member);
     setProfileOpen(true);
@@ -558,9 +583,22 @@ export default function MembersPage() {
                             </TableCell>
                             <TableCell>
                               {daysLeft !== null ? (
-                                <div className={`flex items-center gap-1.5 ${getDaysLeftColor(daysLeft)}`}>
-                                  {getDaysLeftIcon(daysLeft)}
-                                  <span className="font-medium">{daysLeft > 0 ? `${daysLeft}d` : 'Expired'}</span>
+                                <div className="flex flex-col gap-1">
+                                  <div className={`flex items-center gap-1.5 ${getDaysLeftColor(daysLeft)}`}>
+                                    {getDaysLeftIcon(daysLeft)}
+                                    <span className="font-medium">{daysLeft > 0 ? `${daysLeft}d` : 'Expired'}</span>
+                                  </div>
+                                  {activeMembership?.id && freeDaysByMembership[activeMembership.id] > 0 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] w-fit gap-1">
+                                          <Gift className="h-3 w-3" />
+                                          +{freeDaysByMembership[activeMembership.id]}d gift
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Includes gifted free days</TooltipContent>
+                                    </Tooltip>
+                                  )}
                                 </div>
                               ) : (
                                 <span className="text-muted-foreground">--</span>
