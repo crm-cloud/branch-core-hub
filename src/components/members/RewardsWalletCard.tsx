@@ -22,7 +22,10 @@ interface RewardsWalletCardProps {
 
 export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints }: RewardsWalletCardProps) {
   const [redeemOpen, setRedeemOpen] = useState(false);
+  const [creditOpen, setCreditOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('points');
+  const { roles } = useAuth();
+  const canCredit = hasCapability(roles as any, 'credit_member' as any);
 
   const { data: walletData } = useQuery({
     queryKey: ['member-wallet', memberId],
