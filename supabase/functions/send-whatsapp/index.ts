@@ -1,3 +1,4 @@
+// v2.5.0 — harden IN phone normalization for Meta digits-only E.164 payloads.
 // v2.4.0 — document/image media is fetched server-side and uploaded to Meta first;
 //           this avoids signed storage URLs being re-fetched/rewritten by WhatsApp.
 // v2.3.0 — document messages send link + filename + caption together so PDFs
@@ -72,6 +73,16 @@ async function uploadMediaToMeta(input: {
     throw new Error(uploadData?.error?.message || `media_upload_${uploadResponse.status}`);
   }
   return uploadData.id;
+}
+
+function normalizePhoneDigits(value: unknown): string | null {
+  let digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.startsWith('0091') && digits.length === 14) digits = digits.slice(2);
+  if (digits.startsWith('091') && digits.length === 13) digits = digits.slice(1);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length === 10) digits = `91${digits}`;
+  if (digits.length < 10 || digits.length > 15) return null;
+  return digits;
 }
 
 serve(async (req) => {
@@ -180,18 +191,8 @@ serve(async (req) => {
     // Normalize phone number to E.164 digits-only (Meta WhatsApp Cloud API requirement).
     // Accepts: "+919928910901", "919928910901", "9928910901", "09928910901", "+91 99289-10901".
     // Defaults to India (+91) when no country code is present.
-    const cleanPhone = (() => {
-      let digits = String(phone_number).replace(/\D/g, "");
-      // Strip Indian trunk-zero prefix if present (e.g. "09928910901")
-      if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
-      // Bare 10-digit Indian mobile → prepend country code
-      if (digits.length === 10) digits = "91" + digits;
-      // 12-digit number starting with 91 → already E.164 minus +
-      // Anything else: trust as-is (other country codes)
-      return digits;
-    })();
-
-    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+    const cleanPhone = normalizePhoneDigits(phone_number);
+    if (!cleanPhone) {
       await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
       await logError(supabase, branch_id, "send-whatsapp", "Invalid phone number", `Could not normalize "${phone_number}" to E.164`);
       return new Response(
