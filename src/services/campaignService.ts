@@ -4,7 +4,8 @@ export type CampaignChannel = 'whatsapp' | 'email' | 'sms';
 export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'paused';
 export type CampaignTriggerType = 'send_now' | 'automated' | 'scheduled';
 
-export type AudienceKind = 'members' | 'leads' | 'contacts' | 'segment' | 'mixed';
+export type AudienceKind = 'members' | 'leads' | 'contacts' | 'staff' | 'segment' | 'mixed';
+export type StaffRole = 'owner' | 'admin' | 'manager' | 'staff' | 'trainer';
 
 export interface AudienceFilter {
   audience_kind?: AudienceKind;
@@ -12,8 +13,6 @@ export interface AudienceFilter {
   // members
   member_status?: 'active' | 'expired' | 'all';
   goal?: string | null;
-  last_attendance_before?: string | null;
-  last_attendance_after?: string | null;
   // contacts
   source_types?: Array<'member' | 'lead' | 'manual' | 'ai'>;
   categories?: string[];
@@ -21,8 +20,12 @@ export interface AudienceFilter {
   // leads
   lead_status?: string[];
   lead_temperature?: string[];
-  // legacy
+  // staff
+  staff_roles?: StaffRole[];
+  // legacy (kept for back-compat with existing saved campaigns)
   status?: 'active' | 'lead' | 'expired' | 'all';
+  last_attendance_before?: string | null;
+  last_attendance_after?: string | null;
 }
 
 export interface ResolvedRecipient {
