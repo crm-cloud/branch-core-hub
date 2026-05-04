@@ -1,4 +1,4 @@
-// send-reminders v2.0
+// send-reminders v2.1 — allow service-role (Automation Brain) bypass.
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 // Honest-delivery for ALL reminder types: payment, membership_expiry, class,
 // PT, benefit. Each reminder honors the per-branch reminder_configurations
@@ -38,27 +38,36 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const authClient = createClient(supabaseUrl, supabaseAnon, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(authHeader.replace("Bearer ", ""));
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
-    const callerId = claimsData.claims.sub as string;
-
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Role check: only staff+ can trigger reminders
-    const { data: roleData } = await adminClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", callerId)
-      .in("role", ["owner", "admin", "manager", "staff"]);
-    if (!roleData || roleData.length === 0) {
-      return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
-    }
+    // System-call bypass: Automation Brain (and other server workers) call us
+    // with the service-role bearer. Skip the user JWT + role check in that case.
+    const bearer = authHeader.replace("Bearer ", "").trim();
+    const isSystemCall = bearer === supabaseServiceKey;
+    let callerId: string;
 
+    if (isSystemCall) {
+      callerId = "system";
+    } else {
+      const authClient = createClient(supabaseUrl, supabaseAnon, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(bearer);
+      if (claimsError || !claimsData?.claims) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      }
+      callerId = claimsData.claims.sub as string;
+
+      // Role check: only staff+ can trigger reminders manually.
+      const { data: roleData } = await adminClient
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", callerId)
+        .in("role", ["owner", "admin", "manager", "staff"]);
+      if (!roleData || roleData.length === 0) {
+        return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
+      }
+    }
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split("T")[0];
