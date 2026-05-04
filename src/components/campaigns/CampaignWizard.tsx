@@ -73,6 +73,37 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' | 'video' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAiDraft = async () => {
+    if (!aiPrompt.trim()) { toast.error('Describe the campaign first'); return; }
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-draft-campaign-message', {
+        body: {
+          channel,
+          campaign_type: campaignType,
+          prompt: aiPrompt.trim(),
+          event_meta: campaignType === 'event' ? {
+            name: eventName, date: eventDate, time: eventTime, venue: eventVenue, rsvp_url: eventRsvpUrl,
+          } : undefined,
+        },
+      });
+      if (error) throw error;
+      const p = (data as any)?.proposal;
+      if (!p) throw new Error('No draft returned');
+      setMessage(p.body || '');
+      if (channel === 'email') {
+        if (p.subject) setSubject(p.subject);
+      }
+      toast.success('AI draft inserted — review and edit before sending');
+      setAiOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'AI draft failed');
+    } finally { setAiLoading(false); }
+  };
 
   // When campaign type changes, default the audience for lead_reengagement
   useEffect(() => {
