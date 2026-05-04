@@ -339,14 +339,27 @@ serve(async (req) => {
         }
       }
 
-      // Optional HEADER component for media templates (image / video / document)
+      // Optional HEADER component for media templates (image / video / document).
+      // Meta REQUIRES `header_handle` to be a handle from the resumable
+      // /uploads endpoint — a public URL (e.g. placehold.co) causes
+      // "Missing sample parameter" 400. If we don't have a real handle yet,
+      // coerce to header_type='none' and prepend the link into the body so
+      // the dispatcher can substitute the real media at send-time.
       const components: any[] = [];
-      if (header_type && ['image', 'video', 'document'].includes(header_type) && header_sample_url) {
+      const hasMediaHeader = header_type && ['image', 'video', 'document'].includes(header_type);
+      const looksLikeMetaHandle = (s?: string) =>
+        !!s && !/^https?:\/\//i.test(s) && s.length > 20;
+      if (hasMediaHeader && looksLikeMetaHandle(header_sample_url)) {
         components.push({
           type: 'HEADER',
           format: header_type.toUpperCase(),
           example: { header_handle: [header_sample_url] },
         });
+      } else if (hasMediaHeader) {
+        // Skip the HEADER component entirely; let the body carry the link.
+        console.warn(
+          `[manage-whatsapp-templates] header_type=${header_type} without Meta handle — submitting as text-only template (sample URL ignored: ${header_sample_url || 'none'})`
+        );
       }
       components.push(bodyComponent);
 
