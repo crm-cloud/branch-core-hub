@@ -42,31 +42,58 @@ Deno.serve(async (req) => {
       if (!locked) continue;
 
       try {
-        // Resolve audience server-side (mirrors campaignService.resolveAudienceMemberIds)
+        // Resolve audience server-side honoring audience_kind
         const filter = (c.audience_filter || {}) as any;
-        let memberIds: string[] = [];
+        const isMembersKind = !filter.audience_kind || filter.audience_kind === "members";
         const today = new Date().toISOString().split("T")[0];
 
-        if (filter.status === "active") {
-          const { data } = await admin.from("memberships")
-            .select("member_id").eq("branch_id", c.branch_id)
-            .eq("status", "active").gte("end_date", today);
-          memberIds = [...new Set((data || []).map((m: any) => m.member_id))];
-        } else if (filter.status === "expired") {
-          const { data } = await admin.from("memberships")
-            .select("member_id").eq("branch_id", c.branch_id).lt("end_date", today);
-          memberIds = [...new Set((data || []).map((m: any) => m.member_id))];
+        const broadcastBody: any = {
+          channel: c.channel,
+          message: c.message,
+          subject: c.subject,
+          branch_id: c.branch_id,
+          campaign_id: c.id,
+          attachment_url: c.attachment_url ?? undefined,
+          attachment_kind: c.attachment_kind ?? undefined,
+          attachment_filename: c.attachment_filename ?? undefined,
+        };
+
+        let totalRecipients = 0;
+
+        if (isMembersKind) {
+          let memberIds: string[] = [];
+          const status = filter.member_status || filter.status;
+          if (status === "active") {
+            const { data } = await admin.from("memberships")
+              .select("member_id").eq("branch_id", c.branch_id)
+              .eq("status", "active").gte("end_date", today);
+            memberIds = [...new Set((data || []).map((m: any) => m.member_id))];
+          } else if (status === "expired") {
+            const { data } = await admin.from("memberships")
+              .select("member_id").eq("branch_id", c.branch_id).lt("end_date", today);
+            memberIds = [...new Set((data || []).map((m: any) => m.member_id))];
+          } else {
+            const { data } = await admin.from("members").select("id").eq("branch_id", c.branch_id);
+            memberIds = (data || []).map((m: any) => m.id);
+          }
+          broadcastBody.member_ids = memberIds;
+          totalRecipients = memberIds.length;
         } else {
-          const { data } = await admin.from("members").select("id").eq("branch_id", c.branch_id);
-          memberIds = (data || []).map((m: any) => m.id);
+          const { data: recipients, error: rErr } = await admin.rpc("resolve_campaign_audience" as any, {
+            p_branch_id: c.branch_id,
+            p_filter: filter,
+          });
+          if (rErr) throw new Error(`Audience resolve failed: ${rErr.message}`);
+          broadcastBody.recipients = recipients || [];
+          totalRecipients = broadcastBody.recipients.length;
         }
 
-        if (memberIds.length === 0) {
+        if (totalRecipients === 0) {
           await admin.from("campaigns").update({
             status: "sent", sent_at: new Date().toISOString(), recipients_count: 0,
             last_run_error: null,
           }).eq("id", c.id);
-          results.push({ id: c.id, sent: 0 });
+          results.push({ id: c.id, sent: 0, note: "no_recipients" });
           continue;
         }
 
@@ -77,17 +104,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${serviceKey}`,
           },
-          body: JSON.stringify({
-            channel: c.channel,
-            message: c.message,
-            subject: c.subject,
-            branch_id: c.branch_id,
-            member_ids: memberIds,
-            campaign_id: c.id,
-            attachment_url: c.attachment_url ?? undefined,
-            attachment_kind: c.attachment_kind ?? undefined,
-            attachment_filename: c.attachment_filename ?? undefined,
-          }),
+          body: JSON.stringify(broadcastBody),
         });
 
         const body = await resp.json().catch(() => ({}));
