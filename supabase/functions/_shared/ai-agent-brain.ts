@@ -124,6 +124,19 @@ export async function runUnifiedAgent(
   const customPrompt = aiConfig.system_prompt || `You are a helpful gym assistant for "${gymName}". Answer questions about membership, timings, and facilities. Keep responses short and friendly.`;
 
   let systemPrompt = `${memberCtx.contextPrompt}${summaryBlock}${alreadyCaptured}\n\n${customPrompt}`;
+
+  // ── HARD RULE #1 — member-first identity ────────────────────────────────────
+  if (memberCtx.isMember) {
+    systemPrompt += `\n\nABSOLUTE IDENTITY RULE (HIGHEST PRIORITY):
+This person is a CONFIRMED ACTIVE MEMBER of the gym. Their identity is already known.
+- GREET THEM BY NAME (${memberCtx.memberName}) on your first reply.
+- NEVER ask for their name, email, phone, fitness goal, budget, experience, or preferred time. We already have all of this.
+- NEVER output the {"status":"lead_captured", ...} JSON. They are NOT a lead.
+- If they ask about visiting, politely note that the gym is in pre-opening and share the timeline if known.
+- Use the available member tools (membership status, benefits, bookings, PT sessions, invoices) for any account question.
+- If you are unsure about an account-specific detail, USE A TOOL — do not guess.`;
+  }
+
   systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation.
   
   FORMATTING RULES:
