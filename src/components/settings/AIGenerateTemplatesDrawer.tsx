@@ -257,24 +257,53 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
                 </div>
               </div>
             )}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{missingEvents.length}</span> missing
+                · <span className="font-semibold text-foreground">{picked.size}</span> selected
+                · {candidates.length} total
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPicked(new Set(missingEvents))}
+                  disabled={missingEvents.length === 0}
+                >
+                  Select all missing
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>
+                  Clear
+                </Button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {candidates.map((e) => (
-                <label key={e.event} className="flex items-start gap-2 p-3 rounded-lg border hover:bg-muted/40 cursor-pointer">
-                  <Checkbox
-                    checked={picked.has(e.event)}
-                    onCheckedChange={(v) => {
-                      const next = new Set(picked);
-                      if (v) next.add(e.event); else next.delete(e.event);
-                      setPicked(next);
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{e.label}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{e.event}</p>
-                    {e.hint && <p className="text-xs text-muted-foreground mt-0.5">{e.hint}</p>}
-                  </div>
-                </label>
-              ))}
+              {candidates.map((e) => {
+                const have = existing.some((t) => t.trigger_event === e.event);
+                return (
+                  <label
+                    key={e.event}
+                    className={`flex items-start gap-2 p-3 rounded-lg border hover:bg-muted/40 cursor-pointer ${have ? 'opacity-60' : ''}`}
+                  >
+                    <Checkbox
+                      checked={picked.has(e.event)}
+                      onCheckedChange={(v) => {
+                        const next = new Set(picked);
+                        if (v) next.add(e.event); else next.delete(e.event);
+                        setPicked(next);
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{e.label}</p>
+                        {have && <Badge variant="outline" className="text-[10px]">exists</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground font-mono">{e.event}</p>
+                      {e.hint && <p className="text-xs text-muted-foreground mt-0.5">{e.hint}</p>}
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
         )}
