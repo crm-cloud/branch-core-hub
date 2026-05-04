@@ -1,4 +1,5 @@
-// v1.0.0 — Cron worker that picks scheduled campaigns and dispatches via send-broadcast
+// v1.1.0 — Honors audience_kind (members | leads | staff | contacts | mixed | segment).
+//          Non-members go through resolve_campaign_audience RPC + recipients path.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
