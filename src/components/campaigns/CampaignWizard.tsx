@@ -415,7 +415,7 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
           ) : <div />}
-          {step < 3 ? (
+          {step < totalSteps ? (
             <Button onClick={() => setStep(step + 1)} className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white">
               Next <ChevronRight className="h-4 w-4" />
             </Button>
