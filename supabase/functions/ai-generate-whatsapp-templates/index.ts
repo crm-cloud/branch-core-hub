@@ -1,4 +1,7 @@
-// v2.0.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
+// v2.1.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
+// v2.1.0: document-bearing events forced to header_type='none' + {{document_link}}
+// in body (Meta rejects DOCUMENT headers without an uploaded media handle;
+// the dispatcher already injects the actual PDF at send-time).
 // Returns proposals (NOT submitted to Meta). Frontend reviews before save.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -18,6 +21,16 @@ interface Body {
   brand?: string;
 }
 
+// Events that carry a PDF/document attachment. For these we MUST NOT use
+// header_type='document' (Meta would require a pre-uploaded media handle
+// during template review). Instead the AI must reference {{document_link}}
+// in the body — dispatcher v1.6.0 substitutes the real PDF at send time.
+const DOCUMENT_EVENTS = new Set([
+  'invoice_generated', 'receipt_generated', 'pos_order_completed',
+  'body_scan_ready', 'diet_plan_ready', 'workout_plan_ready',
+  'contract_signed',
+]);
+
 const SYSTEM_PROMPTS: Record<Channel, string> = {
   whatsapp: `You write WhatsApp Business message templates for a premium Indian gym brand "Incline Fitness".
 Rules:
@@ -27,7 +40,8 @@ Rules:
 - No emojis on UTILITY; max 1 tasteful emoji on MARKETING; no URLs / phone numbers in body.
 - Tone: warm, concise, Indian-English, premium fitness.
 - Names: lower_snake_case ≤ 50 chars, descriptive.
-- For attachment events (flyers, PDFs) set header_type=image|document with sample url "https://placehold.co/600x400.png".
+- For events tagged "[DOCUMENT]" you MUST set header_type='none' and reference {{document_link}} inside the body (and include "document_link" in variables). Do NOT use header_type='document'.
+- For other attachment events (e.g. flyers, posters) header_type='image' is allowed with sample url "https://placehold.co/600x400.png".
 - One template per event.`,
   sms: `You write Indian-DLT-compliant transactional/promotional SMS for "Incline Fitness".
 Rules:
@@ -37,6 +51,7 @@ Rules:
 - Variable placeholders use {{snake_case}}; later mapped to {#var#}.
 - End every promotional SMS with the suffix "-INCLNE" (DLT entity tag) — do not add it for transactional.
 - Categories map to dlt_category: TRANSACTIONAL (utility/booking/payment/expiry), SERVICE_IMPLICIT (lifecycle confirmations), SERVICE_EXPLICIT (rich utility w/ promo cross-sell), PROMOTIONAL (offers/marketing/birthday).
+- For events tagged "[DOCUMENT]" reference {{document_link}} (a short URL) in the body and include "document_link" in variables.
 - Names: lower_snake_case ≤ 30 chars.
 - One template per event.`,
   email: `You write transactional & marketing emails for "Incline Fitness", a premium Indian gym brand.
@@ -46,7 +61,7 @@ Rules:
 - Variables in {{snake_case}}.
 - Tone: warm, premium, friendly. Add a single primary CTA when relevant ("Renew Membership", "View Receipt", "Book Class").
 - Categories: UTILITY (receipts/lifecycle), MARKETING (offers/newsletter/birthday).
-- For events with attachments (e.g. invoice, scan report), set header_type='document'.
+- For events tagged "[DOCUMENT]" set header_type='none' and include a CTA button linking to {{document_link}} (also include "document_link" in variables). Do NOT attempt to embed the PDF.
 - One template per event.`,
 };
 
@@ -118,7 +133,7 @@ Deno.serve(async (req) => {
       `Channel: ${channel}`,
       "",
       "Events to generate templates for:",
-      ...body.events.map((e) => `- ${e.event}${e.label ? ` (${e.label})` : ""}${e.hint ? ` — hint: ${e.hint}` : ""}`),
+      ...body.events.map((e) => `- ${e.event}${DOCUMENT_EVENTS.has(e.event) ? ' [DOCUMENT]' : ''}${e.label ? ` (${e.label})` : ""}${e.hint ? ` — hint: ${e.hint}` : ""}`),
       "",
       "Existing templates (avoid duplicates):",
       (body.existing || []).slice(0, 60).map((e) => `• ${e.name}: ${e.body.slice(0, 140).replace(/\n/g, " ")}`).join("\n") || "(none)",
@@ -153,6 +168,23 @@ Deno.serve(async (req) => {
     let parsed: any;
     try { parsed = JSON.parse(toolCall.function.arguments); } catch { return json({ error: "Bad AI JSON" }, 500); }
     const templates = Array.isArray(parsed?.templates) ? parsed.templates : [];
+
+    // Hard-enforce the document rule regardless of what the model returned.
+    for (const t of templates) {
+      if (DOCUMENT_EVENTS.has(t.event)) {
+        t.header_type = 'none';
+        delete t.header_sample_url;
+        const vars: string[] = Array.isArray(t.variables) ? t.variables : [];
+        if (!vars.includes('document_link')) vars.push('document_link');
+        t.variables = vars;
+        if (typeof t.body_text === 'string' && !t.body_text.includes('{{document_link}}')) {
+          t.body_text = `${t.body_text.trim()}\n\nDocument: {{document_link}}`;
+        }
+        if (typeof t.body_html === 'string' && !t.body_html.includes('{{document_link}}')) {
+          t.body_html = `${t.body_html}\n<p style="margin-top:16px"><a href="{{document_link}}" style="background:#6d28d9;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open Document</a></p>`;
+        }
+      }
+    }
 
     return json({ success: true, channel, templates });
   } catch (e) {

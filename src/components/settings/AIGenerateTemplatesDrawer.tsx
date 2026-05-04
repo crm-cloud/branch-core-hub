@@ -61,12 +61,7 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
 
   const candidates = CANDIDATE_BY_CHANNEL[channel];
   const [step, setStep] = useState<'pick' | 'review'>('pick');
-  const initialPick = () =>
-    prefilledEvents && prefilledEvents.length > 0
-      ? new Set(prefilledEvents)
-      : new Set(candidates.slice(0, 5).map((e) => e.event));
-  const [picked, setPicked] = useState<Set<string>>(initialPick);
-  useEffect(() => { setPicked(initialPick()); setStep('pick'); setProposals([]); }, [channel, open, prefilledEvents?.join('|')]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -74,12 +69,36 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
   const { data: existing = [] } = useQuery({
     queryKey: ['ai-templates-existing', selectedBranch, channel],
     queryFn: async () => {
-      const q = supabase.from('templates').select('name, content').eq('type', channel);
+      const q = supabase.from('templates').select('name, content, trigger_event').eq('type', channel);
       const { data } = selectedBranch && selectedBranch !== 'all' ? await q.eq('branch_id', selectedBranch) : await q;
-      return (data || []).map((t: any) => ({ name: t.name, body: t.content || '' }));
+      return (data || []).map((t: any) => ({
+        name: t.name,
+        body: t.content || '',
+        trigger_event: t.trigger_event as string | null,
+      }));
     },
     enabled: open,
   });
+
+  // Events from the canonical catalog that don't yet have a template.
+  const missingEvents = useMemo(() => {
+    const have = new Set(existing.map((t) => t.trigger_event).filter(Boolean) as string[]);
+    return candidates.filter((e) => !have.has(e.event)).map((e) => e.event);
+  }, [existing, candidates]);
+
+  // Default selection = all missing events. Re-applies when channel/branch/open changes
+  // OR when the missing list updates (so the count is never stuck at 0).
+  useEffect(() => {
+    if (!open) return;
+    if (prefilledEvents && prefilledEvents.length > 0) {
+      setPicked(new Set(prefilledEvents));
+    } else {
+      setPicked(new Set(missingEvents));
+    }
+    setStep('pick');
+    setProposals([]);
+  }, [channel, open, prefilledEvents?.join('|'), missingEvents.join('|')]);
+
 
   const branchId = selectedBranch && selectedBranch !== 'all' ? selectedBranch : null;
   const Meta = CHANNEL_META[channel];
@@ -238,24 +257,53 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
                 </div>
               </div>
             )}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{missingEvents.length}</span> missing
+                · <span className="font-semibold text-foreground">{picked.size}</span> selected
+                · {candidates.length} total
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPicked(new Set(missingEvents))}
+                  disabled={missingEvents.length === 0}
+                >
+                  Select all missing
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>
+                  Clear
+                </Button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {candidates.map((e) => (
-                <label key={e.event} className="flex items-start gap-2 p-3 rounded-lg border hover:bg-muted/40 cursor-pointer">
-                  <Checkbox
-                    checked={picked.has(e.event)}
-                    onCheckedChange={(v) => {
-                      const next = new Set(picked);
-                      if (v) next.add(e.event); else next.delete(e.event);
-                      setPicked(next);
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{e.label}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{e.event}</p>
-                    {e.hint && <p className="text-xs text-muted-foreground mt-0.5">{e.hint}</p>}
-                  </div>
-                </label>
-              ))}
+              {candidates.map((e) => {
+                const have = existing.some((t) => t.trigger_event === e.event);
+                return (
+                  <label
+                    key={e.event}
+                    className={`flex items-start gap-2 p-3 rounded-lg border hover:bg-muted/40 cursor-pointer ${have ? 'opacity-60' : ''}`}
+                  >
+                    <Checkbox
+                      checked={picked.has(e.event)}
+                      onCheckedChange={(v) => {
+                        const next = new Set(picked);
+                        if (v) next.add(e.event); else next.delete(e.event);
+                        setPicked(next);
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{e.label}</p>
+                        {have && <Badge variant="outline" className="text-[10px]">exists</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground font-mono">{e.event}</p>
+                      {e.hint && <p className="text-xs text-muted-foreground mt-0.5">{e.hint}</p>}
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
         )}

@@ -1,106 +1,81 @@
-# Automation Brain + Control Room
+## Scope
 
-Replace the scattered cron jobs with a single intelligent orchestrator and a Settings UI to control everything.
+Two things to do:
+1. **Audit** every place we expose automations/cron in the UI and consolidate.
+2. **Fix** outstanding errors (Meta PDF template rejections, worker failures surfaced by Automation Brain).
 
-## Architecture
+---
 
-```text
-                    ┌──────────────────────────────┐
-   pg_cron (1 job)  │  automation-brain (edge fn)  │
-   every 5 min ───► │  - reads automation_rules    │
-                    │  - decides what's due        │
-                    │  - dispatches tasks          │
-                    └──────────┬───────────────────┘
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        ▼                      ▼                      ▼
-   send-reminders     send-birthday-wishes    run-retention-nudges
-   mark-no-show       process-campaigns       lead-nurture (AI)
-   reconcile-*        retry-queues            ...
-```
+## A. UI/UX Audit — Automation/Cron Surfaces Today
 
-A **single master cron job** ticks every 5 minutes and calls `automation-brain`. The brain reads rows from a new `automation_rules` table, evaluates each rule's schedule (`next_run_at`), and dispatches the appropriate worker. Heavy/intelligent rules (lead nurture, retention, smart copy) flow through Lovable AI Gateway; deterministic ones (birthday, dues, no-show) just call the existing workers.
+| # | Location | Component | What it does | Verdict |
+|---|---|---|---|---|
+| 1 | `Settings → Automation Brain` | `AutomationsControlRoom.tsx` | KPIs, 13 system rules, toggle/edit cron, Run Now, run history | ✅ Canonical control room |
+| 2 | `Settings → Notifications → "Automated Reminders"` | `NotificationSettings.tsx` (RunRemindersButton) | Manual “Run Reminders Now” calling old `send-reminders` fn | ⚠️ Duplicate/legacy — confuses the user |
+| 3 | `Settings → Notifications → "Lead Notification Rules"` | `LeadNotificationSettings.tsx` | Per-branch toggle matrix for lead SMS/WA alerts | ✅ Keep — this is config, not cron |
+| 4 | `Settings → Communication Templates → WhatsApp → Automations` | `WhatsAppAutomations.tsx` | Map event → template (trigger registry) | ✅ Keep — different concern (template mapping) |
+| 5 | `Settings → Reminders` (per-branch reminder config) | existing reminder mapping UI | Per-branch reminder enable map | ✅ Keep — config layer |
 
-## What gets built
+**Action:** Replace the standalone "Automated Reminders" card in Notification Settings with a **single deep-link card** ("Manage Automations →") that routes to `Settings?tab=automations`. The old `RunRemindersButton` becomes redundant because the Brain already has per-rule "Run Now" + a global tick.
 
-### 1. Database (migration)
-- `automation_rules` table:
-  - `id`, `branch_id` (nullable = global), `key` (e.g. `birthday_wish`, `payment_reminder`, `partial_payment_reminder`, `booking_reminder_t2h`, `renewal_invoice`, `retention_nudge`, `lead_nurture`, `no_show_marker`, `payment_reconcile`, `comm_retry`, `whatsapp_retry`, `scheduled_campaigns`)
-  - `name`, `description`, `category` (engagement / billing / booking / lifecycle / system)
-  - `cron_expression` (e.g. `0 9 * * *`) **or** `frequency` (`every_n_minutes`, `daily_at`, `weekly`, `monthly`)
-  - `time_of_day`, `days_of_week[]`, `interval_minutes`
-  - `is_active` boolean, `use_ai` boolean, `ai_tone` (friendly / formal / motivational)
-  - `last_run_at`, `next_run_at`, `last_status`, `last_error`, `last_dispatched_count`
-  - `target_filter` jsonb (e.g. `{"plan_status":"active","branches":["uuid"]}`)
-- `automation_runs` table — execution history (rule_id, started_at, finished_at, status, dispatched, errors, sample_payload).
-- RLS: owner/admin read+write; SELECT for managers (their branch).
-- RPCs: `admin_run_rule_now(rule_key)`, `admin_toggle_rule(rule_key, active)`, `admin_update_rule_schedule(rule_key, payload)` — all guarded by `has_capability('manage_automations')`.
-- Seed default rows for the 13 existing automations + new birthday rule.
+---
 
-### 2. Edge function `automation-brain` (new)
-- Triggered by ONE cron job: `automation-brain-tick` every 5 min.
-- For each active rule where `next_run_at <= now()`:
-  1. Mark `automation_runs` row started.
-  2. Call the matching worker (existing edge fn or new logic).
-  3. For `use_ai = true` rules, fetch context (member name, due amount, last visit, plan), then call Lovable AI Gateway (`google/gemini-3-flash-preview`) to compose a personalised message; pass to `dispatch-communication` with the rule's event key.
-  4. Update `last_run_at`, `next_run_at` (computed from cron/frequency), `last_status`, counters.
-- Built-in worker for new `birthday_wish` (queries `members.dob` matching today, AI-personalised greeting if `use_ai=true`, else uses `birthday_wish` template).
-- Built-in worker for `partial_payment_reminder` (queries invoices with `amount_paid < total_amount` aged N days).
+## B. Fixes
 
-### 3. Cron consolidation (migration)
-- Disable the 12 existing per-feature cron jobs (keep `dr-health-probe-db` separate).
-- Create one new job:
-  ```sql
-  select cron.schedule('automation-brain-tick','*/5 * * * *',
-    $$ select net.http_post(
-         url:='https://<ref>.supabase.co/functions/v1/automation-brain',
-         headers:='{"Content-Type":"application/json","apikey":"<anon>"}'::jsonb,
-         body:='{}'::jsonb) $$);
-  ```
-- Existing edge functions stay as workers — only their trigger source changes.
+### B1. Meta document/PDF template rejections (root cause)
+`ai-generate-whatsapp-templates` currently emits `header_type='document'` with a placeholder URL → Meta rejects ("sample not provided"). Dispatcher v1.6.0 already injects the real PDF at send-time via a body variable, so the header is unnecessary.
 
-### 4. Control Room UI (`/settings/automations`)
-A new Settings tab "Automation Brain":
+**Fix in the prompt + tool schema:**
+- For document-bearing events (`invoice_generated`, `receipt_generated`, `pos_order_pdf`, `scan_report_ready`, `diet_plan_pdf`, `workout_plan_pdf`, `contract_signed`) → force `header_type='none'`, append a `{{document_link}}` body variable, and add `document_link` to `variables`.
+- Strip `header_sample_url` for these events.
+- Add explicit rule lines in WhatsApp + Email system prompts.
 
-- **Top KPIs:** Active rules · Runs today · Failures (24h) · Messages dispatched (24h)
-- **Rules table** (Vuexy card, rounded-2xl, colored status badges):
-  - Columns: Name · Category · Schedule (human-readable: "Every day at 9:00 AM") · AI · Last run · Last status · Active toggle · Actions
-  - Row click → right-side **Sheet drawer** "Edit Automation":
-    - Name, description (read-only for system rules)
-    - Frequency picker: `Every N minutes` / `Daily at HH:MM` / `Weekly on [days] at HH:MM` / `Custom cron`
-    - Live cron preview + next 3 run times
-    - Toggle: **Use AI Brain** (when on, message body is composed by AI using rule context + `ai_tone` selector)
-    - Target filter editor (branch picker, simple plan filters)
-    - Active toggle, **Run now** button, **View history** (last 20 runs with status + dispatched count)
-- **Add Custom Rule** button → same drawer, lets owner create a new AI-driven nudge (e.g. "weekly motivation message every Monday 8 AM, AI tone = motivational, segment = active members").
-- **Run history panel** at bottom — global stream of last 50 `automation_runs`.
+### B2. AI-Generate Drawer auto-fill of missing templates
+`Auto-fill (0)` was empty because the drawer was loading only the previously hard-coded list. Fix:
+- Compute "missing" by diffing `getEventsForChannel(channel)` (canonical catalog) against existing templates in DB; default the selection to that diff so Auto-fill always has a target set.
+- Add a small "Generate all missing" button that selects everything missing and generates in batches of 15.
 
-### 5. Fix the PDF template error (in same pass)
-- Update `ai-generate-whatsapp-templates`: PDF/receipt/invoice events emit `header_type='none'` with a `{{document_link}}` body variable. Dispatcher already attaches the PDF as a separate document message at runtime.
-- `manage-whatsapp-templates`: reject `header_type=document` without a real Meta media handle and return a clear error instead of forwarding to Meta.
+### B3. Worker errors surfaced by Automation Brain
+After the consolidation migration the brain calls these workers. Audit & repair:
+- `lead-nurture-followup` — verify body schema, branch scoping, dispatcher import path.
+- `process-comm-retry-queue` / `process-whatsapp-retry-queue` — confirm they boot OK (logs show boot but no work — fine).
+- `send-reminders` — keep as worker for `daily_send_reminders` rule, but stop exposing a manual button.
 
-## Files
+For each, add try/catch + structured `log_error_event` so failures land in System Health.
 
-**New**
-- `supabase/migrations/<ts>_automation_brain.sql` (tables, RPCs, seed, cron swap)
-- `supabase/functions/automation-brain/index.ts`
-- `src/pages/settings/AutomationsControlRoom.tsx`
-- `src/components/automations/AutomationRuleDrawer.tsx`
-- `src/components/automations/CronFrequencyPicker.tsx`
-- `src/components/automations/AutomationRunHistory.tsx`
-- `src/services/automationService.ts`
+### B4. WhatsApp Automations — already supports insert
+`WhatsAppAutomations.tsx` already has `addMutation` + insert form. Add a small UX polish: pre-populate the event dropdown from `systemEvents.ts` and disable events that already have a row.
 
-**Edited**
-- `src/pages/Settings.tsx` (add tab/route)
-- `src/config/menu.ts` (Settings sub-entry)
-- `supabase/functions/ai-generate-whatsapp-templates/index.ts`
-- `supabase/functions/manage-whatsapp-templates/index.ts`
-- `mem://index.md` (add Automation Brain memory)
+---
 
-## Behaviour summary
+## C. Files to change
 
-- One brain, one tick, all rules in one screen.
-- Owners can pause any automation, change frequency, or flip "Use AI" without code.
-- AI is opt-in per rule — transactional reminders stay deterministic; engagement/retention/birthday can be AI-personalised.
-- Existing workers remain untouched — only the dispatch source changes from per-feature cron to the brain.
-- PDF template Meta error fixed in the same release.
+**Edge functions**
+- `supabase/functions/ai-generate-whatsapp-templates/index.ts` — prompt + schema fix for documents (B1).
+- `supabase/functions/lead-nurture-followup/index.ts` — wrap + log errors (B3).
+- (No change to `automation-brain` — already correct.)
+
+**Frontend**
+- `src/components/settings/NotificationSettings.tsx` — remove `RunRemindersButton` card; replace with a deep-link card to Automation Brain.
+- `src/components/settings/AIGenerateTemplatesDrawer.tsx` — diff against canonical catalog, default-select missing events, add "Generate all missing" CTA.
+- `src/components/settings/WhatsAppAutomations.tsx` — populate event dropdown from `systemEvents.ts`, disable events already mapped.
+- `src/lib/templates/systemEvents.ts` — tag document-bearing events with `attachment_kind: 'document'` so the AI generator can branch on it.
+
+**Memory**
+- Update `mem://index.md` Comms Hub line to reflect: (a) document events use `{{document_link}}` not header, (b) Notification Settings no longer hosts "Run Reminders", (c) Automation Brain is the single cron control room.
+
+---
+
+## D. Out of scope
+- Building a new cron UI — Automation Brain already covers it.
+- Touching `auth.*` / `storage.*` / `realtime.*` schemas.
+- Re-architecting the dispatcher (already v1.6.0, handles document fallback).
+
+---
+
+## E. Acceptance
+1. Generating templates for invoice/receipt/PDF events no longer produces `header_type='document'` proposals — they pass Meta review.
+2. AI Drawer "Auto-fill missing" shows a non-zero count whenever the catalog has events without a saved template.
+3. Notification Settings shows one card pointing to Automation Brain — no duplicate "Run Reminders" button.
+4. Automation Brain run history shows `success` for `lead_nurture_followup` rule (or a clear logged error in System Health, not silent).
+5. Adding a WhatsApp automation only lets you pick events that don't already have a trigger row.
