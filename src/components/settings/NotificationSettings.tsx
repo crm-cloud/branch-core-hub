@@ -184,27 +184,30 @@ export function NotificationSettings() {
         </Card>
       </div>
 
-      {/* Automated Reminders */}
-      <Card>
+      {/* Automated Reminders → deep-link to Automation Brain (single control room) */}
+      <Card className="rounded-2xl border-violet-200/60 bg-gradient-to-br from-violet-50 to-indigo-50/50">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-primary" />
-            <CardTitle>Automated Reminders</CardTitle>
+            <Clock className="h-5 w-5 text-violet-600" />
+            <CardTitle>Automation Brain</CardTitle>
+            <Badge className="ml-2 bg-violet-600 text-white">New</Badge>
           </div>
           <CardDescription>
-            Manually trigger all pending reminders (payments, birthdays, membership expiry, class/PT/benefit bookings).
+            All scheduled reminders — payments, birthdays, expiry, bookings, lead nurture,
+            retention nudges — are now run by the Automation Brain. Toggle rules, change
+            frequencies, run on demand, and review run history in one place.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline">Payment Due</Badge>
-            <Badge variant="outline">Birthdays</Badge>
-            <Badge variant="outline">Membership Expiry</Badge>
-            <Badge variant="outline">Class Reminders</Badge>
-            <Badge variant="outline">PT Sessions</Badge>
-            <Badge variant="outline">Benefit Bookings</Badge>
-          </div>
-          <RunRemindersButton />
+        <CardContent>
+          <Button
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set('tab', 'automations');
+              window.location.assign(url.toString());
+            }}
+          >
+            Open Automation Brain
+          </Button>
         </CardContent>
       </Card>
 
