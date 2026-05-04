@@ -223,6 +223,51 @@ export async function sendCampaignNow(
   return data as any;
 }
 
+// ---------- Recurring automation rule ----------
+export type RecurrencePreset = 'daily' | 'weekly_mon' | 'weekly_fri' | 'monthly_1st' | 'custom';
+
+const PRESET_TO_CRON: Record<Exclude<RecurrencePreset, 'custom'>, string> = {
+  daily:        '0 10 * * *',
+  weekly_mon:   '0 10 * * 1',
+  weekly_fri:   '0 10 * * 5',
+  monthly_1st:  '0 10 1 * *',
+};
+
+export function recurrencePresetToCron(preset: RecurrencePreset, custom?: string): string {
+  if (preset === 'custom') return custom?.trim() || '0 10 * * *';
+  return PRESET_TO_CRON[preset];
+}
+
+export async function createRecurringCampaignRule(input: {
+  branch_id: string;
+  campaign_id: string;
+  name: string;
+  cron_expression: string;
+  ai_tone?: string | null;
+}): Promise<{ id: string; key: string }> {
+  const key = `campaign_${input.campaign_id.replace(/-/g, '').slice(0, 24)}`;
+  const { data, error } = await supabase
+    .from('automation_rules' as any)
+    .upsert({
+      branch_id: input.branch_id,
+      key,
+      name: `Campaign: ${input.name}`,
+      description: 'Auto-created by Campaign Wizard (recurring marketing send)',
+      category: 'marketing',
+      worker: 'edge:run-campaign',
+      worker_payload: { campaign_id: input.campaign_id },
+      cron_expression: input.cron_expression,
+      is_active: true,
+      use_ai: !!input.ai_tone,
+      ai_tone: input.ai_tone ?? 'friendly',
+      next_run_at: new Date().toISOString(),
+    } as any, { onConflict: 'branch_id,key' })
+    .select('id, key')
+    .single();
+  if (error) throw error;
+  return data as any;
+}
+
 // ---------- Segments ----------
 export interface ContactSegment {
   id: string;
