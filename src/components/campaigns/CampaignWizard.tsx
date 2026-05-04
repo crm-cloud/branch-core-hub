@@ -19,7 +19,10 @@ import {
   type AudienceFilter,
   type CampaignChannel,
   type CampaignTriggerType,
+  type RecurrencePreset,
   createCampaign,
+  createRecurringCampaignRule,
+  recurrencePresetToCron,
   sendCampaignNow,
 } from '@/services/campaignService';
 import { useQueryClient } from '@tanstack/react-query';
