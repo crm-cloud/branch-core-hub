@@ -92,10 +92,25 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
 
   const insertVar = (v: string) => setMessage((m) => `${m}${v}`);
 
+  const buildFinalMessage = () => {
+    let body = message.trim();
+    if (isEvent && (eventName || eventDate || eventVenue)) {
+      const parts = [
+        eventName ? `📅 ${eventName}` : '',
+        eventDate ? `🗓️  ${eventDate}${eventTime ? ` at ${eventTime}` : ''}` : '',
+        eventVenue ? `📍 ${eventVenue}` : '',
+        eventRsvpUrl ? `RSVP: ${eventRsvpUrl}` : '',
+      ].filter(Boolean).join('\n');
+      body = `${body}\n\n${parts}`.trim();
+    }
+    return body;
+  };
+
   const handleSubmit = async () => {
     if (!name.trim()) { toast.error('Campaign name required'); return; }
     if (!message.trim()) { toast.error('Message required'); return; }
     if (resolvedMemberIds.length === 0) { toast.error('Audience is empty'); return; }
+    if (isEvent && !eventName.trim()) { toast.error('Event name required'); return; }
     if (trigger === 'scheduled' && !scheduledAt) { toast.error('Pick a date and time'); return; }
     if (trigger === 'scheduled' && new Date(scheduledAt).getTime() <= Date.now()) {
       toast.error('Scheduled time must be in the future'); return;
@@ -103,26 +118,33 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
 
     setSubmitting(true);
     try {
+      const finalMessage = buildFinalMessage();
       const campaign = await createCampaign({
         branch_id: branchId,
         name: name.trim(),
         channel,
         audience_filter: filter,
-        message: message.trim(),
+        message: finalMessage,
         subject: channel === 'email' ? subject.trim() || null : null,
         trigger_type: trigger,
         scheduled_at: trigger === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
         attachment_url: attachment?.url ?? null,
         attachment_kind: attachment?.kind ?? null,
         attachment_filename: attachment?.filename ?? null,
+        campaign_type: campaignType,
+        event_meta: isEvent ? {
+          name: eventName.trim(),
+          date: eventDate || null,
+          time: eventTime || null,
+          venue: eventVenue.trim() || null,
+          rsvp_url: eventRsvpUrl.trim() || null,
+        } : {},
         status:
           trigger === 'send_now' ? 'sending' :
           trigger === 'scheduled' ? 'scheduled' : 'draft',
       });
 
       if (trigger === 'send_now') {
-        // If a richer audience kind is selected, route through the unified resolver so
-        // members + leads + contacts can all be reached in one broadcast.
         const useResolver = filter.audience_kind && filter.audience_kind !== 'members';
         const audience = useResolver
           ? { recipients: await (await import('@/services/campaignService')).resolveCampaignAudience(branchId, filter) }
