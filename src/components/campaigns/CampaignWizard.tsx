@@ -260,7 +260,7 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
               <Label className="text-xs uppercase tracking-wider text-muted-foreground mb-2 block">Campaign name</Label>
               <Input className="rounded-xl" placeholder="e.g. New Year membership push" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
-            <AudienceBuilder branchId={branchId} value={filter} onChange={setFilter} onResolved={setResolvedMemberIds} />
+            <AudienceBuilder branchId={branchId} value={filter} onChange={setFilter} onResolved={setResolvedMemberIds} channel={channel} />
           </div>
         )}
 
