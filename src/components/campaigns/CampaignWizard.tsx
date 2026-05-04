@@ -10,9 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, MessageSquare, Mail, Send, Save, Loader2, Megaphone, Clock, Paperclip, ImageIcon, FileText, Film, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare, Mail, Send, Save, Loader2, Megaphone, Clock, Paperclip, ImageIcon, FileText, Film, X, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadAttachment } from '@/utils/uploadAttachment';
+import { supabase } from '@/integrations/supabase/client';
 import { AudienceBuilder } from './AudienceBuilder';
 import {
   type AudienceFilter,
@@ -72,6 +73,37 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' | 'video' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAiDraft = async () => {
+    if (!aiPrompt.trim()) { toast.error('Describe the campaign first'); return; }
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-draft-campaign-message', {
+        body: {
+          channel,
+          campaign_type: campaignType,
+          prompt: aiPrompt.trim(),
+          event_meta: campaignType === 'event' ? {
+            name: eventName, date: eventDate, time: eventTime, venue: eventVenue, rsvp_url: eventRsvpUrl,
+          } : undefined,
+        },
+      });
+      if (error) throw error;
+      const p = (data as any)?.proposal;
+      if (!p) throw new Error('No draft returned');
+      setMessage(p.body || '');
+      if (channel === 'email') {
+        if (p.subject) setSubject(p.subject);
+      }
+      toast.success('AI draft inserted — review and edit before sending');
+      setAiOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'AI draft failed');
+    } finally { setAiLoading(false); }
+  };
 
   // When campaign type changes, default the audience for lead_reengagement
   useEffect(() => {
@@ -261,7 +293,49 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
             )}
 
             <div>
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground mb-2 block">Message</Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Message</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAiOpen((o) => !o)}
+                  className="rounded-full h-7 px-3 text-xs gap-1.5 border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700"
+                >
+                  <Sparkles className="h-3 w-3" /> Draft with AI
+                </Button>
+              </div>
+
+              {aiOpen && (
+                <div className="rounded-2xl border-2 border-violet-200 bg-violet-50/50 p-3 mb-3 space-y-2">
+                  <Label className="text-[11px] uppercase tracking-wider text-violet-800 font-semibold">Describe what you want to say</Label>
+                  <Textarea
+                    className="rounded-xl bg-white min-h-[80px]"
+                    placeholder={channel === 'email'
+                      ? 'e.g. Announce 30% off annual memberships, ends Sunday, free shaker on signup'
+                      : 'e.g. Reminder about Sunday HIIT bootcamp at 7am, bring a friend free'}
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setAiOpen(false)} className="rounded-full">Cancel</Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAiDraft}
+                      disabled={aiLoading}
+                      className="rounded-full bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+                    >
+                      {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                      Generate
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-violet-700">
+                    AI uses your campaign type{campaignType === 'event' ? ', event details' : ''} and channel rules{channel === 'email' ? ' (subject + responsive HTML)' : ''}. Always review before sending.
+                  </p>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {VARIABLES.map((v) => (
                   <button key={v} type="button" onClick={() => insertVar(v)}>
