@@ -490,7 +490,8 @@ async function resolveMemberContext(supabase: any, senderId: string, branchId: s
         ? `expiring in ${daysRemaining}d — renewal opportunity`
         : `${daysRemaining}d remaining`;
 
-  const contextPrompt = `Member: ${memberName}${planName ? ` · Plan: ${planName}` : ""} · ${lifecycle}${duesLine}${recentReminderLine}`;
+  const memberCode = (memberMatch as any).member_code || "";
+  const contextPrompt = `Context: Speaking to ${memberName}, an Active Member${memberCode ? ` (Code: ${memberCode})` : ""}.${planName ? ` Plan: ${planName}.` : ""} ${lifecycle}.${duesLine}${recentReminderLine}`;
 
   return {
     isMember: true,
