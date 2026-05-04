@@ -141,7 +141,8 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const handleSubmit = async () => {
     if (!name.trim()) { toast.error('Campaign name required'); return; }
     if (!message.trim()) { toast.error('Message required'); return; }
-    if (resolvedMemberIds.length === 0) { toast.error('Audience is empty'); return; }
+    const isMembersKind = !filter.audience_kind || filter.audience_kind === 'members';
+    if (isMembersKind && resolvedMemberIds.length === 0) { toast.error('Audience is empty'); return; }
     if (isEvent && !eventName.trim()) { toast.error('Event name required'); return; }
     if (trigger === 'scheduled' && !scheduledAt) { toast.error('Pick a date and time'); return; }
     if (trigger === 'scheduled' && new Date(scheduledAt).getTime() <= Date.now()) {
@@ -260,7 +261,7 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
               <Label className="text-xs uppercase tracking-wider text-muted-foreground mb-2 block">Campaign name</Label>
               <Input className="rounded-xl" placeholder="e.g. New Year membership push" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
-            <AudienceBuilder branchId={branchId} value={filter} onChange={setFilter} onResolved={setResolvedMemberIds} />
+            <AudienceBuilder branchId={branchId} value={filter} onChange={setFilter} onResolved={setResolvedMemberIds} channel={channel} />
           </div>
         )}
 
