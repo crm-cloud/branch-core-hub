@@ -19,7 +19,10 @@ import {
   type AudienceFilter,
   type CampaignChannel,
   type CampaignTriggerType,
+  type RecurrencePreset,
   createCampaign,
+  createRecurringCampaignRule,
+  recurrencePresetToCron,
   sendCampaignNow,
 } from '@/services/campaignService';
 import { useQueryClient } from '@tanstack/react-query';
@@ -76,6 +79,41 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [submittingMeta, setSubmittingMeta] = useState(false);
+  const [recurrence, setRecurrence] = useState<RecurrencePreset>('weekly_mon');
+  const [customCron, setCustomCron] = useState('0 10 * * 1');
+
+  const handleSubmitMetaTemplate = async () => {
+    if (channel !== 'whatsapp') return;
+    if (!message.trim()) { toast.error('Draft a message first'); return; }
+    setSubmittingMeta(true);
+    try {
+      const safeName = (name || `campaign_${Date.now()}`).toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '').slice(0, 48);
+      const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+        body: {
+          action: 'create',
+          branch_id: branchId,
+          template_data: {
+            name: safeName,
+            category: campaignType === 'promotion' || campaignType === 'event' ? 'MARKETING' : 'UTILITY',
+            language: 'en',
+            body_text: message.trim(),
+            header_type: attachment?.kind === 'image' ? 'image' : attachment?.kind === 'video' ? 'video' : 'none',
+            header_sample_url: attachment?.kind && attachment.kind !== 'document' ? attachment.url : undefined,
+          },
+        },
+      });
+      if (error) throw error;
+      const r = data as any;
+      if (r?.success === false) {
+        toast.error(r?.error || 'Meta rejected the template');
+        return;
+      }
+      toast.success(`Submitted to Meta as "${r?.name}" — status: ${r?.status || 'PENDING'}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to submit to Meta');
+    } finally { setSubmittingMeta(false); }
+  };
 
   const handleAiDraft = async () => {
     if (!aiPrompt.trim()) { toast.error('Describe the campaign first'); return; }
@@ -187,9 +225,18 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
       } else if (trigger === 'scheduled') {
         toast.success(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
       } else {
-        toast.success('Campaign saved as automated rule');
+        // automated → wire to automation_rules so automation-brain runs it on schedule
+        const cron = recurrencePresetToCron(recurrence, customCron);
+        await createRecurringCampaignRule({
+          branch_id: branchId,
+          campaign_id: campaign.id,
+          name: name.trim(),
+          cron_expression: cron,
+        });
+        toast.success(`Recurring rule created (${cron}) — runs via Automation Brain`);
       }
       qc.invalidateQueries({ queryKey: ['campaigns', branchId] });
+      qc.invalidateQueries({ queryKey: ['automation_rules'] });
       close();
     } catch (e: any) {
       toast.error(e?.message || 'Failed to create campaign');
@@ -350,7 +397,23 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground mt-1.5">{message.length} chars · {resolvedMemberIds.length} recipients</p>
+              <div className="flex items-center justify-between mt-1.5 gap-2">
+                <p className="text-xs text-muted-foreground">{message.length} chars · {resolvedMemberIds.length} recipients</p>
+                {channel === 'whatsapp' && message.trim().length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSubmitMetaTemplate}
+                    disabled={submittingMeta}
+                    className="rounded-full h-7 px-3 text-xs gap-1.5 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                    title="Submit this body to Meta as a reusable WhatsApp template (PENDING approval)"
+                  >
+                    {submittingMeta ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    Submit to Meta
+                  </Button>
+                )}
+              </div>
             </div>
 
             {(channel === 'whatsapp' || channel === 'email') && (
@@ -467,6 +530,42 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
                   onChange={(e) => setScheduledAt(e.target.value)}
                 />
                 <p className="text-[11px] text-amber-700">A background worker checks every minute and sends the campaign at the chosen time.</p>
+              </div>
+            )}
+
+            {trigger === 'automated' && (
+              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/50 p-4 space-y-3">
+                <Label className="text-xs uppercase tracking-wider text-blue-800 font-semibold">Repeat schedule</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { id: 'daily',        label: 'Daily 10am' },
+                    { id: 'weekly_mon',   label: 'Every Monday' },
+                    { id: 'weekly_fri',   label: 'Every Friday' },
+                    { id: 'monthly_1st',  label: '1st of month' },
+                    { id: 'custom',       label: 'Custom cron' },
+                  ] as const).map((p) => (
+                    <button key={p.id} type="button" onClick={() => setRecurrence(p.id as RecurrencePreset)}
+                      className={`text-left rounded-xl px-3 py-2 text-sm border-2 transition-all ${
+                        recurrence === p.id ? 'border-blue-500 bg-white text-blue-900 font-medium' : 'border-transparent bg-white/60 text-blue-800 hover:border-blue-300'
+                      }`}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {recurrence === 'custom' && (
+                  <div>
+                    <Input
+                      className="rounded-xl bg-white font-mono text-sm"
+                      value={customCron}
+                      onChange={(e) => setCustomCron(e.target.value)}
+                      placeholder="0 10 * * 1"
+                    />
+                    <p className="text-[11px] text-blue-700 mt-1">5-field UTC cron · m h dom mon dow</p>
+                  </div>
+                )}
+                <p className="text-[11px] text-blue-700">
+                  Audience is re-resolved on every run, so new members/leads matching the filter get included automatically. Manage in Settings → Automation Brain.
+                </p>
               </div>
             )}
 
