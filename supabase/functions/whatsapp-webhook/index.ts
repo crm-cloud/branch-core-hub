@@ -388,15 +388,14 @@ interface HydratedContext {
 }
 
 async function hydrateContactContext(phoneNumber: string, branchId: string): Promise<HydratedContext> {
-  const cleanPhone = phoneNumber.replace(/[\s\-\+]/g, "");
-  const phoneVariants = [cleanPhone, `+${cleanPhone}`, cleanPhone.replace(/^91/, "+91")];
+  const variants = phoneVariants(phoneNumber);
 
-  // Check if member
-  for (const variant of phoneVariants) {
+  // Check if member — single query with .in() across all phone variants
+  if (variants.length > 0) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, full_name, phone")
-      .eq("phone", variant)
+      .in("phone", variants)
       .limit(1)
       .maybeSingle();
 
