@@ -167,6 +167,8 @@ export async function createCampaign(input: Omit<Campaign,
   attachment_url?: string | null;
   attachment_kind?: 'image' | 'document' | 'video' | null;
   attachment_filename?: string | null;
+  campaign_type?: 'promotion' | 'event' | 'announcement' | 'lead_reengagement';
+  event_meta?: Record<string, any>;
 }): Promise<Campaign> {
   const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
@@ -184,6 +186,8 @@ export async function createCampaign(input: Omit<Campaign,
       attachment_url: input.attachment_url ?? null,
       attachment_kind: input.attachment_kind ?? null,
       attachment_filename: input.attachment_filename ?? null,
+      campaign_type: input.campaign_type ?? 'announcement',
+      event_meta: input.event_meta ?? {},
       created_by: user?.id,
     } as any)
     .select()
