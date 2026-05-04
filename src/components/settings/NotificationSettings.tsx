@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Mail, Bell, Save, Clock } from 'lucide-react';
+import { Mail, Bell, Save } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -183,34 +183,7 @@ export function NotificationSettings() {
         </Card>
       </div>
 
-      {/* Automated Reminders → deep-link to Automation Brain (single control room) */}
-      <Card className="rounded-2xl border-violet-200/60 bg-gradient-to-br from-violet-50 to-indigo-50/50">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-violet-600" />
-            <CardTitle>Automation Brain</CardTitle>
-            <Badge className="ml-2 bg-violet-600 text-white">New</Badge>
-          </div>
-          <CardDescription>
-            All scheduled reminders — payments, birthdays, expiry, bookings, lead nurture,
-            retention nudges — are now run by the Automation Brain. Toggle rules, change
-            frequencies, run on demand, and review run history in one place.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            onClick={() => {
-              const url = new URL(window.location.href);
-              url.searchParams.set('tab', 'automations');
-              window.location.assign(url.toString());
-            }}
-          >
-            Open Automation Brain
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Lead Notification Rules — separate section */}
+      {/* Lead Notification Rules — styled to match Email + System Alerts */}
       <LeadNotificationSettings />
 
       <div className="flex justify-end">
