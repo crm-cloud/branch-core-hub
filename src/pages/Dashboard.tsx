@@ -227,7 +227,7 @@ export default function DashboardPage() {
       let query = supabase
         .from('invoices')
         .select('id, total_amount, amount_paid, status, member_id, members(member_code, user_id, profiles:user_id(full_name))')
-        .in('status', ['pending', 'overdue', 'partial', 'sent'])
+        .in('status', ['pending', 'overdue', 'partial'])
         .order('total_amount', { ascending: false })
         .limit(20);
       if (branchFilter) query = query.eq('branch_id', branchFilter);
