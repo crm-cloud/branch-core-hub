@@ -1052,6 +1052,17 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   // Inject context, summary, and known-lead snapshot
   systemPrompt = `${contactContext.contextPrompt}${summaryBlock}${alreadyCapturedSnapshot}\n\n${systemPrompt}`;
 
+  // ── HARD RULE #1 — member-first identity ─────────────────────────────────
+  if (contactContext.isMember) {
+    const _name = contactContext.memberName || "this member";
+    systemPrompt += `\n\nABSOLUTE IDENTITY RULE (HIGHEST PRIORITY):
+This person is a CONFIRMED ACTIVE MEMBER. Their identity, plan, dues and benefits are ALREADY KNOWN (see Context above).
+- GREET THEM BY NAME (${_name}) on your first reply, mention their member code if it appears in Context.
+- NEVER ask for their name, email, phone, fitness goal, budget, experience, or preferred time. We have all of this.
+- NEVER output the {"status":"lead_captured", ...} JSON. They are NOT a lead.
+- For account questions (membership status, benefits, bookings, PT sessions, dues, invoices) USE THE TOOLS — never guess.
+- If they ask about visiting/joining, politely tell them they are already a member and share their plan + days remaining.`;
+  }
 
   // Global instruction: answer first, qualify second
   systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
