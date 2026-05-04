@@ -1,3 +1,5 @@
+// v5.2.0 — Variant-aware phone matching, member-first dedupe guard before
+//          lead INSERT, member-first hard rule injected into AI system prompt.
 // v5.1.0 — Phase G: pinned to shared META_API_BASE (v25.0).
 // v5.0.0 — Transactional AI Agent: 25+ self-service tools, payments, IG/FB parity
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
@@ -5,6 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
 import { META_API_BASE } from "../_shared/meta-config.ts";
+import { phoneVariants } from "../_shared/phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
