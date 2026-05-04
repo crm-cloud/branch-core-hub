@@ -381,55 +381,46 @@ interface MemberResolveResult {
 }
 
 async function resolveMemberContext(supabase: any, senderId: string, branchId: string, platform: Platform): Promise<MemberResolveResult> {
-  // For WhatsApp: match by phone variants
-  // For IG/Messenger: match by whatsapp_id field (stores platform user ID) or phone
-  const cleanId = senderId.replace(/[\s\-\+]/g, "");
-  const phoneVariants = [cleanId, `+${cleanId}`, cleanId.replace(/^91/, "+91")];
+  // For WhatsApp: senderId is a phone number — use full variant set so we
+  // catch bare 10-digit, +91-prefixed, and 91-prefixed forms equally.
+  // For IG/Messenger: senderId is a platform user ID — phone match will
+  // simply not hit, which is correct.
+  const variants = phoneVariants(senderId);
 
-  // Try member match by phone
   let memberMatch: any = null;
-  for (const variant of phoneVariants) {
-    const { data } = await supabase
-      .from("members")
-      .select("id, branch_id, profiles(full_name)")
-      .or(`phone_number.eq.${variant}`)
-      .maybeSingle();
-    if (data) { memberMatch = data; break; }
-  }
 
-  // Also check profiles.phone
-  if (!memberMatch) {
-    for (const variant of phoneVariants) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .eq("phone", variant)
+  // Resolve member via profiles.phone → members.user_id
+  if (variants.length > 0) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("phone", variants)
+      .limit(1)
+      .maybeSingle();
+    if (profile?.id) {
+      const { data: member } = await supabase
+        .from("members")
+        .select("id, branch_id, member_code, profiles!inner(full_name)")
+        .eq("user_id", profile.id)
+        .limit(1)
         .maybeSingle();
-      if (profile?.user_id) {
-        const { data: member } = await supabase
-          .from("members")
-          .select("id, branch_id, profiles(full_name)")
-          .eq("user_id", profile.user_id)
-          .maybeSingle();
-        if (member) { memberMatch = member; break; }
-      }
+      if (member) memberMatch = member;
     }
   }
 
   if (!memberMatch) {
-    // Check existing lead for context
+    // Check existing lead for context (variant-aware)
     let leadContext = "";
-    for (const variant of phoneVariants) {
+    if (variants.length > 0) {
       const { data: lead } = await supabase
         .from("leads")
         .select("full_name, status, fitness_goal")
-        .eq("phone", variant)
+        .in("phone", variants)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (lead) {
         leadContext = `[Lead] ${lead.full_name || "Unknown"}, Status: ${lead.status || "-"}, Goal: ${lead.fitness_goal || "-"}`;
-        break;
       }
     }
     return { isMember: false, contextPrompt: leadContext || "Speaking to a guest/lead." };
