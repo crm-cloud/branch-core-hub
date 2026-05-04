@@ -1,76 +1,100 @@
-## Goal
 
-Fix the Campaign Wizard so the Audience step is explicit, supports the full contact universe (members, leads, staff/trainers/managers, contacts), and stops mixing in retention-only fields. Make Email a first-class channel everywhere (it already is in the message step but the audience UI implies WhatsApp-only).
+## Why this is happening (audit findings)
 
-## Problems being addressed
+I traced Bhagirath Gurjar's case end-to-end. He IS a member (`INC-26-0003`, phone stored as `7014492634`), yet the AI greeted him as a stranger and a duplicate lead `917014492634` was created on 2026-05-04. Three independent bugs combined to cause this — and the same bugs also break Instagram/Facebook recognition.
 
-1. Audience step shows only `Membership status` (active / expired / all) — there is no way to target leads, staff, trainers, managers, or contacts even though the backend resolver already supports `members | leads | contacts | mixed | segment`.
-2. `Last visit before` / `Last visit after` are retention-engine concerns; we already have the **Smart Retention Nudge Engine** for that. Keeping them here confuses users.
-3. UX copy implies the wizard fires WhatsApp only, but the message step does support Email and SMS — the audience step needs to make that obvious and not gate behavior on channel.
-4. Backend `resolve_campaign_audience` does not yet know about `staff` (employees + trainers + managers), so we extend it.
+### Bug 1 — Phone variant generator misses bare 10-digit numbers
+In both `whatsapp-webhook/index.ts` (line 388) and `_shared/ai-agent-brain.ts` (line 382):
+```
+const cleanPhone = phoneNumber.replace(/[\s\-\+]/g, "");      // "917014492634"
+const variants = [cleanPhone, `+${cleanPhone}`, cleanPhone.replace(/^91/, "+91")];
+// → ["917014492634", "+917014492634", "+917014492634"]
+```
+Bhagirath's profile stores the phone as `7014492634` (bare 10-digit). None of the three variants match. A bare 10-digit form and the `+91 70144 92634` (with space) form are never tried. We already have a canonical helper `phoneVariants()` in `src/lib/contacts/phone.ts` that produces all four variants — but it lives client-side and isn't used in edge functions.
 
-## Plan
+### Bug 2 — `_shared/ai-agent-brain.ts` queries non-existent columns (Instagram / Facebook completely broken)
+- Line 391: `.from("members").or("phone_number.eq.…")` — the `members` table has no `phone_number` column. The query silently returns nothing.
+- Line 401-402: `.from("profiles").select("user_id, full_name").eq("phone", variant)` — the column is `id`, not `user_id`. The downstream `profile?.user_id` is always undefined.
+Net effect: the unified Meta agent (used by `meta-webhook` for IG/FB/Messenger) **never** identifies a member, so even Bhagirath messaging from IG would be treated as a brand new lead.
 
-### 1. Database — extend audience resolver
+### Bug 3 — No "is this number already a lead/member?" guard before AI captures a lead
+`whatsapp-webhook/index.ts` calls `hydrateContactContext` which sets `isMember=true` only when both phone-lookup steps succeed. When Bug 1 makes them fail, the agent enters lead-capture mode and the captured-lead INSERT (line 1437) writes a fresh row regardless of whether a member or another lead already exists for that phone. There is no `ON CONFLICT` guard and no "is this phone a member?" recheck just before INSERT.
 
-Migration adds a `staff` audience kind to `resolve_campaign_audience(p_branch_id, p_filter)`:
+### Bug 4 — Meta template submission attaches sample URLs in the wrong field
+`error_logs` shows ~14 rejections in the last 48h: *"Templates with IMAGE/DOCUMENT header type need an example/sample"*. Root cause in `supabase/functions/manage-whatsapp-templates/index.ts` line 348:
+```
+example: { header_handle: [header_sample_url] }   // expects a Meta media handle (from /uploads)
+```
+Meta's `header_handle` MUST be a handle obtained from the resumable-upload `/uploads` endpoint, NOT a `https://placehold.co/...` public URL. AI-generated templates with image/document/video headers get auto-rejected. The previous "MIME error" the user mentioned is this rejection chain (the AI email generator itself is fine).
 
-- New kind value: `'staff'` (and include in `'mixed'`).
-- Optional sub-filter `p_filter->'staff_roles' text[]` — any of `owner | admin | manager | staff | trainer`. Empty = all non-member roles.
-- Source: `profiles p` joined to `user_roles ur` on `ur.user_id = p.id`, scoped to branch where applicable (employees table for non-trainer staff, trainers table for trainers; profile fallback for owner/admin without branch).
+### Bug 5 — Email AI generator returns `body_html` only when channel='email' but the same `propose_templates` schema marks `subject`/`body_html` as required for all channels in `ai-generate-whatsapp-templates/index.ts` (line 81-86) — already correct, no change needed. Audited and confirmed.
 
-No table schema changes — only the SQL function body.
+---
 
-### 2. `AudienceBuilder.tsx` — full rewrite of the picker
+## What to build
 
-Replace the current single `Membership status` dropdown with a structured audience builder:
+### A. Shared phone helper for edge functions (kills Bug 1 & enables Bug 3 fix)
+Create `supabase/functions/_shared/phone.ts` mirroring `src/lib/contacts/phone.ts` exactly:
+- `normalizePhone(input)` → e.g. `+917014492634`
+- `phoneVariants(input)` → returns the full set: `+917014492634`, `917014492634`, `+917014492634`, `7014492634` (last-10), plus the original raw form. De-duped.
 
-- **Audience kind** segmented control (cards, lucide icons):
-  - Members
-  - Leads
-  - Staff & Trainers
-  - Contacts (CRM)
-  - Mixed (any combination)
-  - Saved Segment
-- Conditional sub-filters:
-  - Members → `Membership status` (All / Active / Expired) + `Goal contains`
-  - Leads → multi-select `Lead status` + `Lead temperature`
-  - Staff → multi-select `Roles` (Owner, Admin, Manager, Staff, Trainer)
-  - Contacts → multi-select `Categories`, `Source types`, `Tags`
-  - Mixed → checkboxes for which sources to include + their sub-filters collapsed
-  - Segment → segment dropdown (existing behavior)
-- **Remove** `Last visit before` / `Last visit after`. Add a small inline note linking to the Retention page: *"Looking to win back inactive members? Use the Retention Nudge Engine instead."*
-- Live audience size card stays; it already calls the same resolver.
+Replace the inline 3-variant arrays in:
+- `supabase/functions/whatsapp-webhook/index.ts` line 388-389 (member lookup) and line 524 (lead lookup) — switch `.eq()` to `.in('phone', variants)`.
+- `supabase/functions/_shared/ai-agent-brain.ts` line 382-383 — same.
 
-### 3. `campaignService.ts` typing
+### B. Fix the broken column references in `_shared/ai-agent-brain.ts` (Bug 2)
+- Drop the `.from("members").or("phone_number.eq.…")` block entirely (the column doesn't exist).
+- Change `.from("profiles").select("user_id, full_name")` to `select("id, full_name")` and `.eq("user_id", profile.user_id)` to `.eq("user_id", profile.id)`.
+- Result: Instagram/Facebook/Messenger now correctly recognise members.
 
-- Extend `AudienceKind` union to include `'staff'`.
-- Add `staff_roles?: Array<'owner'|'admin'|'manager'|'staff'|'trainer'>` to `AudienceFilter`.
-- `resolveAudienceMemberIds` is members-only and is what feeds `member_ids` into `send-broadcast`. When the audience kind is anything other than `members`, the wizard already takes the `recipients` path via `resolveCampaignAudience`. Keep that branch and make the wizard always use the resolver path when `audience_kind !== 'members'` (it already does). For `members` keep the fast path.
+### C. Hard guard against duplicate lead capture (Bug 3)
+In `whatsapp-webhook/index.ts` just before the lead INSERT around line 1437, and in `_shared/ai-agent-brain.ts` in `tryParseAndCaptureLead`:
+1. Re-run `phoneVariants(phoneNumber)` and re-check `profiles → members` for an active member. If found, **skip the lead INSERT**, log `"skipped_duplicate_member"`, and have the AI send a member-aware acknowledgement instead.
+2. Re-check `leads.phone IN variants`. If a lead already exists, **UPDATE** it (merge the new fields, bump `last_contacted_at`) rather than INSERT a new row.
+3. Backfill the existing duplicate: a one-time SQL migration that:
+   - Deletes lead `bb5c0647-f078-4477-a7fb-773bd703b1cc` (Bhagirath's wrong duplicate).
+   - Adds a partial unique index `leads_phone_active_uidx` on `(branch_id, phone)` where `status NOT IN ('converted','lost','disqualified')` to make accidental duplicates impossible at the DB level going forward.
 
-### 4. `CampaignWizard.tsx`
+### D. Member-first AI greeting (training)
+Update both system prompts (`whatsapp-webhook` line 1062-area and `_shared/ai-agent-brain.ts` line 122-area):
+- Insert a hard rule at the top: *"If `Context: Speaking to <name>, an Active Member` is present, GREET BY NAME AND MEMBER CODE. Never ask for name/email/goal/budget. Never run lead-capture JSON. Use member tools for any account questions. Politely note that the gym is in pre-opening if they ask about visiting."*
+- Apply the same rule for IG/FB by using the unified brain after Bug 2 is fixed.
 
-- Audience step heading: "Who should receive this?" — remove the active/expired implication.
-- Pass channel down to the AudienceBuilder only for a subtle hint ("Recipients without an email/phone for the chosen channel will be skipped automatically").
-- No change to the channel step — Email is already there; just make sure the empty-channel warning text matches.
-- Recipient counter on Message step already shows `resolvedMemberIds.length`; rename label to `recipients` (already correct in some places) for non-member kinds.
+### E. Stop the Meta "Missing sample" rejections (Bug 4)
+In `supabase/functions/manage-whatsapp-templates/index.ts` line 342-350:
+- If `header_type` is image/document/video AND `header_sample_url` is NOT a Meta upload handle (i.e. it's an http URL), do ONE of these:
+  - **Preferred**: Call Meta's resumable upload (`POST /{app-id}/uploads` → `POST {upload-session-id}` with the bytes) to obtain a real handle, then use that handle in `example.header_handle`.
+  - **Fallback**: If upload fails or the URL is a placeholder (`placehold.co`), coerce the template to `header_type='none'` and prepend the URL/link into the body (matching the dispatcher's existing `{{document_link}}` pattern). Log a warning.
+- Add a `META_APP_ID` env-var check; if missing, take the fallback path.
 
-### 5. Docs / memory
+### F. Tighten AI template generator (preventive)
+In `ai-generate-whatsapp-templates/index.ts`:
+- Strip the `https://placehold.co/...` default sample URL when the channel is whatsapp — replacing it with a clear "must upload sample first" placeholder is misleading. Instead emit `header_type='none'` with a `{{image_link}}` body variable for marketing/event templates that need media. Send-time the dispatcher injects the actual uploaded image (same pattern already used for documents).
+- Extend `DOCUMENT_EVENTS` if any new transactional events appear (audit `src/lib/templates/systemEvents.ts` for events flagged `document: true`).
 
-Update `mem://features/marketing-segments-and-broadcast` to record:
-- New `staff` audience kind in resolver.
-- Retention-window fields removed from CampaignWizard; retention lives in the Nudge Engine.
+### G. Audit & sync templates ↔ events
+- Run a one-shot script (read-only `supabase--read_query`) that diffs `systemEvents.ts` against existing rows in `whatsapp_templates`, `sms_templates`, `email_templates` per branch and reports missing events. Used to pre-load the AI Generate Drawer's "missing events" default selection — it already does this; we'll just verify.
 
-## Out of scope
+### H. Verify nothing else writes leads behind our back
+Grep for `from('leads').insert` across `supabase/functions/**` — confirm only `whatsapp-webhook`, `_shared/ai-agent-brain.ts`, `meta-webhook`, `capture-lead`, `webhook-lead-capture`, `notify-lead-created` touch the table, and apply the same "member-first guard + variant-aware match" to each.
 
-- Channel-aware contact filtering (e.g. "only contacts with verified email") — backend already skips when phone/email is missing; we don't add a hard pre-filter now.
-- New segment-builder UI on the segments page — only the wizard's inline picker changes.
-- AI template generation + Meta approval loop and recurring-rule trigger (still pending from earlier turns; not in this slice).
+---
 
-## Files touched
+## Files to change
 
-- New migration: extend `resolve_campaign_audience` SQL function.
-- `src/components/campaigns/AudienceBuilder.tsx` — rewrite.
-- `src/components/campaigns/CampaignWizard.tsx` — minor copy + ensure resolver path used for non-member kinds.
-- `src/services/campaignService.ts` — type updates.
-- `mem://features/marketing-segments-and-broadcast` — update notes.
+- `supabase/functions/_shared/phone.ts` — **new**
+- `supabase/functions/whatsapp-webhook/index.ts` — variants, member-first guard, prompt update
+- `supabase/functions/_shared/ai-agent-brain.ts` — variants, fix column refs, prompt update, dedupe guard
+- `supabase/functions/meta-webhook/index.ts` — pass `phone` and use the unified brain after fixes
+- `supabase/functions/capture-lead/index.ts`, `webhook-lead-capture/index.ts` — apply variant-aware dedupe
+- `supabase/functions/manage-whatsapp-templates/index.ts` — Meta upload-handle flow + fallback
+- `supabase/functions/ai-generate-whatsapp-templates/index.ts` — remove placeholder media URL default
+- New migration: delete duplicate lead + add partial unique index on `leads(branch_id, phone)`
+- Memory: update `whatsapp-crm-system-v25-0` and `whatsapp-transactional-ai-agent` notes with the variant + dedupe contract
+
+## Acceptance test (manual)
+
+1. From Bhagirath's WhatsApp number, send "Hi" → AI responds "Hi Bhagirath! Your INC-26-0003 plan is active for X days." No new lead row.
+2. From the same number on Instagram DM (when IG connected) → same recognition.
+3. AI Generate WhatsApp Templates → submit one with image header → Meta returns `id` (no "Missing sample" error).
+4. `SELECT count(*) FROM leads WHERE phone IN ('7014492634','917014492634','+917014492634')` → 0 (after cleanup).
