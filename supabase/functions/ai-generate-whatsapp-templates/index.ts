@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
       `Channel: ${channel}`,
       "",
       "Events to generate templates for:",
-      ...body.events.map((e) => `- ${e.event}${e.label ? ` (${e.label})` : ""}${e.hint ? ` — hint: ${e.hint}` : ""}`),
+      ...body.events.map((e) => `- ${e.event}${DOCUMENT_EVENTS.has(e.event) ? ' [DOCUMENT]' : ''}${e.label ? ` (${e.label})` : ""}${e.hint ? ` — hint: ${e.hint}` : ""}`),
       "",
       "Existing templates (avoid duplicates):",
       (body.existing || []).slice(0, 60).map((e) => `• ${e.name}: ${e.body.slice(0, 140).replace(/\n/g, " ")}`).join("\n") || "(none)",
