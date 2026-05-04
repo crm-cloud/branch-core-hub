@@ -522,12 +522,12 @@ async function hydrateContactContext(phoneNumber: string, branchId: string): Pro
     }
   }
 
-  // Check if existing lead
-  for (const variant of phoneVariants) {
+  // Check if existing lead — variant-aware
+  if (variants.length > 0) {
     const { data: lead } = await supabase
       .from("leads")
       .select("id, full_name, status, temperature")
-      .eq("phone", variant)
+      .in("phone", variants)
       .limit(1)
       .maybeSingle();
 
