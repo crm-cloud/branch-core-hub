@@ -169,6 +169,23 @@ Deno.serve(async (req) => {
     try { parsed = JSON.parse(toolCall.function.arguments); } catch { return json({ error: "Bad AI JSON" }, 500); }
     const templates = Array.isArray(parsed?.templates) ? parsed.templates : [];
 
+    // Hard-enforce the document rule regardless of what the model returned.
+    for (const t of templates) {
+      if (DOCUMENT_EVENTS.has(t.event)) {
+        t.header_type = 'none';
+        delete t.header_sample_url;
+        const vars: string[] = Array.isArray(t.variables) ? t.variables : [];
+        if (!vars.includes('document_link')) vars.push('document_link');
+        t.variables = vars;
+        if (typeof t.body_text === 'string' && !t.body_text.includes('{{document_link}}')) {
+          t.body_text = `${t.body_text.trim()}\n\nDocument: {{document_link}}`;
+        }
+        if (typeof t.body_html === 'string' && !t.body_html.includes('{{document_link}}')) {
+          t.body_html = `${t.body_html}\n<p style="margin-top:16px"><a href="{{document_link}}" style="background:#6d28d9;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open Document</a></p>`;
+        }
+      }
+    }
+
     return json({ success: true, channel, templates });
   } catch (e) {
     console.error("ai-generate-whatsapp-templates error:", e);
