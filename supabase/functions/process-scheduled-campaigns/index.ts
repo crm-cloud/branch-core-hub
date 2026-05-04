@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
         await admin.from("campaigns").update({
           status: "sent",
           sent_at: new Date().toISOString(),
-          recipients_count: memberIds.length,
+          recipients_count: totalRecipients,
           success_count: body.sent || 0,
           failure_count: body.failed || 0,
           last_run_error: null,
