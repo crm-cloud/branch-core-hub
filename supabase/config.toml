@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.automation-brain]
 verify_jwt = false
+
+[functions.register-member]
+verify_jwt = false
