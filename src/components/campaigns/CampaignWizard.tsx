@@ -31,12 +31,27 @@ interface Props {
 
 const VARIABLES = ['{{member_name}}', '{{member_code}}', '{{first_name}}', '{{branch_name}}'];
 
+type CampaignType = 'promotion' | 'event' | 'announcement' | 'lead_reengagement';
+
+const CAMPAIGN_TYPES: { id: CampaignType; label: string; desc: string; emoji: string; color: string }[] = [
+  { id: 'promotion', label: 'Promotion', desc: 'Offers, discounts, deals', emoji: '🎁', color: 'violet' },
+  { id: 'event', label: 'Event / Class', desc: 'Workshops, special classes', emoji: '📅', color: 'amber' },
+  { id: 'announcement', label: 'Announcement', desc: 'Updates, news, notices', emoji: '📢', color: 'blue' },
+  { id: 'lead_reengagement', label: 'Lead Re-engagement', desc: 'Win back cold leads', emoji: '🔁', color: 'emerald' },
+];
+
 export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const qc = useQueryClient();
   const [step, setStep] = useState(1);
+  const [campaignType, setCampaignType] = useState<CampaignType>('announcement');
   const [name, setName] = useState('');
   const [channel, setChannel] = useState<CampaignChannel>('whatsapp');
   const [filter, setFilter] = useState<AudienceFilter>({ status: 'active' });
+  const [eventName, setEventName] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [eventVenue, setEventVenue] = useState('');
+  const [eventRsvpUrl, setEventRsvpUrl] = useState('');
 
   // Auto-prefill from a saved segment (set by Contact Book → Segments → Send)
   useEffect(() => {
@@ -58,11 +73,19 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' | 'video' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  // When campaign type changes, default the audience for lead_reengagement
+  useEffect(() => {
+    if (campaignType === 'lead_reengagement') {
+      setFilter({ audience_kind: 'leads' } as any);
+    }
+  }, [campaignType]);
+
   const reset = () => {
-    setStep(1); setName(''); setChannel('whatsapp');
+    setStep(1); setName(''); setChannel('whatsapp'); setCampaignType('announcement');
     setFilter({ status: 'active' }); setResolvedMemberIds([]);
     setMessage(''); setSubject(''); setTrigger('send_now'); setScheduledAt('');
     setAttachment(null);
+    setEventName(''); setEventDate(''); setEventTime(''); setEventVenue(''); setEventRsvpUrl('');
   };
 
   const close = () => { reset(); onOpenChange(false); };

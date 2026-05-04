@@ -221,12 +221,15 @@ export default function DashboardPage() {
     queryKey: ['accounts-receivable', branchFilter],
     enabled: !!user && crmInView,
     queryFn: async () => {
+      // Include 'partial' (most common dues state) + 'sent' which is the
+      // dispatched-but-unpaid state used by the billing engine. The owed>0
+      // filter below ensures fully-paid rows never leak in.
       let query = supabase
         .from('invoices')
         .select('id, total_amount, amount_paid, status, member_id, members(member_code, user_id, profiles:user_id(full_name))')
-        .in('status', ['pending', 'overdue'])
+        .in('status', ['pending', 'overdue', 'partial'])
         .order('total_amount', { ascending: false })
-        .limit(5);
+        .limit(20);
       if (branchFilter) query = query.eq('branch_id', branchFilter);
       const { data } = await query;
       const items = (data || [])
@@ -237,7 +240,8 @@ export default function DashboardPage() {
           owed: (inv.total_amount || 0) - (inv.amount_paid || 0),
           status: inv.status,
         }))
-        .filter((r: any) => r.owed > 0);
+        .filter((r: any) => r.owed > 0)
+        .slice(0, 5);
       const totalOutstanding = items.reduce((sum: number, r: any) => sum + r.owed, 0);
       return { items, totalOutstanding };
     },

@@ -1,3 +1,4 @@
+// v2.2.0 — Branded email shell now supports optional logo image and unsubscribe footer.
 // v2.1.0 — SMTP path now sends multipart/mixed with base64 PDF attachments;
 //           communication log records attachment metadata for auditability.
 // v2.0.0 — Universal Email Dispatcher with Branded Template Support
@@ -11,14 +12,30 @@ const corsHeaders = {
 };
 
 // ── Branded HTML Email Template ─────────────────────────────────────────────
-function wrapInBrandedTemplate(bodyHtml: string, subject: string, variables?: Record<string, string>): string {
+function wrapInBrandedTemplate(
+  bodyHtml: string,
+  subject: string,
+  variables?: Record<string, string>,
+  opts?: { logoUrl?: string; brandName?: string; unsubscribeUrl?: string; branchName?: string },
+): string {
   let content = bodyHtml;
-  // Interpolate variables like {{user_name}}, {{invoice_id}}, {{amount}}
   if (variables) {
     for (const [key, value] of Object.entries(variables)) {
-      content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+      content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value ?? '');
     }
   }
+
+  const logoBlock = opts?.logoUrl
+    ? `<img src="${opts.logoUrl}" alt="${opts?.brandName ?? 'Incline'}" style="max-height:48px;display:block;margin:0 auto 8px;" />`
+    : `<p class="logo-text">INCLINE</p><p class="logo-sub">Fitness</p>`;
+
+  const branchLine = opts?.branchName
+    ? `<p style="color:#ffffff60;font-size:11px;margin-top:6px;">${opts.branchName}</p>`
+    : '';
+
+  const unsubBlock = opts?.unsubscribeUrl
+    ? `<p style="margin-top:14px;"><a href="${opts.unsubscribeUrl}" style="color:#ffffff40;font-size:11px;">Unsubscribe from marketing emails</a></p>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -37,7 +54,14 @@ function wrapInBrandedTemplate(bodyHtml: string, subject: string, variables?: Re
     .body h1, .body h2, .body h3 { color: #ffffff; margin-top: 0; }
     .body p { color: #ffffffcc; margin: 0 0 16px; }
     .body a { color: #EAB308; }
+    .body strong { color: #ffffff; }
     .cta-btn { display: inline-block; background: #EAB308; color: #000000 !important; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; margin: 16px 0; }
+    .kpi { background: #1a1a1a; border: 1px solid #ffffff10; border-radius: 12px; padding: 20px; margin: 16px 0; }
+    .kpi-label { color: #ffffff60; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 6px; }
+    .kpi-value { color: #EAB308; font-size: 28px; font-weight: 700; margin: 0; }
+    .details { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    .details td { padding: 10px 0; border-bottom: 1px solid #ffffff10; color: #ffffffcc; font-size: 14px; }
+    .details td:first-child { color: #ffffff60; width: 40%; }
     .footer { background-color: #0a0a0a; padding: 24px 40px; text-align: center; border-top: 1px solid #ffffff10; }
     .footer p { color: #ffffff40; font-size: 12px; margin: 0 0 4px; }
     .footer a { color: #EAB308; text-decoration: none; }
@@ -48,15 +72,16 @@ function wrapInBrandedTemplate(bodyHtml: string, subject: string, variables?: Re
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <p class="logo-text">INCLINE</p>
-        <p class="logo-sub">Fitness</p>
+        ${logoBlock}
+        ${branchLine}
       </div>
       <div class="body">
         ${content}
       </div>
       <div class="footer">
-        <p>The Incline Life by Incline</p>
-        <p style="margin-top: 8px;"><a href="https://inclinefitness.in">inclinefitness.in</a></p>
+        <p><strong style="color:#EAB308;">The Incline Life by Incline</strong></p>
+        <p style="margin-top: 8px;"><a href="https://theincline.in">theincline.in</a></p>
+        ${unsubBlock}
       </div>
     </div>
   </div>
@@ -81,10 +106,27 @@ Deno.serve(async (req) => {
       return json({ error: "Missing required fields: to, subject, html or text" }, 400);
     }
 
-    // Apply branded template if requested
+    // Apply branded template (default ON via dispatcher).
+    // Optional: branch logo + name pulled from branches table when branch_id provided.
     let finalHtml = html || text!;
     if (use_branded_template) {
-      finalHtml = wrapInBrandedTemplate(finalHtml, subject, variables);
+      let logoUrl: string | undefined;
+      let branchName: string | undefined;
+      if (branch_id) {
+        // logo_url column may not exist on branches yet — graceful fallback to text logo.
+        const { data: br } = await supabase
+          .from('branches')
+          .select('name')
+          .eq('id', branch_id)
+          .maybeSingle();
+        branchName = (br as any)?.name || undefined;
+      }
+      finalHtml = wrapInBrandedTemplate(finalHtml, subject, variables, {
+        logoUrl,
+        branchName,
+        brandName: 'Incline Fitness',
+        unsubscribeUrl: body?.unsubscribe_url,
+      });
     }
 
     // Fetch active email integration

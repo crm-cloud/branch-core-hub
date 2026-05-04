@@ -475,7 +475,9 @@ Deno.serve(async (req) => {
               subject: input.payload.subject,
               html: input.payload.body,
               branch_id: input.branch_id,
-              use_branded_template: input.payload.use_branded_template ?? false,
+              // Default ON — every dispatched email gets the branded INCLINE shell.
+              // Callers can opt out by explicitly passing use_branded_template:false.
+              use_branded_template: input.payload.use_branded_template ?? true,
               variables: input.payload.variables,
               attachments: emailAttachments,
               skip_log: true,
