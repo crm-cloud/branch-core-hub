@@ -1,3 +1,5 @@
+// v5.2.0 — Variant-aware phone matching, member-first dedupe guard before
+//          lead INSERT, member-first hard rule injected into AI system prompt.
 // v5.1.0 — Phase G: pinned to shared META_API_BASE (v25.0).
 // v5.0.0 — Transactional AI Agent: 25+ self-service tools, payments, IG/FB parity
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
@@ -5,6 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
 import { META_API_BASE } from "../_shared/meta-config.ts";
+import { phoneVariants } from "../_shared/phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -385,15 +388,14 @@ interface HydratedContext {
 }
 
 async function hydrateContactContext(phoneNumber: string, branchId: string): Promise<HydratedContext> {
-  const cleanPhone = phoneNumber.replace(/[\s\-\+]/g, "");
-  const phoneVariants = [cleanPhone, `+${cleanPhone}`, cleanPhone.replace(/^91/, "+91")];
+  const variants = phoneVariants(phoneNumber);
 
-  // Check if member
-  for (const variant of phoneVariants) {
+  // Check if member — single query with .in() across all phone variants
+  if (variants.length > 0) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, full_name, phone")
-      .eq("phone", variant)
+      .in("phone", variants)
       .limit(1)
       .maybeSingle();
 
@@ -520,12 +522,12 @@ async function hydrateContactContext(phoneNumber: string, branchId: string): Pro
     }
   }
 
-  // Check if existing lead
-  for (const variant of phoneVariants) {
+  // Check if existing lead — variant-aware
+  if (variants.length > 0) {
     const { data: lead } = await supabase
       .from("leads")
       .select("id, full_name, status, temperature")
-      .eq("phone", variant)
+      .in("phone", variants)
       .limit(1)
       .maybeSingle();
 
@@ -1050,6 +1052,17 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   // Inject context, summary, and known-lead snapshot
   systemPrompt = `${contactContext.contextPrompt}${summaryBlock}${alreadyCapturedSnapshot}\n\n${systemPrompt}`;
 
+  // ── HARD RULE #1 — member-first identity ─────────────────────────────────
+  if (contactContext.isMember) {
+    const _name = contactContext.memberName || "this member";
+    systemPrompt += `\n\nABSOLUTE IDENTITY RULE (HIGHEST PRIORITY):
+This person is a CONFIRMED ACTIVE MEMBER. Their identity, plan, dues and benefits are ALREADY KNOWN (see Context above).
+- GREET THEM BY NAME (${_name}) on your first reply, mention their member code if it appears in Context.
+- NEVER ask for their name, email, phone, fitness goal, budget, experience, or preferred time. We have all of this.
+- NEVER output the {"status":"lead_captured", ...} JSON. They are NOT a lead.
+- For account questions (membership status, benefits, bookings, PT sessions, dues, invoices) USE THE TOOLS — never guess.
+- If they ask about visiting/joining, politely tell them they are already a member and share their plan + days remaining.`;
+  }
 
   // Global instruction: answer first, qualify second
   systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
@@ -1433,6 +1446,56 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
         preferred_time: parsedLeadData.preferred_time || parsedLeadData.time || null,
         notes: `AI-captured via WhatsApp conversation`,
       };
+
+      // ── Member-first guard + phone dedupe ─────────────────────────────────
+      const _variants = phoneVariants(phoneNumber);
+      if (_variants.length > 0) {
+        const { data: _prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .in("phone", _variants)
+          .limit(1)
+          .maybeSingle();
+        if (_prof?.id) {
+          const { data: _existingMember } = await supabase
+            .from("members")
+            .select("id")
+            .eq("user_id", _prof.id)
+            .limit(1)
+            .maybeSingle();
+          if (_existingMember) {
+            console.log("[ai-lead-capture] phone matches active member — skipping lead INSERT");
+            return; // do not capture; member-first
+          }
+        }
+
+        const { data: _dupLead } = await supabase
+          .from("leads")
+          .select("id")
+          .in("phone", _variants)
+          .eq("branch_id", branchId)
+          .limit(1)
+          .maybeSingle();
+        if (_dupLead) {
+          console.log(`[ai-lead-capture] lead already exists for phone — merging into ${_dupLead.id}`);
+          await supabase.from("leads").update({
+            full_name: leadData.full_name,
+            email: leadData.email,
+            goals: leadData.goals,
+            fitness_goal: leadData.fitness_goal,
+            budget: leadData.budget,
+            expected_start_date: leadData.expected_start_date,
+            fitness_experience: leadData.fitness_experience,
+            preferred_time: leadData.preferred_time,
+            last_contacted_at: new Date().toISOString(),
+          }).eq("id", _dupLead.id);
+          await supabase.from("whatsapp_chat_settings").upsert(
+            { branch_id: branchId, phone_number: phoneNumber, captured_lead_id: _dupLead.id, bot_active: false, paused_at: new Date().toISOString() },
+            { onConflict: "branch_id,phone_number" },
+          );
+          return;
+        }
+      }
 
       const { data: newLead, error: leadError } = await supabase
         .from("leads")

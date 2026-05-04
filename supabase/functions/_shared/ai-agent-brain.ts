@@ -1,11 +1,15 @@
-// v2.0.0 — Unified AI Agent Brain (enhanced gym context + self-booking)
+// v2.1.0 — Unified AI Agent Brain
+// 2.1.0: Variant-aware phone matching (uses _shared/phone.ts), fixed broken
+//        column refs (members.phone_number / profiles.user_id never existed),
+//        member-first hard rule in system prompt, and member-first dedupe
+//        guard inside lead capture so an existing member never gets re-
+//        captured as a lead through IG/FB/Messenger.
 // Shared across meta-webhook (Instagram/Messenger) and whatsapp-webhook.
-// Provides consistent prompt construction, AI invocation, lead capture parsing,
-// partial lead storage, and lead creation logic.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "./ai-tools.ts";
 import { executeSharedToolCall } from "./ai-tool-executor.ts";
+import { phoneVariants } from "./phone.ts";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,6 +124,19 @@ export async function runUnifiedAgent(
   const customPrompt = aiConfig.system_prompt || `You are a helpful gym assistant for "${gymName}". Answer questions about membership, timings, and facilities. Keep responses short and friendly.`;
 
   let systemPrompt = `${memberCtx.contextPrompt}${summaryBlock}${alreadyCaptured}\n\n${customPrompt}`;
+
+  // ── HARD RULE #1 — member-first identity ────────────────────────────────────
+  if (memberCtx.isMember) {
+    systemPrompt += `\n\nABSOLUTE IDENTITY RULE (HIGHEST PRIORITY):
+This person is a CONFIRMED ACTIVE MEMBER of the gym. Their identity is already known.
+- GREET THEM BY NAME (${memberCtx.memberName}) on your first reply.
+- NEVER ask for their name, email, phone, fitness goal, budget, experience, or preferred time. We already have all of this.
+- NEVER output the {"status":"lead_captured", ...} JSON. They are NOT a lead.
+- If they ask about visiting, politely note that the gym is in pre-opening and share the timeline if known.
+- Use the available member tools (membership status, benefits, bookings, PT sessions, invoices) for any account question.
+- If you are unsure about an account-specific detail, USE A TOOL — do not guess.`;
+  }
+
   systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation.
   
   FORMATTING RULES:
@@ -377,55 +394,46 @@ interface MemberResolveResult {
 }
 
 async function resolveMemberContext(supabase: any, senderId: string, branchId: string, platform: Platform): Promise<MemberResolveResult> {
-  // For WhatsApp: match by phone variants
-  // For IG/Messenger: match by whatsapp_id field (stores platform user ID) or phone
-  const cleanId = senderId.replace(/[\s\-\+]/g, "");
-  const phoneVariants = [cleanId, `+${cleanId}`, cleanId.replace(/^91/, "+91")];
+  // For WhatsApp: senderId is a phone number — use full variant set so we
+  // catch bare 10-digit, +91-prefixed, and 91-prefixed forms equally.
+  // For IG/Messenger: senderId is a platform user ID — phone match will
+  // simply not hit, which is correct.
+  const variants = phoneVariants(senderId);
 
-  // Try member match by phone
   let memberMatch: any = null;
-  for (const variant of phoneVariants) {
-    const { data } = await supabase
-      .from("members")
-      .select("id, branch_id, profiles(full_name)")
-      .or(`phone_number.eq.${variant}`)
-      .maybeSingle();
-    if (data) { memberMatch = data; break; }
-  }
 
-  // Also check profiles.phone
-  if (!memberMatch) {
-    for (const variant of phoneVariants) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .eq("phone", variant)
+  // Resolve member via profiles.phone → members.user_id
+  if (variants.length > 0) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("phone", variants)
+      .limit(1)
+      .maybeSingle();
+    if (profile?.id) {
+      const { data: member } = await supabase
+        .from("members")
+        .select("id, branch_id, member_code, profiles!inner(full_name)")
+        .eq("user_id", profile.id)
+        .limit(1)
         .maybeSingle();
-      if (profile?.user_id) {
-        const { data: member } = await supabase
-          .from("members")
-          .select("id, branch_id, profiles(full_name)")
-          .eq("user_id", profile.user_id)
-          .maybeSingle();
-        if (member) { memberMatch = member; break; }
-      }
+      if (member) memberMatch = member;
     }
   }
 
   if (!memberMatch) {
-    // Check existing lead for context
+    // Check existing lead for context (variant-aware)
     let leadContext = "";
-    for (const variant of phoneVariants) {
+    if (variants.length > 0) {
       const { data: lead } = await supabase
         .from("leads")
         .select("full_name, status, fitness_goal")
-        .eq("phone", variant)
+        .in("phone", variants)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (lead) {
         leadContext = `[Lead] ${lead.full_name || "Unknown"}, Status: ${lead.status || "-"}, Goal: ${lead.fitness_goal || "-"}`;
-        break;
       }
     }
     return { isMember: false, contextPrompt: leadContext || "Speaking to a guest/lead." };
@@ -495,7 +503,8 @@ async function resolveMemberContext(supabase: any, senderId: string, branchId: s
         ? `expiring in ${daysRemaining}d — renewal opportunity`
         : `${daysRemaining}d remaining`;
 
-  const contextPrompt = `Member: ${memberName}${planName ? ` · Plan: ${planName}` : ""} · ${lifecycle}${duesLine}${recentReminderLine}`;
+  const memberCode = (memberMatch as any).member_code || "";
+  const contextPrompt = `Context: Speaking to ${memberName}, an Active Member${memberCode ? ` (Code: ${memberCode})` : ""}.${planName ? ` Plan: ${planName}.` : ""} ${lifecycle}.${duesLine}${recentReminderLine}`;
 
   return {
     isMember: true,
@@ -601,7 +610,56 @@ async function tryParseAndCaptureLead(
     notes: `AI-captured via ${ctx.platform} conversation. Platform ID: ${ctx.senderId}`,
   };
 
-  // Dedupe: check if lead with same email or phone exists
+  // ── Member-first guard ────────────────────────────────────────────────────
+  // If this phone now resolves to an active member (e.g. they got registered
+  // mid-conversation, or the original variant lookup missed earlier), DO NOT
+  // create a lead.
+  const variants = phoneVariants(ctx.senderId);
+  if (variants.length > 0) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("phone", variants)
+      .limit(1)
+      .maybeSingle();
+    if (prof?.id) {
+      const { data: existingMember } = await supabase
+        .from("members")
+        .select("id")
+        .eq("user_id", prof.id)
+        .limit(1)
+        .maybeSingle();
+      if (existingMember) {
+        console.log(`[AI:${ctx.platform}] phone matches existing member, skipping lead capture`);
+        return { captured: false, leadId: null, partialData: {} };
+      }
+    }
+
+    // Also dedupe by phone — if a lead row already exists, MERGE instead of inserting.
+    const { data: existingByPhone } = await supabase
+      .from("leads")
+      .select("id")
+      .in("phone", variants)
+      .eq("branch_id", ctx.branchId)
+      .limit(1)
+      .maybeSingle();
+    if (existingByPhone) {
+      console.log(`[AI:${ctx.platform}] lead already exists by phone, merging instead of inserting`);
+      const { full_name, email, goals, fitness_goal, budget, expected_start_date, fitness_experience, preferred_time } = leadData;
+      await supabase.from("leads").update({
+        full_name, email, goals, fitness_goal, budget,
+        expected_start_date, fitness_experience, preferred_time,
+        last_contacted_at: new Date().toISOString(),
+      }).eq("id", existingByPhone.id);
+      await supabase.from("whatsapp_chat_settings").upsert(
+        { branch_id: ctx.branchId, phone_number: ctx.senderId, captured_lead_id: existingByPhone.id, bot_active: false, paused_at: new Date().toISOString() },
+        { onConflict: "branch_id,phone_number" },
+      );
+      return { captured: true, leadId: existingByPhone.id, partialData };
+    }
+  }
+
+  // Dedupe: check if lead with same email exists
   if (parsedLeadData.email) {
     const { data: existingByEmail } = await supabase
       .from("leads")
