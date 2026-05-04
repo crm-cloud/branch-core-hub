@@ -610,7 +610,56 @@ async function tryParseAndCaptureLead(
     notes: `AI-captured via ${ctx.platform} conversation. Platform ID: ${ctx.senderId}`,
   };
 
-  // Dedupe: check if lead with same email or phone exists
+  // ── Member-first guard ────────────────────────────────────────────────────
+  // If this phone now resolves to an active member (e.g. they got registered
+  // mid-conversation, or the original variant lookup missed earlier), DO NOT
+  // create a lead.
+  const variants = phoneVariants(ctx.senderId);
+  if (variants.length > 0) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("phone", variants)
+      .limit(1)
+      .maybeSingle();
+    if (prof?.id) {
+      const { data: existingMember } = await supabase
+        .from("members")
+        .select("id")
+        .eq("user_id", prof.id)
+        .limit(1)
+        .maybeSingle();
+      if (existingMember) {
+        console.log(`[AI:${ctx.platform}] phone matches existing member, skipping lead capture`);
+        return { captured: false, leadId: null, partialData: {} };
+      }
+    }
+
+    // Also dedupe by phone — if a lead row already exists, MERGE instead of inserting.
+    const { data: existingByPhone } = await supabase
+      .from("leads")
+      .select("id")
+      .in("phone", variants)
+      .eq("branch_id", ctx.branchId)
+      .limit(1)
+      .maybeSingle();
+    if (existingByPhone) {
+      console.log(`[AI:${ctx.platform}] lead already exists by phone, merging instead of inserting`);
+      const { full_name, email, goals, fitness_goal, budget, expected_start_date, fitness_experience, preferred_time } = leadData;
+      await supabase.from("leads").update({
+        full_name, email, goals, fitness_goal, budget,
+        expected_start_date, fitness_experience, preferred_time,
+        last_contacted_at: new Date().toISOString(),
+      }).eq("id", existingByPhone.id);
+      await supabase.from("whatsapp_chat_settings").upsert(
+        { branch_id: ctx.branchId, phone_number: ctx.senderId, captured_lead_id: existingByPhone.id, bot_active: false, paused_at: new Date().toISOString() },
+        { onConflict: "branch_id,phone_number" },
+      );
+      return { captured: true, leadId: existingByPhone.id, partialData };
+    }
+  }
+
+  // Dedupe: check if lead with same email exists
   if (parsedLeadData.email) {
     const { data: existingByEmail } = await supabase
       .from("leads")
