@@ -143,7 +143,14 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
     }
   };
 
-  const stepLabels = ['Audience', 'Message', 'Trigger'];
+  const isEvent = campaignType === 'event';
+  const stepLabels = isEvent ? ['Type', 'Audience', 'Message', 'Event', 'Trigger'] : ['Type', 'Audience', 'Message', 'Trigger'];
+  const totalSteps = stepLabels.length;
+  const eventStepIndex = isEvent ? 4 : -1;
+  const triggerStepIndex = totalSteps;
+  const messageStepIndex = 3;
+  const audienceStepIndex = 2;
+  const typeStepIndex = 1;
 
   return (
     <ResponsiveSheet open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
