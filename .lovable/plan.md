@@ -1,148 +1,76 @@
+## Goal
 
-## Goals
+Fix the Campaign Wizard so the Audience step is explicit, supports the full contact universe (members, leads, staff/trainers/managers, contacts), and stops mixing in retention-only fields. Make Email a first-class channel everywhere (it already is in the message step but the audience UI implies WhatsApp-only).
 
-Four connected fixes, ordered by user impact:
+## Problems being addressed
 
-1. **Accounts Receivable shows ₹0** — bug fix
-2. **Smarter automation cadences** — birthdays once, dues only on real trigger days
-3. **Professional HTML email templates** — replace plain text with branded shell
-4. **Enhanced Campaign Builder** — events, leads, members, promotions in one wizard, with auto-template generation + Meta approval handoff
+1. Audience step shows only `Membership status` (active / expired / all) — there is no way to target leads, staff, trainers, managers, or contacts even though the backend resolver already supports `members | leads | contacts | mixed | segment`.
+2. `Last visit before` / `Last visit after` are retention-engine concerns; we already have the **Smart Retention Nudge Engine** for that. Keeping them here confuses users.
+3. UX copy implies the wizard fires WhatsApp only, but the message step does support Email and SMS — the audience step needs to make that obvious and not gate behavior on channel.
+4. Backend `resolve_campaign_audience` does not yet know about `staff` (employees + trainers + managers), so we extend it.
 
----
+## Plan
 
-## 1. Fix Accounts Receivable (Dashboard)
+### 1. Database — extend audience resolver
 
-**Root cause** (verified via DB):
-```
-status     | count | outstanding
-partial    |   2   |   24,000   ← excluded by current query
-cancelled  |   6   |   30,800
-```
+Migration adds a `staff` audience kind to `resolve_campaign_audience(p_branch_id, p_filter)`:
 
-`src/pages/Dashboard.tsx` line 227 only reads `status IN ('pending','overdue')`. All real outstanding dues are `partial`.
+- New kind value: `'staff'` (and include in `'mixed'`).
+- Optional sub-filter `p_filter->'staff_roles' text[]` — any of `owner | admin | manager | staff | trainer`. Empty = all non-member roles.
+- Source: `profiles p` joined to `user_roles ur` on `ur.user_id = p.id`, scoped to branch where applicable (employees table for non-trainer staff, trainers table for trainers; profile fallback for owner/admin without branch).
 
-**Fix** (one line):
-- Change filter to `.in('status', ['pending','overdue','partial','sent'])`
-- Add a server-side `WHERE total_amount > coalesce(amount_paid,0)` guard so fully-paid `partial` rows never leak in
-- The widget already renders `owed = total - paid`, so the math is correct once the rows are included
+No table schema changes — only the SQL function body.
 
----
+### 2. `AudienceBuilder.tsx` — full rewrite of the picker
 
-## 2. Smarter Automation Cadences (Automation Brain)
+Replace the current single `Membership status` dropdown with a structured audience builder:
 
-Today every rule runs on its cron and re-sends every tick. We make each worker idempotent **per business event**, not per cron tick.
+- **Audience kind** segmented control (cards, lucide icons):
+  - Members
+  - Leads
+  - Staff & Trainers
+  - Contacts (CRM)
+  - Mixed (any combination)
+  - Saved Segment
+- Conditional sub-filters:
+  - Members → `Membership status` (All / Active / Expired) + `Goal contains`
+  - Leads → multi-select `Lead status` + `Lead temperature`
+  - Staff → multi-select `Roles` (Owner, Admin, Manager, Staff, Trainer)
+  - Contacts → multi-select `Categories`, `Source types`, `Tags`
+  - Mixed → checkboxes for which sources to include + their sub-filters collapsed
+  - Segment → segment dropdown (existing behavior)
+- **Remove** `Last visit before` / `Last visit after`. Add a small inline note linking to the Retention page: *"Looking to win back inactive members? Use the Retention Nudge Engine instead."*
+- Live audience size card stays; it already calls the same resolver.
 
-**Rule cadence corrections** (in `automation_rules` seed + new migration):
+### 3. `campaignService.ts` typing
 
-| Rule | Old cron | New cron | Idempotency guard |
-|---|---|---|---|
-| `birthday_wish` | `30 9 * * *` | `30 9 * * *` (keep, once/day) | `dedupe_key = birthday:{member}:{YYYY-MM-DD}` (already in code — verify it blocks re-sends) |
-| `daily_send_reminders` (dues) | `0 8 * * *` (sends every day) | `0 8 * * *` | New worker filter: only invoices where `due_date` is today, OR `due_date` was T-3, T-1, T+0, T+3, T+7 (configurable schedule). Skip otherwise. |
-| `auto_expire_memberships` | `0 1 * * *` | keep | already idempotent |
-| `benefit_t2h_reminders` | `*/30 * * * *` | keep | dedupe by booking id |
-| `process_scheduled_campaigns` | `* * * * *` | keep |  |
-| `lead_nurture_followup` | `0 * * * *` | `0 9-21 * * *` (business hours only) | already has per-lead cooldown |
+- Extend `AudienceKind` union to include `'staff'`.
+- Add `staff_roles?: Array<'owner'|'admin'|'manager'|'staff'|'trainer'>` to `AudienceFilter`.
+- `resolveAudienceMemberIds` is members-only and is what feeds `member_ids` into `send-broadcast`. When the audience kind is anything other than `members`, the wizard already takes the `recipients` path via `resolveCampaignAudience`. Keep that branch and make the wizard always use the resolver path when `audience_kind !== 'members'` (it already does). For `members` keep the fast path.
 
-**Implementation**:
-- Add `reminder_schedule jsonb` column on `automation_rules` for the dues rule, default `{"offsets_days":[-3,-1,0,3,7]}`. UI in Automation Control Room exposes a chip selector.
-- Update `send-reminders` invoice block: compute `daysUntilDue = due_date - today`. Only send if `daysUntilDue ∈ allowed_offsets`. Build dedupe key `payment_reminder:{invoice_id}:{daysUntilDue}` → `dispatch-communication` will dedupe.
-- Birthday: confirmed dedupe key is already daily, so the once-a-day rule already protects against double-fires inside the same day. No change needed beyond verifying the cron expression format `30 9 * * *` matches single fire (it does — `nextCron()` jumps to next day).
+### 4. `CampaignWizard.tsx`
 
----
+- Audience step heading: "Who should receive this?" — remove the active/expired implication.
+- Pass channel down to the AudienceBuilder only for a subtle hint ("Recipients without an email/phone for the chosen channel will be skipped automatically").
+- No change to the channel step — Email is already there; just make sure the empty-channel warning text matches.
+- Recipient counter on Message step already shows `resolvedMemberIds.length`; rename label to `recipients` (already correct in some places) for non-member kinds.
 
-## 3. Professional HTML Email Templates
+### 5. Docs / memory
 
-**Today**: `send-email` has a `wrapInBrandedTemplate()` shell (dark + gold INCLINE branding) but it's **off by default** (`use_branded_template: false` in dispatch-communication). DB templates are mostly plain `\n` text.
+Update `mem://features/marketing-segments-and-broadcast` to record:
+- New `staff` audience kind in resolver.
+- Retention-window fields removed from CampaignWizard; retention lives in the Nudge Engine.
 
-**Plan**:
-1. **Flip default to ON** in `dispatch-communication/index.ts` so every dispatched email gets the branded HTML shell.
-2. **Rewrite the 16 email templates** in `templates` table via migration with rich HTML bodies:
-   - Welcome, Payment Reminder, Payment Receipt, Renewal Reminder, Class Booking, Facility Booking, PT Session, Birthday, Feedback Request, Body Scan Ready, Posture Scan Ready, Plan Assigned (Diet/Workout), Invoice PDF, Receipt PDF, Staff Scan Alert
-   - Each template uses semantic blocks: greeting, hero KPI/amount, CTA button, details table, footer note
-   - All templates expect to be wrapped by the shell — they only contain the inner `<div class="body">` content
-3. **Logo handling**: shell currently uses text logo. Add support for `<img src="{{logo_url}}">` where `logo_url` comes from `branches.logo_url` or falls back to text. Pass via `variables` from dispatcher.
-4. **Footer**: keep "The Incline Life by Incline" + branch address + unsubscribe link (for marketing only — transactional skips unsubscribe per CAN-SPAM).
+## Out of scope
 
----
+- Channel-aware contact filtering (e.g. "only contacts with verified email") — backend already skips when phone/email is missing; we don't add a hard pre-filter now.
+- New segment-builder UI on the segments page — only the wizard's inline picker changes.
+- AI template generation + Meta approval loop and recurring-rule trigger (still pending from earlier turns; not in this slice).
 
-## 4. Enhanced Campaign Builder
+## Files touched
 
-**Today**: `CampaignWizard.tsx` is 3 steps (Audience → Message → Trigger). Audience supports members + segments only. No event metadata, no template auto-generation, no Meta approval loop.
-
-**Target**: One wizard for **promotions, events, member broadcasts, lead nurture campaigns**, with optional auto-template-generation routed through `ai-generate-whatsapp-templates` and Meta submission.
-
-### 4a. New "Campaign Type" pre-step
-Replace step 1 with a type picker:
-- **Promotion** (offer/discount) — auto-injects {{discount}}, {{offer_url}}
-- **Event / Class** — fields: event title, date, venue, RSVP link → auto-injects {{event_name}}, {{event_date}}, {{event_time}}, {{rsvp_url}}
-- **Announcement / Update** — generic
-- **Lead Re-engagement** — audience defaults to `kind=leads, status=lost/cold`
-
-Each type sets sensible defaults for channel, audience, and a starter message body.
-
-### 4b. Audience expansion
-`AudienceBuilder` already supports `audience_kind`. Surface clearly in UI:
-- Members (with status/plan/branch filters) — existing
-- Leads (with status/source filters) — already in resolver, expose chips
-- Custom contacts (segments)
-- Mixed (members ∪ leads ∪ contacts) — uses `resolve_campaign_audience` RPC
-
-Show a live count badge per source ("142 members + 38 leads").
-
-### 4c. Media handling (already partially done)
-- Keep image/PDF/MP4 upload (16MB)
-- Add **per-channel preview cards**: WhatsApp bubble, Email rendered with branded shell, SMS text-only with char count
-- For events, add a **calendar `.ics` attachment** auto-generated from event date/time/venue → attached to email channel
-
-### 4d. AI Template Generation + Meta Approval Loop (new)
-A new toggle in step 2: **"Generate reusable WhatsApp template for this campaign"**.
-
-Flow when ON:
-1. Wizard calls `ai-generate-whatsapp-templates` with the campaign body + variables → returns a draft `templates` row (channel=whatsapp, status=pending)
-2. Wizard shows a preview drawer with the AI-generated template (header, body, footer, buttons)
-3. On confirm → submit to Meta via existing `manage-whatsapp-templates` edge fn → status flips to `submitted`
-4. Campaign is saved with `linked_template_id`. If `trigger=send_now` and template is not yet `approved`, the wizard offers two options:
-   - **Send as free-form session message** (24-hr window only)
-   - **Wait for approval** (campaign status = `awaiting_template_approval`, `process-scheduled-campaigns` re-checks every minute and dispatches once approved)
-
-A new column `campaigns.linked_template_id uuid REFERENCES templates(id)` plus `campaigns.template_status text` to track this.
-
-### 4e. Communication Hub sync
-Already done via `send-broadcast` → `dispatch-communication` (logs land in `communication_logs` with channel + category). Verify campaign sends appear in Live Feed by ensuring `category='marketing'` and `campaign_id` is in `delivery_metadata`.
-
-### 4f. Cron + Instant
-- **Send now** → existing path
-- **Schedule** → existing `process-scheduled-campaigns` worker (already cron'd via Automation Brain)
-- **Recurring** (new): cron expression input (e.g. "every Monday 10 AM") → saved as `automation_rules` row with `worker=edge:send-broadcast`, `worker_payload={campaign_id}`. Brain dispatches per cron.
-
----
-
-## Technical Summary
-
-**Migrations**:
-- Add `automation_rules.reminder_schedule jsonb`
-- Add `campaigns.linked_template_id`, `campaigns.template_status`, `campaigns.campaign_type`, `campaigns.event_meta jsonb`
-- Reseed all 16 email rows in `templates` with HTML bodies
-- Update `birthday_wish` rule cron note (no cron change, just docs)
-- Update `lead_nurture_followup` cron to `0 9-21 * * *`
-
-**Edge fn changes**:
-- `dispatch-communication`: default `use_branded_template=true` for emails; pass logo_url + branch_name into variables
-- `send-reminders`: filter invoice reminders by `daysUntilDue ∈ rule.reminder_schedule.offsets_days`; richer dedupe key
-- `send-email`: shell accepts logo image variable, optional unsubscribe footer for marketing category
-- `process-scheduled-campaigns`: handle `awaiting_template_approval` status (re-check + dispatch)
-
-**Frontend**:
-- `src/pages/Dashboard.tsx` (line 227): widen invoice status filter
-- `src/components/campaigns/CampaignWizard.tsx`: new Type step, AI template toggle, per-channel preview, event metadata fields, recurring trigger
-- `src/components/settings/AutomationsControlRoom.tsx`: surface `reminder_schedule` chip selector on the dues rule
-
-**Files NOT changing**: `src/integrations/supabase/client.ts`, `types.ts` (auto-gen), `supabase/config.toml` project section.
-
----
-
-## Out of scope (deferred)
-
-- Edge function cleanup audit — most "cleanup candidates" (`check-setup`, `test-ai-tool`, `test-integration`, `test-ai-provider`) are still referenced by Settings diagnostic UIs. Keeping them is the right call. We'll revisit only if any becomes provably orphaned.
-- Multi-language email templates
-- A/B testing on campaigns
+- New migration: extend `resolve_campaign_audience` SQL function.
+- `src/components/campaigns/AudienceBuilder.tsx` — rewrite.
+- `src/components/campaigns/CampaignWizard.tsx` — minor copy + ensure resolver path used for non-member kinds.
+- `src/services/campaignService.ts` — type updates.
+- `mem://features/marketing-segments-and-broadcast` — update notes.
