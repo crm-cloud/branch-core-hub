@@ -21,6 +21,16 @@ interface Body {
   brand?: string;
 }
 
+// Events that carry a PDF/document attachment. For these we MUST NOT use
+// header_type='document' (Meta would require a pre-uploaded media handle
+// during template review). Instead the AI must reference {{document_link}}
+// in the body — dispatcher v1.6.0 substitutes the real PDF at send time.
+const DOCUMENT_EVENTS = new Set([
+  'invoice_generated', 'receipt_generated', 'pos_order_completed',
+  'body_scan_ready', 'diet_plan_ready', 'workout_plan_ready',
+  'contract_signed',
+]);
+
 const SYSTEM_PROMPTS: Record<Channel, string> = {
   whatsapp: `You write WhatsApp Business message templates for a premium Indian gym brand "Incline Fitness".
 Rules:
@@ -30,7 +40,8 @@ Rules:
 - No emojis on UTILITY; max 1 tasteful emoji on MARKETING; no URLs / phone numbers in body.
 - Tone: warm, concise, Indian-English, premium fitness.
 - Names: lower_snake_case ≤ 50 chars, descriptive.
-- For attachment events (flyers, PDFs) set header_type=image|document with sample url "https://placehold.co/600x400.png".
+- For events tagged "[DOCUMENT]" you MUST set header_type='none' and reference {{document_link}} inside the body (and include "document_link" in variables). Do NOT use header_type='document'.
+- For other attachment events (e.g. flyers, posters) header_type='image' is allowed with sample url "https://placehold.co/600x400.png".
 - One template per event.`,
   sms: `You write Indian-DLT-compliant transactional/promotional SMS for "Incline Fitness".
 Rules:
@@ -40,6 +51,7 @@ Rules:
 - Variable placeholders use {{snake_case}}; later mapped to {#var#}.
 - End every promotional SMS with the suffix "-INCLNE" (DLT entity tag) — do not add it for transactional.
 - Categories map to dlt_category: TRANSACTIONAL (utility/booking/payment/expiry), SERVICE_IMPLICIT (lifecycle confirmations), SERVICE_EXPLICIT (rich utility w/ promo cross-sell), PROMOTIONAL (offers/marketing/birthday).
+- For events tagged "[DOCUMENT]" reference {{document_link}} (a short URL) in the body and include "document_link" in variables.
 - Names: lower_snake_case ≤ 30 chars.
 - One template per event.`,
   email: `You write transactional & marketing emails for "Incline Fitness", a premium Indian gym brand.
@@ -49,7 +61,7 @@ Rules:
 - Variables in {{snake_case}}.
 - Tone: warm, premium, friendly. Add a single primary CTA when relevant ("Renew Membership", "View Receipt", "Book Class").
 - Categories: UTILITY (receipts/lifecycle), MARKETING (offers/newsletter/birthday).
-- For events with attachments (e.g. invoice, scan report), set header_type='document'.
+- For events tagged "[DOCUMENT]" set header_type='none' and include a CTA button linking to {{document_link}} (also include "document_link" in variables). Do NOT attempt to embed the PDF.
 - One template per event.`,
 };
 
