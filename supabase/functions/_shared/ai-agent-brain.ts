@@ -1,11 +1,15 @@
-// v2.0.0 — Unified AI Agent Brain (enhanced gym context + self-booking)
+// v2.1.0 — Unified AI Agent Brain
+// 2.1.0: Variant-aware phone matching (uses _shared/phone.ts), fixed broken
+//        column refs (members.phone_number / profiles.user_id never existed),
+//        member-first hard rule in system prompt, and member-first dedupe
+//        guard inside lead capture so an existing member never gets re-
+//        captured as a lead through IG/FB/Messenger.
 // Shared across meta-webhook (Instagram/Messenger) and whatsapp-webhook.
-// Provides consistent prompt construction, AI invocation, lead capture parsing,
-// partial lead storage, and lead creation logic.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "./ai-tools.ts";
 import { executeSharedToolCall } from "./ai-tool-executor.ts";
+import { phoneVariants } from "./phone.ts";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
