@@ -61,12 +61,7 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
 
   const candidates = CANDIDATE_BY_CHANNEL[channel];
   const [step, setStep] = useState<'pick' | 'review'>('pick');
-  const initialPick = () =>
-    prefilledEvents && prefilledEvents.length > 0
-      ? new Set(prefilledEvents)
-      : new Set(candidates.slice(0, 5).map((e) => e.event));
-  const [picked, setPicked] = useState<Set<string>>(initialPick);
-  useEffect(() => { setPicked(initialPick()); setStep('pick'); setProposals([]); }, [channel, open, prefilledEvents?.join('|')]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -74,12 +69,36 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
   const { data: existing = [] } = useQuery({
     queryKey: ['ai-templates-existing', selectedBranch, channel],
     queryFn: async () => {
-      const q = supabase.from('templates').select('name, content').eq('type', channel);
+      const q = supabase.from('templates').select('name, content, trigger_event').eq('type', channel);
       const { data } = selectedBranch && selectedBranch !== 'all' ? await q.eq('branch_id', selectedBranch) : await q;
-      return (data || []).map((t: any) => ({ name: t.name, body: t.content || '' }));
+      return (data || []).map((t: any) => ({
+        name: t.name,
+        body: t.content || '',
+        trigger_event: t.trigger_event as string | null,
+      }));
     },
     enabled: open,
   });
+
+  // Events from the canonical catalog that don't yet have a template.
+  const missingEvents = useMemo(() => {
+    const have = new Set(existing.map((t) => t.trigger_event).filter(Boolean) as string[]);
+    return candidates.filter((e) => !have.has(e.event)).map((e) => e.event);
+  }, [existing, candidates]);
+
+  // Default selection = all missing events. Re-applies when channel/branch/open changes
+  // OR when the missing list updates (so the count is never stuck at 0).
+  useEffect(() => {
+    if (!open) return;
+    if (prefilledEvents && prefilledEvents.length > 0) {
+      setPicked(new Set(prefilledEvents));
+    } else {
+      setPicked(new Set(missingEvents));
+    }
+    setStep('pick');
+    setProposals([]);
+  }, [channel, open, prefilledEvents?.join('|'), missingEvents.join('|')]);
+
 
   const branchId = selectedBranch && selectedBranch !== 'all' ? selectedBranch : null;
   const Meta = CHANNEL_META[channel];
