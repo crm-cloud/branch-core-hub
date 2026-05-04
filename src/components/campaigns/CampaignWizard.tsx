@@ -397,7 +397,23 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground mt-1.5">{message.length} chars · {resolvedMemberIds.length} recipients</p>
+              <div className="flex items-center justify-between mt-1.5 gap-2">
+                <p className="text-xs text-muted-foreground">{message.length} chars · {resolvedMemberIds.length} recipients</p>
+                {channel === 'whatsapp' && message.trim().length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSubmitMetaTemplate}
+                    disabled={submittingMeta}
+                    className="rounded-full h-7 px-3 text-xs gap-1.5 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                    title="Submit this body to Meta as a reusable WhatsApp template (PENDING approval)"
+                  >
+                    {submittingMeta ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    Submit to Meta
+                  </Button>
+                )}
+              </div>
             </div>
 
             {(channel === 'whatsapp' || channel === 'email') && (
