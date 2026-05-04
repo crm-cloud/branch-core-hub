@@ -225,9 +225,18 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
       } else if (trigger === 'scheduled') {
         toast.success(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
       } else {
-        toast.success('Campaign saved as automated rule');
+        // automated → wire to automation_rules so automation-brain runs it on schedule
+        const cron = recurrencePresetToCron(recurrence, customCron);
+        await createRecurringCampaignRule({
+          branch_id: branchId,
+          campaign_id: campaign.id,
+          name: name.trim(),
+          cron_expression: cron,
+        });
+        toast.success(`Recurring rule created (${cron}) — runs via Automation Brain`);
       }
       qc.invalidateQueries({ queryKey: ['campaigns', branchId] });
+      qc.invalidateQueries({ queryKey: ['automation_rules'] });
       close();
     } catch (e: any) {
       toast.error(e?.message || 'Failed to create campaign');
