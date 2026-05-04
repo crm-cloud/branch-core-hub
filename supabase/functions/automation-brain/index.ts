@@ -107,16 +107,17 @@ async function runBirthdayWish(rule: any): Promise<{ dispatched: number; error?:
   const userIds = Array.from(new Set((members ?? []).map((m: any) => m.user_id).filter(Boolean)));
   if (!userIds.length) return { dispatched: 0 };
 
-  // Step 2 — profiles for those user_ids (explicit table, no auto FK alias).
+  // Step 2 — profiles for those user_ids. profiles.id == auth.users.id, so we
+  // join on `id`, not `user_id` (which doesn't exist on profiles).
   const { data: profiles, error: pErr } = await admin
     .from("profiles")
-    .select("user_id, full_name, date_of_birth")
-    .in("user_id", userIds);
+    .select("id, full_name, date_of_birth")
+    .in("id", userIds);
   if (pErr) return { dispatched: 0, error: pErr.message };
 
   const profileByUser = new Map<string, { full_name: string | null; date_of_birth: string | null }>();
   for (const p of profiles ?? []) {
-    profileByUser.set(p.user_id as string, { full_name: (p as any).full_name, date_of_birth: (p as any).date_of_birth });
+    profileByUser.set((p as any).id as string, { full_name: (p as any).full_name, date_of_birth: (p as any).date_of_birth });
   }
 
   const todays = (members ?? []).filter((m: any) => {
