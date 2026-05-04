@@ -1674,9 +1674,11 @@ export type Database = {
           attachment_url: string | null
           audience_filter: Json
           branch_id: string
+          campaign_type: string
           channel: string
           created_at: string
           created_by: string | null
+          event_meta: Json
           failure_count: number
           id: string
           last_run_error: string | null
@@ -1698,9 +1700,11 @@ export type Database = {
           attachment_url?: string | null
           audience_filter?: Json
           branch_id: string
+          campaign_type?: string
           channel: string
           created_at?: string
           created_by?: string | null
+          event_meta?: Json
           failure_count?: number
           id?: string
           last_run_error?: string | null
@@ -1722,9 +1726,11 @@ export type Database = {
           attachment_url?: string | null
           audience_filter?: Json
           branch_id?: string
+          campaign_type?: string
           channel?: string
           created_at?: string
           created_by?: string | null
+          event_meta?: Json
           failure_count?: number
           id?: string
           last_run_error?: string | null
