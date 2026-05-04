@@ -106,10 +106,27 @@ Deno.serve(async (req) => {
       return json({ error: "Missing required fields: to, subject, html or text" }, 400);
     }
 
-    // Apply branded template if requested
+    // Apply branded template (default ON via dispatcher).
+    // Optional: branch logo + name pulled from branches table when branch_id provided.
     let finalHtml = html || text!;
     if (use_branded_template) {
-      finalHtml = wrapInBrandedTemplate(finalHtml, subject, variables);
+      let logoUrl: string | undefined;
+      let branchName: string | undefined;
+      if (branch_id) {
+        const { data: br } = await supabase
+          .from('branches')
+          .select('name, logo_url')
+          .eq('id', branch_id)
+          .maybeSingle();
+        logoUrl = (br as any)?.logo_url || undefined;
+        branchName = (br as any)?.name || undefined;
+      }
+      finalHtml = wrapInBrandedTemplate(finalHtml, subject, variables, {
+        logoUrl,
+        branchName,
+        brandName: 'Incline Fitness',
+        unsubscribeUrl: body?.unsubscribe_url,
+      });
     }
 
     // Fetch active email integration
