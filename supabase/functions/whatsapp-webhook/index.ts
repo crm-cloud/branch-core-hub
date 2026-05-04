@@ -1447,6 +1447,56 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
         notes: `AI-captured via WhatsApp conversation`,
       };
 
+      // ── Member-first guard + phone dedupe ─────────────────────────────────
+      const _variants = phoneVariants(phoneNumber);
+      if (_variants.length > 0) {
+        const { data: _prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .in("phone", _variants)
+          .limit(1)
+          .maybeSingle();
+        if (_prof?.id) {
+          const { data: _existingMember } = await supabase
+            .from("members")
+            .select("id")
+            .eq("user_id", _prof.id)
+            .limit(1)
+            .maybeSingle();
+          if (_existingMember) {
+            console.log("[ai-lead-capture] phone matches active member — skipping lead INSERT");
+            return; // do not capture; member-first
+          }
+        }
+
+        const { data: _dupLead } = await supabase
+          .from("leads")
+          .select("id")
+          .in("phone", _variants)
+          .eq("branch_id", branchId)
+          .limit(1)
+          .maybeSingle();
+        if (_dupLead) {
+          console.log(`[ai-lead-capture] lead already exists for phone — merging into ${_dupLead.id}`);
+          await supabase.from("leads").update({
+            full_name: leadData.full_name,
+            email: leadData.email,
+            goals: leadData.goals,
+            fitness_goal: leadData.fitness_goal,
+            budget: leadData.budget,
+            expected_start_date: leadData.expected_start_date,
+            fitness_experience: leadData.fitness_experience,
+            preferred_time: leadData.preferred_time,
+            last_contacted_at: new Date().toISOString(),
+          }).eq("id", _dupLead.id);
+          await supabase.from("whatsapp_chat_settings").upsert(
+            { branch_id: branchId, phone_number: phoneNumber, captured_lead_id: _dupLead.id, bot_active: false, paused_at: new Date().toISOString() },
+            { onConflict: "branch_id,phone_number" },
+          );
+          return;
+        }
+      }
+
       const { data: newLead, error: leadError } = await supabase
         .from("leads")
         .insert(leadData)
