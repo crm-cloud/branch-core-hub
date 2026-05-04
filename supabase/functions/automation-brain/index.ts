@@ -1,5 +1,6 @@
-// automation-brain v1.0.0
+// automation-brain v1.1.0
 // Single tick orchestrator: reads automation_rules, dispatches due ones, updates next_run_at.
+// v1.1.0 — Birthday worker rewritten as two-step query (no auto-gen FK aliases).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -93,15 +94,34 @@ async function runBirthdayWish(rule: any): Promise<{ dispatched: number; error?:
   const today = new Date();
   const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(today.getUTCDate()).padStart(2, "0");
-  const { data: members, error } = await admin
+
+  // Step 1 — active members with a user_id (no FK alias).
+  const { data: members, error: mErr } = await admin
     .from("members")
-    .select("id, branch_id, user_id, profiles:profiles!members_user_id_fkey(full_name, date_of_birth)")
+    .select("id, branch_id, user_id")
     .eq("status", "active")
+    .not("user_id", "is", null)
     .limit(2000);
-  if (error) return { dispatched: 0, error: error.message };
+  if (mErr) return { dispatched: 0, error: mErr.message };
+
+  const userIds = Array.from(new Set((members ?? []).map((m: any) => m.user_id).filter(Boolean)));
+  if (!userIds.length) return { dispatched: 0 };
+
+  // Step 2 — profiles for those user_ids (explicit table, no auto FK alias).
+  const { data: profiles, error: pErr } = await admin
+    .from("profiles")
+    .select("user_id, full_name, date_of_birth")
+    .in("user_id", userIds);
+  if (pErr) return { dispatched: 0, error: pErr.message };
+
+  const profileByUser = new Map<string, { full_name: string | null; date_of_birth: string | null }>();
+  for (const p of profiles ?? []) {
+    profileByUser.set(p.user_id as string, { full_name: (p as any).full_name, date_of_birth: (p as any).date_of_birth });
+  }
 
   const todays = (members ?? []).filter((m: any) => {
-    const dob = Array.isArray(m.profiles) ? m.profiles[0]?.date_of_birth : m.profiles?.date_of_birth;
+    const p = profileByUser.get(m.user_id);
+    const dob = p?.date_of_birth;
     if (!dob) return false;
     const s = String(dob);
     return s.length >= 10 && s.slice(5, 7) === mm && s.slice(8, 10) === dd;
@@ -109,7 +129,7 @@ async function runBirthdayWish(rule: any): Promise<{ dispatched: number; error?:
 
   let count = 0;
   for (const m of todays) {
-    const profile = Array.isArray((m as any).profiles) ? (m as any).profiles[0] : (m as any).profiles;
+    const profile = profileByUser.get((m as any).user_id);
     const memberName = profile?.full_name ?? "there";
     let body = `Happy birthday, ${memberName}! 🎉 Wishing you an amazing year ahead from all of us at Incline Fitness.`;
     if (rule.use_ai && LOVABLE_API_KEY) {
