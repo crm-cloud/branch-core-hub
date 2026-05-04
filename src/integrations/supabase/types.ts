@@ -6404,6 +6404,53 @@ export type Database = {
           },
         ]
       }
+      member_onboarding_signatures: {
+        Row: {
+          consents: Json
+          created_at: string
+          id: string
+          member_id: string
+          par_q: Json
+          signature_path: string
+          signed_at: string
+          signer_ip: unknown
+          signer_user_agent: string | null
+          waiver_pdf_path: string
+        }
+        Insert: {
+          consents?: Json
+          created_at?: string
+          id?: string
+          member_id: string
+          par_q?: Json
+          signature_path: string
+          signed_at?: string
+          signer_ip?: unknown
+          signer_user_agent?: string | null
+          waiver_pdf_path: string
+        }
+        Update: {
+          consents?: Json
+          created_at?: string
+          id?: string
+          member_id?: string
+          par_q?: Json
+          signature_path?: string
+          signed_at?: string
+          signer_ip?: unknown
+          signer_user_agent?: string | null
+          waiver_pdf_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_onboarding_signatures_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_pt_packages: {
         Row: {
           branch_id: string
@@ -7391,6 +7438,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      otp_verifications: {
+        Row: {
+          attempts: number
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          phone: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          phone: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          phone?: string
+        }
+        Relationships: []
       }
       payment_lifecycle_events: {
         Row: {
@@ -11874,6 +11951,7 @@ export type Database = {
             }
             Returns: Json
           }
+      purge_expired_otp_verifications: { Args: never; Returns: undefined }
       reconcile_payments_daily: { Args: never; Returns: Json }
       record_health_ping: {
         Args: {
