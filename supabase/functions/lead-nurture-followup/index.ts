@@ -1,4 +1,4 @@
-// v3.2.0 — Multi-platform nurture: sends via send-message for IG/Messenger, send-whatsapp for WhatsApp
+// v3.2.1 — Fix duplicate chatPlatform declaration causing boot error.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
 
@@ -179,7 +179,6 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
 
       const contactName = lead?.full_name || partialData?.name || partialData?.whatsapp_name || null;
 
-      const chatPlatform = chat.platform || "whatsapp";
       const { data: msgData, error: msgErr } = await supabase
         .from("whatsapp_messages")
         .insert({
