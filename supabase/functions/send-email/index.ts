@@ -113,12 +113,12 @@ Deno.serve(async (req) => {
       let logoUrl: string | undefined;
       let branchName: string | undefined;
       if (branch_id) {
+        // logo_url column may not exist on branches yet — graceful fallback to text logo.
         const { data: br } = await supabase
           .from('branches')
-          .select('name, logo_url')
+          .select('name')
           .eq('id', branch_id)
           .maybeSingle();
-        logoUrl = (br as any)?.logo_url || undefined;
         branchName = (br as any)?.name || undefined;
       }
       finalHtml = wrapInBrandedTemplate(finalHtml, subject, variables, {
