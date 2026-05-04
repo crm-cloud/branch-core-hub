@@ -517,6 +517,42 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
               </div>
             )}
 
+            {trigger === 'automated' && (
+              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/50 p-4 space-y-3">
+                <Label className="text-xs uppercase tracking-wider text-blue-800 font-semibold">Repeat schedule</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { id: 'daily',        label: 'Daily 10am' },
+                    { id: 'weekly_mon',   label: 'Every Monday' },
+                    { id: 'weekly_fri',   label: 'Every Friday' },
+                    { id: 'monthly_1st',  label: '1st of month' },
+                    { id: 'custom',       label: 'Custom cron' },
+                  ] as const).map((p) => (
+                    <button key={p.id} type="button" onClick={() => setRecurrence(p.id as RecurrencePreset)}
+                      className={`text-left rounded-xl px-3 py-2 text-sm border-2 transition-all ${
+                        recurrence === p.id ? 'border-blue-500 bg-white text-blue-900 font-medium' : 'border-transparent bg-white/60 text-blue-800 hover:border-blue-300'
+                      }`}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {recurrence === 'custom' && (
+                  <div>
+                    <Input
+                      className="rounded-xl bg-white font-mono text-sm"
+                      value={customCron}
+                      onChange={(e) => setCustomCron(e.target.value)}
+                      placeholder="0 10 * * 1"
+                    />
+                    <p className="text-[11px] text-blue-700 mt-1">5-field UTC cron · m h dom mon dow</p>
+                  </div>
+                )}
+                <p className="text-[11px] text-blue-700">
+                  Audience is re-resolved on every run, so new members/leads matching the filter get included automatically. Manage in Settings → Automation Brain.
+                </p>
+              </div>
+            )}
+
             <div className="rounded-2xl bg-muted/40 p-4 mt-4">
               <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Summary</p>
               <div className="text-sm space-y-1">
