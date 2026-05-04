@@ -6,7 +6,7 @@
 // Reuses existing dispatch-communication, send-whatsapp + send-sms fallback,
 // phoneVariants() identity helper, captureEdgeError, and signMemberDocument.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, StandardFonts, rgb } from "https://cdn.skypack.dev/pdf-lib@^1.17.1?dts";
+import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { phoneVariants, normalizePhone } from "../_shared/phone.ts";
 
