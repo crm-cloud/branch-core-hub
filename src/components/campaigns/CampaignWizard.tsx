@@ -79,6 +79,41 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [submittingMeta, setSubmittingMeta] = useState(false);
+  const [recurrence, setRecurrence] = useState<RecurrencePreset>('weekly_mon');
+  const [customCron, setCustomCron] = useState('0 10 * * 1');
+
+  const handleSubmitMetaTemplate = async () => {
+    if (channel !== 'whatsapp') return;
+    if (!message.trim()) { toast.error('Draft a message first'); return; }
+    setSubmittingMeta(true);
+    try {
+      const safeName = (name || `campaign_${Date.now()}`).toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '').slice(0, 48);
+      const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+        body: {
+          action: 'create',
+          branch_id: branchId,
+          template_data: {
+            name: safeName,
+            category: campaignType === 'promotion' || campaignType === 'event' ? 'MARKETING' : 'UTILITY',
+            language: 'en',
+            body_text: message.trim(),
+            header_type: attachment?.kind === 'image' ? 'image' : attachment?.kind === 'video' ? 'video' : 'none',
+            header_sample_url: attachment?.kind && attachment.kind !== 'document' ? attachment.url : undefined,
+          },
+        },
+      });
+      if (error) throw error;
+      const r = data as any;
+      if (r?.success === false) {
+        toast.error(r?.error || 'Meta rejected the template');
+        return;
+      }
+      toast.success(`Submitted to Meta as "${r?.name}" — status: ${r?.status || 'PENDING'}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to submit to Meta');
+    } finally { setSubmittingMeta(false); }
+  };
 
   const handleAiDraft = async () => {
     if (!aiPrompt.trim()) { toast.error('Describe the campaign first'); return; }
