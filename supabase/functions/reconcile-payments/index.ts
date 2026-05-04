@@ -1,6 +1,5 @@
-// reconcile-payments v1.0.0
-// Daily safety net: invoice/wallet/payment drift detector.
-// Run by pg_cron at 02:30 IST. Writes findings to reconciliation_findings.
+// reconcile-payments v1.1.0 — proper PostgrestError serialisation so the
+// Automation Brain logs a useful message instead of "[object Object]".
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -9,6 +8,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+function formatError(err: unknown): string {
+  if (!err) return "Unknown error";
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    const parts = [e.message, e.details, e.hint, e.code]
+      .filter((x) => x !== null && x !== undefined && x !== "")
+      .map(String);
+    if (parts.length) return parts.join(" | ");
+    try { return JSON.stringify(err); } catch { /* fall through */ }
+  }
+  return String(err);
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -22,16 +35,20 @@ Deno.serve(async (req) => {
     );
 
     const { data, error } = await supabase.rpc("reconcile_payments_daily");
-    if (error) throw error;
+    if (error) {
+      return new Response(
+        JSON.stringify({ success: false, error: formatError(error) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     return new Response(
       JSON.stringify({ success: true, summary: data }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     return new Response(
-      JSON.stringify({ success: false, error: message }),
+      JSON.stringify({ success: false, error: formatError(err) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

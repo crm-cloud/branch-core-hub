@@ -1,81 +1,100 @@
-## Scope
+# Automation Brain — fixes, Live-Feed wiring, UI cleanup, edge audit
 
-Two things to do:
-1. **Audit** every place we expose automations/cron in the UI and consolidate.
-2. **Fix** outstanding errors (Meta PDF template rejections, worker failures surfaced by Automation Brain).
+## Problem recap
 
----
-
-## A. UI/UX Audit — Automation/Cron Surfaces Today
-
-| # | Location | Component | What it does | Verdict |
-|---|---|---|---|---|
-| 1 | `Settings → Automation Brain` | `AutomationsControlRoom.tsx` | KPIs, 13 system rules, toggle/edit cron, Run Now, run history | ✅ Canonical control room |
-| 2 | `Settings → Notifications → "Automated Reminders"` | `NotificationSettings.tsx` (RunRemindersButton) | Manual “Run Reminders Now” calling old `send-reminders` fn | ⚠️ Duplicate/legacy — confuses the user |
-| 3 | `Settings → Notifications → "Lead Notification Rules"` | `LeadNotificationSettings.tsx` | Per-branch toggle matrix for lead SMS/WA alerts | ✅ Keep — this is config, not cron |
-| 4 | `Settings → Communication Templates → WhatsApp → Automations` | `WhatsAppAutomations.tsx` | Map event → template (trigger registry) | ✅ Keep — different concern (template mapping) |
-| 5 | `Settings → Reminders` (per-branch reminder config) | existing reminder mapping UI | Per-branch reminder enable map | ✅ Keep — config layer |
-
-**Action:** Replace the standalone "Automated Reminders" card in Notification Settings with a **single deep-link card** ("Manage Automations →") that routes to `Settings?tab=automations`. The old `RunRemindersButton` becomes redundant because the Brain already has per-rule "Run Now" + a global tick.
+1. **Live Feed in Communication Hub doesn't show automated nudges.** `send-reminders` writes directly into `communication_logs` with no `channel` / `category` / `dedupe_key`, so the WA / SMS / Email / In-App tabs filter them out. `automation-brain` itself doesn't write a backlog row when a worker silently delivers via WhatsApp/email.
+2. **Five rules are red in the Control Room:**
+   - `Auto-Expire Memberships` → `aggregate functions are not allowed in RETURNING` (bug in `auto_expire_memberships()` SQL).
+   - `Booking Reminders (T-2h)` & `Daily Reminders` → `HTTP 401 Unauthorized` (the `send-reminders` edge fn requires a user JWT; the brain calls it with the service-role token which `getClaims` rejects).
+   - `Birthday Wishes` → `column members.name does not exist` (the worker uses the auto-gen FK alias `members_user_id_fkey`, which our own rules forbid).
+   - `AI Lead Nurture` → `Function failed to start (BOOT_ERROR)` because `chatPlatform` is declared twice in `lead-nurture-followup/index.ts` (lines 182 + 204).
+   - `Reconcile Payments` → `[object Object]` (error formatting bug; the underlying RPC exists).
+3. **Notification Settings page** still shows the "Automation Brain" deep-link card the user wants removed, and the `LeadNotificationSettings` block needs to be re-styled to match the existing Email Notifications / System Alerts cards.
+4. **Edge function audit** — now that one cron (`automation-brain-tick`) drives everything, several files exist only as workers or are fully obsolete and bloat the bundle.
 
 ---
 
-## B. Fixes
+## Plan
 
-### B1. Meta document/PDF template rejections (root cause)
-`ai-generate-whatsapp-templates` currently emits `header_type='document'` with a placeholder URL → Meta rejects ("sample not provided"). Dispatcher v1.6.0 already injects the real PDF at send-time via a body variable, so the header is unnecessary.
+### 1. Make automated sends visible in Live Feed (single dispatcher)
 
-**Fix in the prompt + tool schema:**
-- For document-bearing events (`invoice_generated`, `receipt_generated`, `pos_order_pdf`, `scan_report_ready`, `diet_plan_pdf`, `workout_plan_pdf`, `contract_signed`) → force `header_type='none'`, append a `{{document_link}}` body variable, and add `document_link` to `variables`.
-- Strip `header_sample_url` for these events.
-- Add explicit rule lines in WhatsApp + Email system prompts.
+- Refactor `send-reminders` so that **every** outbound message goes through `dispatchCommunication()` (`dispatch-communication` edge fn) instead of directly inserting into `communication_logs`. That guarantees `channel`, `category`, `dedupe_key`, member preferences and quiet-hours all get applied — and the rows show up in WA / SMS / Email / In-App tabs.
+- Same change in `run-retention-nudges` (the only other place that still writes `communication_logs` directly) and in the built-in `birthday_wish` worker (already uses the dispatcher — keep, but fix the query).
+- Allow `send-reminders` to be called by the Automation Brain (service-role) **and** by signed-in staff. Detection: if the bearer equals `SUPABASE_SERVICE_ROLE_KEY`, skip `getClaims` and treat the request as system-triggered (`callerId = 'system'`); otherwise keep the existing JWT + role check. This also fixes the 401s.
+- Backfill a tiny migration that fills `category` / `channel` defaults on the recent NULL rows so the Live Feed counters reconcile.
 
-### B2. AI-Generate Drawer auto-fill of missing templates
-`Auto-fill (0)` was empty because the drawer was loading only the previously hard-coded list. Fix:
-- Compute "missing" by diffing `getEventsForChannel(channel)` (canonical catalog) against existing templates in DB; default the selection to that diff so Auto-fill always has a target set.
-- Add a small "Generate all missing" button that selects everything missing and generates in batches of 15.
+### 2. Fix the five broken rules
 
-### B3. Worker errors surfaced by Automation Brain
-After the consolidation migration the brain calls these workers. Audit & repair:
-- `lead-nurture-followup` — verify body schema, branch scoping, dispatcher import path.
-- `process-comm-retry-queue` / `process-whatsapp-retry-queue` — confirm they boot OK (logs show boot but no work — fine).
-- `send-reminders` — keep as worker for `daily_send_reminders` rule, but stop exposing a manual button.
+- **`auto_expire_memberships`** — rewrite as:
+  ```sql
+  WITH upd AS (UPDATE memberships SET status='expired'
+               WHERE status='active' AND end_date < CURRENT_DATE
+               RETURNING 1)
+  SELECT count(*) INTO v_count FROM upd;
+  ```
+- **`birthday_wish` (built-in worker in `automation-brain/index.ts`)** — drop the FK alias; do a two-step fetch:
+  1. `select id, branch_id, user_id from members where status='active'`
+  2. `select user_id, full_name, date_of_birth from profiles where user_id in (...)`
+  Then join in JS. Filter by `mm-dd` from `date_of_birth`. (Also matches our own "no auto-gen FK alias" memory rule.)
+- **`lead-nurture-followup`** — delete the duplicate `const chatPlatform = chat.platform || "whatsapp";` declared at line 182; keep the one at 204 (or hoist it once near 180 and remove the second). Wrap the outer `Deno.serve` in `try/catch` and route errors through `captureEdgeError` for the existing observability stack.
+- **`reconcile-payments`** — change the catch to `JSON.stringify(err, Object.getOwnPropertyNames(err))` (or extract `err.message`/`err.details`/`err.code`) so the brain logs a useful string, not `[object Object]`.
 
-For each, add try/catch + structured `log_error_event` so failures land in System Health.
+### 3. Notification Settings page (`src/components/settings/NotificationSettings.tsx`)
 
-### B4. WhatsApp Automations — already supports insert
-`WhatsAppAutomations.tsx` already has `addMutation` + insert form. Add a small UX polish: pre-populate the event dropdown from `systemEvents.ts` and disable events that already have a row.
+- Remove the "Automation Brain" gradient card entirely (lines 186–211).
+- Re-style the `<LeadNotificationSettings />` block to mirror Email Notifications / System Alerts: same `Card` shell, same icon-in-header pattern, same row layout (`Label` + helper text + `Switch`). Keeps a single visual rhythm of three side-by-side rounded-2xl cards (Email · System Alerts · Lead Notification Rules). The Save button stays at the bottom.
+- Final layout:
+
+  ```text
+  ┌── Email Notifications ──┐  ┌── System Alerts ──┐
+  └─────────────────────────┘  └────────────────────┘
+  ┌── Lead Notification Rules (matched style) ──────┐
+  └──────────────────────────────────────────────────┘
+                              [ Save Preferences ]
+  ```
+
+### 4. Edge function audit & cleanup
+
+After the brain consolidation, classify every function under `supabase/functions/`. Three buckets:
+
+**Keep — actively used (workers, webhooks, RPCs, member-facing)**
+`automation-brain`, `dispatch-communication`, `send-whatsapp`, `send-sms`, `send-email`, `send-message`, `send-broadcast`, `send-reminders`, `lead-nurture-followup`, `run-retention-nudges`, `reconcile-payments`, `process-comm-retry-queue`, `process-whatsapp-retry-queue`, `process-scheduled-campaigns`, `whatsapp-webhook`, `meta-webhook`, `meta-oauth-callback`, `meta-subscribe`, `meta-data-deletion`, `meta-diagnose`, `mips-proxy`, `mips-webhook-receiver`, `revoke-mips-access`, `sync-to-mips`, `howbody-*`, `payment-webhook`, `verify-payment`, `create-payment-order`, `create-razorpay-link`, `create-member-user`, `create-staff-user`, `create-owner`, `admin-create-user`, `contract-signing`, `deliver-scan-report`, `generate-fitness-plan`, `ai-auto-reply`, `ai-dashboard-insights`, `ai-generate-whatsapp-templates`, `manage-whatsapp-templates`, `capture-lead`, `webhook-lead-capture`, `score-leads`, `notify-booking-event`, `notify-lead-created`, `notify-staff-handoff`, `request-google-review`, `google-review-redirect`, `export-data`, `backup-export`, `backup-import`, `healthz`, `log-edge-error`, `fetch-image-url`, `check-expired-access`.
+
+**Review — likely safe to delete (one-off / dev / superseded)**
+- `check-setup` — only shows a few boots; old onboarding probe.
+- `test-ai-provider`, `test-ai-tool`, `test-integration` — manual smoke-test functions never wired to UI.
+- `mips-proxy` vs `sync-to-mips` — confirm one is unused.
+
+For each file in this bucket I'll grep usage in `src/` + `supabase/functions/` before deletion. Anything with zero references gets deleted via `delete_edge_functions` and removed from `supabase/config.toml`.
+
+**Archive (do not delete) — superseded but referenced in old migrations**
+None expected; legacy cron migrations are already idempotent (use `cron.unschedule` guards), so the only persistent cron job is `automation-brain-tick`.
+
+### 5. After deploy
+
+- Run `automation-brain` once via "Run now" for each previously-red rule and verify `last_status='success'` in `automation_rules`.
+- Open Communication Hub → Live Feed and confirm new automated rows show up under WA / SMS / Email / In-App with proper status badges.
 
 ---
 
-## C. Files to change
+## Files touched
 
 **Edge functions**
-- `supabase/functions/ai-generate-whatsapp-templates/index.ts` — prompt + schema fix for documents (B1).
-- `supabase/functions/lead-nurture-followup/index.ts` — wrap + log errors (B3).
-- (No change to `automation-brain` — already correct.)
+- `supabase/functions/send-reminders/index.ts` — service-role bypass + dispatcher migration.
+- `supabase/functions/run-retention-nudges/index.ts` — replace direct `communication_logs` insert with `dispatchCommunication`.
+- `supabase/functions/automation-brain/index.ts` — rewrite birthday worker to two-step query.
+- `supabase/functions/lead-nurture-followup/index.ts` — fix duplicate `chatPlatform`, add error capture.
+- `supabase/functions/reconcile-payments/index.ts` — proper error serialisation.
+- Delete the unused functions identified in the audit (after grep confirmation) + remove their blocks from `supabase/config.toml`.
 
-**Frontend**
-- `src/components/settings/NotificationSettings.tsx` — remove `RunRemindersButton` card; replace with a deep-link card to Automation Brain.
-- `src/components/settings/AIGenerateTemplatesDrawer.tsx` — diff against canonical catalog, default-select missing events, add "Generate all missing" CTA.
-- `src/components/settings/WhatsAppAutomations.tsx` — populate event dropdown from `systemEvents.ts`, disable events already mapped.
-- `src/lib/templates/systemEvents.ts` — tag document-bearing events with `attachment_kind: 'document'` so the AI generator can branch on it.
+**Migrations**
+- One new migration: rewrite `auto_expire_memberships()` to use a CTE; backfill `channel`/`category` on the 4 NULL rows (best-effort, NULL-safe).
+
+**UI**
+- `src/components/settings/NotificationSettings.tsx` — drop Automation Brain card, restyle `LeadNotificationSettings` to match.
+- `src/components/settings/LeadNotificationSettings.tsx` — minor wrapper change so it slots inside the same `Card` style as the other two boxes.
 
 **Memory**
-- Update `mem://index.md` Comms Hub line to reflect: (a) document events use `{{document_link}}` not header, (b) Notification Settings no longer hosts "Run Reminders", (c) Automation Brain is the single cron control room.
+- Update `mem://index.md` Automation Brain core line: note that all reminder workers MUST go through `dispatchCommunication` (no direct `communication_logs` writes from automation workers — already covered by CI guard, just reinforce).
 
----
-
-## D. Out of scope
-- Building a new cron UI — Automation Brain already covers it.
-- Touching `auth.*` / `storage.*` / `realtime.*` schemas.
-- Re-architecting the dispatcher (already v1.6.0, handles document fallback).
-
----
-
-## E. Acceptance
-1. Generating templates for invoice/receipt/PDF events no longer produces `header_type='document'` proposals — they pass Meta review.
-2. AI Drawer "Auto-fill missing" shows a non-zero count whenever the catalog has events without a saved template.
-3. Notification Settings shows one card pointing to Automation Brain — no duplicate "Run Reminders" button.
-4. Automation Brain run history shows `success` for `lead_nurture_followup` rule (or a clear logged error in System Health, not silent).
-5. Adding a WhatsApp automation only lets you pick events that don't already have a trigger row.
+No new dependencies. No schema changes beyond the one CTE fix.
