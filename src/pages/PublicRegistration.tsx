@@ -26,6 +26,32 @@ const PARQ_QUESTIONS = [
   "Do you know any other reason you should not do physical activity?",
 ];
 
+const FITNESS_GOAL_OPTIONS = [
+  "Weight Loss",
+  "Muscle Gain",
+  "Endurance",
+  "General Fitness",
+  "Flexibility",
+  "Body Recomposition",
+] as const;
+
+const HEALTH_CONDITION_OPTIONS = [
+  "Diabetes",
+  "Hypertension / High BP",
+  "Heart condition",
+  "Asthma / Respiratory",
+  "Thyroid disorder",
+  "Back / Spine pain",
+  "Knee / Joint injury",
+  "Shoulder injury",
+  "Recent surgery",
+  "Pregnancy",
+  "PCOS / PCOD",
+  "Cholesterol",
+  "Migraine",
+  "Other",
+];
+
 const detailsSchema = z.object({
   full_name: z.string().trim().min(2, "Full name required").max(120),
   phone: z.string().regex(/^\+91\d{10}$/, "Enter a valid +91 number"),
@@ -41,6 +67,7 @@ const detailsSchema = z.object({
   emergency_contact_phone: z.string().optional(),
   fitness_goals: z.string().optional(),
   health_conditions: z.string().optional(),
+  health_conditions_other: z.string().optional(),
 });
 type DetailsForm = z.infer<typeof detailsSchema>;
 
