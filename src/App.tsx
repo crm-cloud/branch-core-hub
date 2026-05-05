@@ -29,6 +29,7 @@ import TermsPage from "./pages/Terms";
 const DataDeletionPage = lazy(() => import("./pages/DataDeletion"));
 import ContractSignPage from "./pages/ContractSign";
 const MemberCheckout = lazy(() => import("./pages/MemberCheckout"));
+const PublicRegistrationPage = lazy(() => import("./pages/PublicRegistration"));
 
 // All other pages — lazy loaded for code splitting
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
