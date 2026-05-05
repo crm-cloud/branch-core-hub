@@ -29,6 +29,7 @@ import TermsPage from "./pages/Terms";
 const DataDeletionPage = lazy(() => import("./pages/DataDeletion"));
 import ContractSignPage from "./pages/ContractSign";
 const MemberCheckout = lazy(() => import("./pages/MemberCheckout"));
+const PublicRegistrationPage = lazy(() => import("./pages/PublicRegistration"));
 
 // All other pages — lazy loaded for code splitting
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
@@ -181,6 +182,7 @@ function RoutedContent() {
           <Route path="/embed/lead-form" element={<EmbedLeadForm />} />
           <Route path="/contract-sign/:token" element={<ContractSignPage />} />
           <Route path="/member/pay" element={<MemberCheckout />} />
+          <Route path="/register" element={<PublicRegistrationPage />} />
 
           {/* Body scanner public flows (alias /scan-login is preferred; /howbody-login kept for legacy QR codes) */}
           <Route path="/scan-login" element={<HowbodyLogin />} />

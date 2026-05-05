@@ -1,5 +1,6 @@
-// v1.1.0 — UTM + branch slug routing
+// v1.2.0 — phoneVariants dedupe (leads + members)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { normalizePhone, phoneVariants } from '../_shared/phone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,7 +40,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     const fullName = (body.full_name || body.fullName || body.name || '').trim().slice(0, 100);
-    const phone = (body.phone || body.phone_number || body.mobile || '').replace(/[\s\-\(\)]/g, '').slice(0, 20);
+    const phoneRaw = (body.phone || body.phone_number || body.mobile || '').replace(/[\s\-\(\)]/g, '').slice(0, 20);
+    const phone = normalizePhone(phoneRaw) || phoneRaw;
     const email = (body.email || '').trim().slice(0, 255) || null;
     const source = (body.source || body.utm_source || body.platform || 'api').toLowerCase().slice(0, 50);
     const notes = (body.notes || body.message || '').slice(0, 500);
@@ -60,10 +62,15 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Valid phone number is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Duplicate check
-    const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle();
+    // Duplicate check across all phone variants
+    const variants = phoneVariants(phone);
+    const { data: existing } = await supabase.from('leads').select('id').in('phone', variants).limit(1).maybeSingle();
     if (existing) {
       return new Response(JSON.stringify({ success: true, message: 'Lead already exists', lead_id: existing.id }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: existingMember } = await supabase.from('profiles').select('id').in('phone', variants).limit(1).maybeSingle();
+    if (existingMember) {
+      return new Response(JSON.stringify({ success: true, message: 'Already a member' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Branch resolution: explicit > branch_slug param > body.branch_code > first active

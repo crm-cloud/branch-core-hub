@@ -1,5 +1,6 @@
-// v1.1.0 — UTM + branch routing support
+// v1.2.0 — phoneVariants dedupe (leads + members)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { normalizePhone, phoneVariants } from '../_shared/phone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,7 +32,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     const fullName = sanitize(body.fullName || '', MAX_NAME_LENGTH);
-    const phone = (body.phone || '').replace(/[\s\-\(\)]/g, '').slice(0, MAX_PHONE_LENGTH);
+    const phoneRaw = (body.phone || '').replace(/[\s\-\(\)]/g, '').slice(0, MAX_PHONE_LENGTH);
+    const phone = normalizePhone(phoneRaw) || phoneRaw;
     const email = body.email ? sanitize(body.email, MAX_EMAIL_LENGTH) : null;
 
     if (!fullName || fullName.length < 2) {
@@ -44,10 +46,15 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Duplicate check
-    const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle();
+    // Duplicate check across all phone variants — also block if a member exists
+    const variants = phoneVariants(phone);
+    const { data: existing } = await supabase.from('leads').select('id').in('phone', variants).limit(1).maybeSingle();
     if (existing) {
       return new Response(JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: existingMember } = await supabase.from('profiles').select('id').in('phone', variants).limit(1).maybeSingle();
+    if (existingMember) {
+      return new Response(JSON.stringify({ success: true, message: 'Thank you! We already have your details on file.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Branch resolution: explicit > slug > first active

@@ -29,6 +29,7 @@ const ALL: EventChannel[] = ['whatsapp', 'sms', 'email'];
 export const SYSTEM_EVENTS: SystemEvent[] = [
   // ── Lifecycle ────────────────────────────────────────────────
   { event: 'member_created', label: 'New Member Welcome', category: 'lifecycle', description: 'When a new member is registered', channels: ALL },
+  { event: 'otp_verification', label: 'OTP Verification Code', category: 'lifecycle', description: 'One-time code for self-onboarding (uses {{code}} variable)', channels: ['whatsapp', 'sms'] },
   { event: 'membership_expiring_7d', label: 'Membership Expiring (7 days)', category: 'lifecycle', description: '7 days before membership ends', channels: ALL },
   { event: 'membership_expiring_1d', label: 'Membership Expiring (Tomorrow)', category: 'lifecycle', description: '1 day before membership ends', channels: ALL },
   { event: 'membership_expired', label: 'Membership Expired', category: 'lifecycle', description: 'Membership has just expired', channels: ALL },
