@@ -276,6 +276,7 @@ export default function MembersPage() {
       inactive: 'bg-muted text-muted-foreground border-muted',
       frozen: 'bg-info/10 text-info border-info/20',
       suspended: 'bg-destructive/10 text-destructive border-destructive/20',
+      pending_plan: 'bg-warning/15 text-warning border-warning/30 animate-pulse',
     };
     return colors[status] || 'bg-muted text-muted-foreground';
   };
