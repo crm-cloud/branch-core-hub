@@ -138,7 +138,19 @@ export default function PublicRegistration() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const submitDetails = form.handleSubmit((values) => { setDetails(values); setStep("parq"); });
+  const submitDetails = form.handleSubmit((values) => {
+    const conditions = [...healthConditions];
+    if (conditions.includes("Other") && healthOther.trim()) {
+      const idx = conditions.indexOf("Other");
+      conditions[idx] = `Other: ${healthOther.trim()}`;
+    } else if (conditions.includes("Other") && !healthOther.trim()) {
+      // drop bare "Other" with no detail
+      conditions.splice(conditions.indexOf("Other"), 1);
+    }
+    const merged: DetailsForm = { ...values, health_conditions: conditions.join(", ") || undefined };
+    setDetails(merged);
+    setStep("parq");
+  });
   const submitParq = () => {
     const map: Record<string, string> = {};
     PARQ_QUESTIONS.forEach((q, i) => { map[q] = parq[`q${i}`] || "no"; });
