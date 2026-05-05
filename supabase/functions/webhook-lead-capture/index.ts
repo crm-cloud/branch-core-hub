@@ -1,5 +1,6 @@
-// v1.1.0 — UTM + branch slug routing
+// v1.2.0 — phoneVariants dedupe (leads + members)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { normalizePhone, phoneVariants } from '../_shared/phone.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
