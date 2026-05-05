@@ -40,7 +40,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     const fullName = (body.full_name || body.fullName || body.name || '').trim().slice(0, 100);
-    const phone = (body.phone || body.phone_number || body.mobile || '').replace(/[\s\-\(\)]/g, '').slice(0, 20);
+    const phoneRaw = (body.phone || body.phone_number || body.mobile || '').replace(/[\s\-\(\)]/g, '').slice(0, 20);
+    const phone = normalizePhone(phoneRaw) || phoneRaw;
     const email = (body.email || '').trim().slice(0, 255) || null;
     const source = (body.source || body.utm_source || body.platform || 'api').toLowerCase().slice(0, 50);
     const notes = (body.notes || body.message || '').slice(0, 500);
