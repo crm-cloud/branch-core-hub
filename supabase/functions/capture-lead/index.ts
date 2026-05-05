@@ -32,7 +32,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     const fullName = sanitize(body.fullName || '', MAX_NAME_LENGTH);
-    const phone = (body.phone || '').replace(/[\s\-\(\)]/g, '').slice(0, MAX_PHONE_LENGTH);
+    const phoneRaw = (body.phone || '').replace(/[\s\-\(\)]/g, '').slice(0, MAX_PHONE_LENGTH);
+    const phone = normalizePhone(phoneRaw) || phoneRaw;
     const email = body.email ? sanitize(body.email, MAX_EMAIL_LENGTH) : null;
 
     if (!fullName || fullName.length < 2) {
