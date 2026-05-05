@@ -46,10 +46,15 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Duplicate check
-    const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle();
+    // Duplicate check across all phone variants — also block if a member exists
+    const variants = phoneVariants(phone);
+    const { data: existing } = await supabase.from('leads').select('id').in('phone', variants).limit(1).maybeSingle();
     if (existing) {
       return new Response(JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: existingMember } = await supabase.from('profiles').select('id').in('phone', variants).limit(1).maybeSingle();
+    if (existingMember) {
+      return new Response(JSON.stringify({ success: true, message: 'Thank you! We already have your details on file.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Branch resolution: explicit > slug > first active
