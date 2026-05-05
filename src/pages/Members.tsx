@@ -131,7 +131,7 @@ export default function MembersPage() {
         let query = supabase
           .from('members')
           .select(`
-            id, member_code, user_id, branch_id, status, created_at, assigned_trainer_id,
+            id, member_code, user_id, branch_id, status, lifecycle_state, created_at, assigned_trainer_id,
             profiles:user_id(full_name, email, phone, avatar_url),
             branch:branch_id(name, code),
             memberships(id, status, start_date, end_date, plan_id, membership_plans(name))
@@ -157,15 +157,34 @@ export default function MembersPage() {
           });
           const frozenMembership = m.memberships?.find((ms: any) => ms.status === 'frozen');
           let memberStatus = 'inactive';
-          if (activeMembership) memberStatus = 'active';
+          if (m.lifecycle_state === 'pending_plan') memberStatus = 'pending_plan';
+          else if (activeMembership) memberStatus = 'active';
           else if (frozenMembership) memberStatus = 'frozen';
           return { ...m, status: memberStatus, joined_at: m.created_at };
+        });
+
+        // Pin pending_plan to the very top so reception sees fresh self-registrations.
+        mapped.sort((a: any, b: any) => {
+          if (a.status === 'pending_plan' && b.status !== 'pending_plan') return -1;
+          if (b.status === 'pending_plan' && a.status !== 'pending_plan') return 1;
+          return 0;
         });
 
         return { data: mapped, count };
       }
     },
   });
+
+  // Realtime: refresh list when self-onboarded members appear / change lifecycle.
+  useEffect(() => {
+    const channel = supabase
+      .channel('members-lifecycle')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['members'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
 
   const members = membersResult?.data || [];
   const totalCount = membersResult?.count;
