@@ -182,6 +182,7 @@ function RoutedContent() {
           <Route path="/embed/lead-form" element={<EmbedLeadForm />} />
           <Route path="/contract-sign/:token" element={<ContractSignPage />} />
           <Route path="/member/pay" element={<MemberCheckout />} />
+          <Route path="/register" element={<PublicRegistrationPage />} />
 
           {/* Body scanner public flows (alias /scan-login is preferred; /howbody-login kept for legacy QR codes) */}
           <Route path="/scan-login" element={<HowbodyLogin />} />
