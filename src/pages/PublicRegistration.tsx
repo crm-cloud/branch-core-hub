@@ -79,6 +79,8 @@ export default function PublicRegistration() {
   const [consents, setConsents] = useState({ dpdp: false, whatsapp: false, photo: false, waiver: false });
   const [signatureUrl, setSignatureUrl] = useState<string>("");
   const [otp, setOtp] = useState("");
+  const [healthConditions, setHealthConditions] = useState<string[]>([]);
+  const [healthOther, setHealthOther] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
 
   const { data: branches } = useQuery({
