@@ -62,10 +62,15 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Valid phone number is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Duplicate check
-    const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle();
+    // Duplicate check across all phone variants
+    const variants = phoneVariants(phone);
+    const { data: existing } = await supabase.from('leads').select('id').in('phone', variants).limit(1).maybeSingle();
     if (existing) {
       return new Response(JSON.stringify({ success: true, message: 'Lead already exists', lead_id: existing.id }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: existingMember } = await supabase.from('profiles').select('id').in('phone', variants).limit(1).maybeSingle();
+    if (existingMember) {
+      return new Response(JSON.stringify({ success: true, message: 'Already a member' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Branch resolution: explicit > branch_slug param > body.branch_code > first active
