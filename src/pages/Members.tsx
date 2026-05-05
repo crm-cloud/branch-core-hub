@@ -568,7 +568,7 @@ export default function MembersPage() {
                             <TableCell>
                               <Badge variant="outline" className={getStatusColor(member.status)}>
                                 {member.status === 'frozen' && <Snowflake className="h-3 w-3 mr-1" />}
-                                {member.status === 'frozen' ? 'Frozen' : member.status}
+                                {member.status === 'pending_plan' ? 'Pending Plan' : member.status === 'frozen' ? 'Frozen' : member.status}
                               </Badge>
                             </TableCell>
                             <TableCell>
