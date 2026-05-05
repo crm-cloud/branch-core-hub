@@ -218,8 +218,46 @@ export default function PublicRegistration() {
               </div>
               <Field label="Emergency contact name"><Input className="bg-white/5 border-white/10 text-slate-100" {...form.register("emergency_contact_name")} /></Field>
               <Field label="Emergency contact phone"><Input className="bg-white/5 border-white/10 text-slate-100" {...form.register("emergency_contact_phone")} /></Field>
-              <Field label="Fitness goals (optional)"><Textarea rows={2} className="bg-white/5 border-white/10 text-slate-100" {...form.register("fitness_goals")} /></Field>
-              <Field label="Health conditions / injuries (optional)"><Textarea rows={2} className="bg-white/5 border-white/10 text-slate-100" {...form.register("health_conditions")} /></Field>
+              <Field label="Fitness goal (optional)">
+                <select
+                  className="h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-100"
+                  {...form.register("fitness_goals")}
+                >
+                  <option value="">Select a goal…</option>
+                  {FITNESS_GOAL_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Health conditions / injuries (tick all that apply)">
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                  {HEALTH_CONDITION_OPTIONS.map((opt) => {
+                    const checked = healthConditions.includes(opt);
+                    return (
+                      <label key={opt} className="flex items-start gap-2 text-xs text-slate-200 cursor-pointer">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setHealthConditions((prev) =>
+                              v ? Array.from(new Set([...prev, opt])) : prev.filter((p) => p !== opt)
+                            );
+                          }}
+                          className="mt-0.5 border-white/30 data-[state=checked]:bg-indigo-500 data-[state=checked]:border-indigo-500"
+                        />
+                        <span className="leading-tight">{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {healthConditions.includes("Other") && (
+                  <Input
+                    placeholder="Please specify"
+                    value={healthOther}
+                    onChange={(e) => setHealthOther(e.target.value)}
+                    className="mt-2 bg-white/5 border-white/10 text-slate-100"
+                  />
+                )}
+                <p className="mt-1 text-[11px] text-slate-400">Leave blank if none. Your trainer will keep this confidential.</p>
+              </Field>
               <Button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 hover:opacity-90">Continue</Button>
             </form>
           )}
