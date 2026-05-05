@@ -26,6 +26,32 @@ const PARQ_QUESTIONS = [
   "Do you know any other reason you should not do physical activity?",
 ];
 
+const FITNESS_GOAL_OPTIONS = [
+  "Weight Loss",
+  "Muscle Gain",
+  "Endurance",
+  "General Fitness",
+  "Flexibility",
+  "Body Recomposition",
+] as const;
+
+const HEALTH_CONDITION_OPTIONS = [
+  "Diabetes",
+  "Hypertension / High BP",
+  "Heart condition",
+  "Asthma / Respiratory",
+  "Thyroid disorder",
+  "Back / Spine pain",
+  "Knee / Joint injury",
+  "Shoulder injury",
+  "Recent surgery",
+  "Pregnancy",
+  "PCOS / PCOD",
+  "Cholesterol",
+  "Migraine",
+  "Other",
+];
+
 const detailsSchema = z.object({
   full_name: z.string().trim().min(2, "Full name required").max(120),
   phone: z.string().regex(/^\+91\d{10}$/, "Enter a valid +91 number"),
@@ -41,6 +67,7 @@ const detailsSchema = z.object({
   emergency_contact_phone: z.string().optional(),
   fitness_goals: z.string().optional(),
   health_conditions: z.string().optional(),
+  health_conditions_other: z.string().optional(),
 });
 type DetailsForm = z.infer<typeof detailsSchema>;
 
@@ -52,6 +79,8 @@ export default function PublicRegistration() {
   const [consents, setConsents] = useState({ dpdp: false, whatsapp: false, photo: false, waiver: false });
   const [signatureUrl, setSignatureUrl] = useState<string>("");
   const [otp, setOtp] = useState("");
+  const [healthConditions, setHealthConditions] = useState<string[]>([]);
+  const [healthOther, setHealthOther] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
 
   const { data: branches } = useQuery({
@@ -109,7 +138,19 @@ export default function PublicRegistration() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const submitDetails = form.handleSubmit((values) => { setDetails(values); setStep("parq"); });
+  const submitDetails = form.handleSubmit((values) => {
+    const conditions = [...healthConditions];
+    if (conditions.includes("Other") && healthOther.trim()) {
+      const idx = conditions.indexOf("Other");
+      conditions[idx] = `Other: ${healthOther.trim()}`;
+    } else if (conditions.includes("Other") && !healthOther.trim()) {
+      // drop bare "Other" with no detail
+      conditions.splice(conditions.indexOf("Other"), 1);
+    }
+    const merged: DetailsForm = { ...values, health_conditions: conditions.join(", ") || undefined };
+    setDetails(merged);
+    setStep("parq");
+  });
   const submitParq = () => {
     const map: Record<string, string> = {};
     PARQ_QUESTIONS.forEach((q, i) => { map[q] = parq[`q${i}`] || "no"; });
@@ -177,8 +218,46 @@ export default function PublicRegistration() {
               </div>
               <Field label="Emergency contact name"><Input className="bg-white/5 border-white/10 text-slate-100" {...form.register("emergency_contact_name")} /></Field>
               <Field label="Emergency contact phone"><Input className="bg-white/5 border-white/10 text-slate-100" {...form.register("emergency_contact_phone")} /></Field>
-              <Field label="Fitness goals (optional)"><Textarea rows={2} className="bg-white/5 border-white/10 text-slate-100" {...form.register("fitness_goals")} /></Field>
-              <Field label="Health conditions / injuries (optional)"><Textarea rows={2} className="bg-white/5 border-white/10 text-slate-100" {...form.register("health_conditions")} /></Field>
+              <Field label="Fitness goal (optional)">
+                <select
+                  className="h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-100"
+                  {...form.register("fitness_goals")}
+                >
+                  <option value="">Select a goal…</option>
+                  {FITNESS_GOAL_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Health conditions / injuries (tick all that apply)">
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                  {HEALTH_CONDITION_OPTIONS.map((opt) => {
+                    const checked = healthConditions.includes(opt);
+                    return (
+                      <label key={opt} className="flex items-start gap-2 text-xs text-slate-200 cursor-pointer">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setHealthConditions((prev) =>
+                              v ? Array.from(new Set([...prev, opt])) : prev.filter((p) => p !== opt)
+                            );
+                          }}
+                          className="mt-0.5 border-white/30 data-[state=checked]:bg-indigo-500 data-[state=checked]:border-indigo-500"
+                        />
+                        <span className="leading-tight">{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {healthConditions.includes("Other") && (
+                  <Input
+                    placeholder="Please specify"
+                    value={healthOther}
+                    onChange={(e) => setHealthOther(e.target.value)}
+                    className="mt-2 bg-white/5 border-white/10 text-slate-100"
+                  />
+                )}
+                <p className="mt-1 text-[11px] text-slate-400">Leave blank if none. Your trainer will keep this confidential.</p>
+              </Field>
               <Button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 hover:opacity-90">Continue</Button>
             </form>
           )}
