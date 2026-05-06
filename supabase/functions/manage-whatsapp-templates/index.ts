@@ -339,6 +339,75 @@ serve(async (req) => {
         }
       }
 
+      // ── AUTHENTICATION category: Meta REQUIRES special structure ──
+      // BODY must NOT have `text`; instead use `add_security_recommendation`.
+      // Must also include FOOTER (code_expiration_minutes) and BUTTONS (OTP type).
+      const isAuth = String(category).toUpperCase() === 'AUTHENTICATION';
+      if (isAuth) {
+        const authComponents: any[] = [
+          { type: 'BODY', add_security_recommendation: true },
+          { type: 'FOOTER', code_expiration_minutes: 10 },
+          {
+            type: 'BUTTONS',
+            buttons: [
+              { type: 'OTP', otp_type: 'COPY_CODE', text: 'Copy Code' },
+            ],
+          },
+        ];
+        const authPayload = {
+          name: safeName,
+          category: 'AUTHENTICATION',
+          language,
+          message_send_ttl_seconds: 600,
+          components: authComponents,
+        };
+        const authUrl = appendProof(`${META_API_BASE}/${wabaId}/message_templates`, proof);
+        let authRes: Response;
+        let authData: any;
+        try {
+          authRes = await fetch(authUrl, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(authPayload),
+          });
+          authData = await authRes.json();
+        } catch (fetchErr) {
+          const errMsg = fetchErr instanceof Error ? fetchErr.message : 'Network error';
+          await logError(supabase, branch_id, 'manage-whatsapp-templates', 'Meta API auth create fetch error', errMsg);
+          return new Response(JSON.stringify({ error: 'Failed to reach Meta API', details: errMsg }),
+            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        if (!authRes.ok) {
+          const me = authData?.error || {};
+          const userMsg = me.error_user_msg || me.message || 'Failed to create auth template';
+          const userTitle = me.error_user_title || null;
+          const errMsg = userTitle ? `${userTitle}: ${userMsg}` : userMsg;
+          console.error('Meta create AUTH template error:', JSON.stringify(authData));
+          await logError(supabase, branch_id, 'manage-whatsapp-templates', `Meta API auth create ${authRes.status}`, errMsg);
+          if (local_template_id) {
+            await supabase.from('templates').update({
+              meta_template_name: safeName,
+              meta_template_status: 'DRAFT',
+              meta_rejection_reason: errMsg,
+            }).eq('id', local_template_id);
+          }
+          return new Response(JSON.stringify({
+            success: false, error: errMsg,
+            meta_error: { message: me.message || null, user_title: userTitle, user_msg: userMsg, code: me.code ?? null, subcode: me.error_subcode ?? null, fbtrace_id: me.fbtrace_id || null, type: me.type || null },
+            upstream_status: authRes.status, saved_as_draft: !!local_template_id,
+          }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        if (local_template_id) {
+          await supabase.from('templates').update({
+            meta_template_name: safeName,
+            meta_template_status: authData.status || 'PENDING',
+            meta_rejection_reason: null,
+          }).eq('id', local_template_id);
+        }
+        return new Response(JSON.stringify({ success: true, meta_template_id: authData.id, status: authData.status, name: safeName }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
       // Optional HEADER component for media templates (image / video / document).
       // Meta REQUIRES `header_handle` to be a handle from the resumable
       // /uploads endpoint — a public URL (e.g. placehold.co) causes
