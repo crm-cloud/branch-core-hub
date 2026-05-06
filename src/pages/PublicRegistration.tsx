@@ -208,7 +208,10 @@ export default function PublicRegistration() {
                     <Input className={inputCls} placeholder="Your name" {...form.register("full_name")} />
                   </Field>
                   <Field label="Phone (WhatsApp)" error={form.formState.errors.phone?.message}>
-                    <PhoneInput value={form.watch("phone")} onChange={(v) => form.setValue("phone", v)} />
+                    <PhoneInput
+                      value={form.watch("phone")}
+                      onChange={(v) => form.setValue("phone", v ? `+91${v}` : "", { shouldValidate: true })}
+                    />
                   </Field>
                   <Field label="Email" error={form.formState.errors.email?.message}>
                     <Input type="email" className={inputCls} placeholder="you@example.com" {...form.register("email")} />
