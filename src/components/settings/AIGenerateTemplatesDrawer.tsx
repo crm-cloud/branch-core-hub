@@ -174,8 +174,16 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
           },
         });
         if (error) throw error;
-        if (data?.success === false) throw new Error(data.meta_error?.user_msg || data.error || 'Meta rejected');
-        toast.success(`Submitted "${p.name}" — Meta status: ${data.status}`);
+        if (data?.success === false) {
+          const msg = data.meta_error?.user_msg || data.error || 'Meta rejected';
+          if (data.saved_as_draft) {
+            toast.warning(`"${p.name}" saved as DRAFT — ${msg}. Edit it under WhatsApp → CRM Templates and resubmit.`, { duration: 8000 });
+          } else {
+            throw new Error(msg);
+          }
+        } else {
+          toast.success(`Submitted "${p.name}" — Meta status: ${data.status}`);
+        }
       } else {
         toast.success(`Saved "${p.name}"`);
       }
