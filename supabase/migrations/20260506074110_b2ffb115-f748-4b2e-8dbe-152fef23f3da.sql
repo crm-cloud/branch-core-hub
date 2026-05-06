@@ -1,0 +1,1 @@
+CREATE POLICY "Public can view active branches" ON public.branches FOR SELECT TO anon USING (is_active = true);
