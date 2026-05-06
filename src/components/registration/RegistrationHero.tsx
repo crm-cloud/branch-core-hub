@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Dumbbell, Users, MapPin, ShieldCheck } from "lucide-react";
-import { InteractiveRobotSpline } from "@/components/ui/interactive-3d-robot";
+import heroImage from "@/assets/registration-hero.jpg";
 
 const QUOTES = [
   { q: "Lost 18kg in 6 months. The trainers are world-class.", a: "Rohan, Member since 2024" },
@@ -8,11 +8,8 @@ const QUOTES = [
   { q: "Recovery facilities are a game-changer.", a: "Aditya, Member since 2025" },
 ];
 
-const SPLINE_SCENE = "https://prod.spline.design/PyzDhpQ9E5f1E3MT/scene.splinecode";
-
 export function RegistrationHero() {
   const [idx, setIdx] = useState(0);
-  const [splineFailed, setSplineFailed] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setIdx((i) => (i + 1) % QUOTES.length), 5000);
@@ -21,24 +18,23 @@ export function RegistrationHero() {
 
   return (
     <div className="relative hidden h-[100dvh] overflow-hidden lg:block">
-      {/* Gradient base */}
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-700 via-violet-700 to-fuchsia-700" />
-      {/* Mesh overlay */}
+      {/* Hero photo */}
+      <img
+        src={heroImage}
+        alt="Athlete training at The Incline"
+        className="absolute inset-0 h-full w-full object-cover"
+        width={1080}
+        height={1920}
+      />
+      {/* Gradient wash for legibility */}
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/80 via-violet-900/65 to-fuchsia-900/70" />
       <div
-        className="absolute inset-0 opacity-40"
+        className="absolute inset-0 opacity-50"
         style={{
           backgroundImage:
-            "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.25), transparent 40%), radial-gradient(circle at 80% 70%, rgba(236,72,153,0.35), transparent 45%)",
+            "radial-gradient(circle at 20% 20%, rgba(99,102,241,0.35), transparent 45%), radial-gradient(circle at 80% 80%, rgba(236,72,153,0.35), transparent 45%)",
         }}
       />
-      {/* 3D Robot */}
-      <div className="absolute inset-0">
-        {!splineFailed ? (
-          <div className="h-full w-full" onError={() => setSplineFailed(true)}>
-            <InteractiveRobotSpline scene={SPLINE_SCENE} className="h-full w-full" />
-          </div>
-        ) : null}
-      </div>
 
       {/* Foreground content */}
       <div className="relative z-10 flex h-full flex-col justify-between p-10 text-white">
