@@ -493,6 +493,7 @@ serve(async (req) => {
               type: me.type || null,
             },
             upstream_status: metaRes.status,
+            saved_as_draft: !!local_template_id,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
