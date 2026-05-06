@@ -469,6 +469,14 @@ serve(async (req) => {
         const errMsg = userTitle ? `${userTitle}: ${userMsg}` : userMsg;
         console.error("Meta create template error:", JSON.stringify(metaData));
         await logError(supabase, branch_id, "manage-whatsapp-templates", `Meta API create ${metaRes.status}`, errMsg);
+        // Persist as DRAFT so the user can edit & retry without losing the proposal.
+        if (local_template_id) {
+          await supabase.from('templates').update({
+            meta_template_name: safeName,
+            meta_template_status: 'DRAFT',
+            meta_rejection_reason: errMsg,
+          }).eq('id', local_template_id);
+        }
         // Return 200 so supabase-js does NOT wrap as FunctionsHttpError and swallow body.
         // Client must inspect `success:false` + `meta_error`.
         return new Response(
