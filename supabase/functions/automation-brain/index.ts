@@ -72,10 +72,14 @@ function nextCron(expr: string, after: Date): Date {
 // ---------- Worker dispatch ----------
 async function callEdge(name: string, payload: unknown): Promise<{ ok: boolean; status: number; body: string }> {
   const url = `${SUPABASE_URL}/functions/v1/${name}`;
+  // Use SERVICE_KEY for BOTH apikey and Authorization to avoid the gateway's
+  // "Conflicting API key" 401 (which happens when the two headers use different keys),
+  // while still satisfying the gateway's mandatory `apikey` requirement.
   const r = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      apikey: SERVICE_KEY,
       Authorization: `Bearer ${SERVICE_KEY}`,
     },
     body: JSON.stringify(payload ?? {}),
