@@ -203,9 +203,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
         continue;
       }
 
-      // Determine platform for send routing
-      const chatPlatform = chat.platform || "whatsapp";
-
+      // (chatPlatform is defined above, before the message insert)
       try {
         if (chatPlatform === "whatsapp") {
           const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
