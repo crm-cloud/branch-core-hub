@@ -275,6 +275,19 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
           const { data: m } = await supabase.from('members').select('user_id').eq('id', data.memberId).maybeSingle();
           if (m?.user_id) await (supabase.from('profiles') as any).update(profileUpdates).eq('user_id', m.user_id);
         }
+        // Persist PAR-Q answers (insert a manual snapshot row)
+        try {
+          await supabase.from('member_onboarding_signatures').insert({
+            member_id: data.memberId,
+            signature_path: fileName,
+            waiver_pdf_path: fileName,
+            par_q: parqMap,
+            consents: { waiver: true, source: 'staff_registration_form' },
+            signed_at: new Date().toISOString(),
+          });
+        } catch (parqErr) {
+          console.warn('[RegistrationForm] par_q snapshot failed', parqErr);
+        }
       } catch (syncErr) {
         console.warn('[RegistrationForm] profile sync failed', syncErr);
       }
