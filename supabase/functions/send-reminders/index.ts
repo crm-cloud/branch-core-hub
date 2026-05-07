@@ -225,65 +225,132 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── 1. Payment reminders ────────────────────────────────────────
+    // ── 1. Payment reminders (with invoice context + Razorpay link) ──
     const { data: pendingReminders } = await adminClient
       .from("payment_reminders")
-      .select("*, members:member_id (user_id, member_code, branch_id, profiles:user_id (full_name, phone, email))")
+      .select("*, members:member_id (user_id, member_code, branch_id, profiles:user_id (full_name, phone, email)), invoices:invoice_id (id, invoice_number, total_amount, amount_paid, due_date, payment_due_date)")
       .eq("status", "pending")
       .lte("scheduled_for", now.toISOString());
 
     for (const reminder of pendingReminders || []) {
       const member = reminder.members as any;
+      const invoice = reminder.invoices as any;
       if (!member?.user_id) continue;
       if (!isReminderEnabled(reminder.branch_id, "payment_due")) continue;
+
       const name = member.profiles?.full_name || "Member";
-      const reminderCopy =
-        reminder.reminder_type === "due_soon" || reminder.reminder_type === "before_due"
-          ? "due soon"
-          : reminder.reminder_type === "on_due"
-          ? "due today"
-          : "overdue";
+      const isOverdue = !["due_soon", "before_due", "on_due"].includes(reminder.reminder_type);
+      const triggerEvent = isOverdue ? "membership_overdue" : "payment_due";
+      const reminderCopy = reminder.reminder_type === "due_soon" || reminder.reminder_type === "before_due"
+        ? "due soon" : reminder.reminder_type === "on_due" ? "due today" : "overdue";
+
+      const totalAmt = Number(invoice?.total_amount || 0);
+      const paidAmt = Number(invoice?.amount_paid || 0);
+      const pendingAmt = Math.max(totalAmt - paidAmt, 0);
+
+      // Mint a Razorpay payment link if invoice has dues and we don't have one cached
+      let paymentLink = "";
+      if (invoice?.id && pendingAmt >= 1) {
+        try {
+          const { data: existingLink } = await adminClient
+            .from("payment_links")
+            .select("short_url, status, expires_at")
+            .eq("invoice_id", invoice.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (existingLink?.short_url && existingLink.status !== "paid" && (!existingLink.expires_at || existingLink.expires_at > now.toISOString())) {
+            paymentLink = existingLink.short_url;
+          } else {
+            const { data: linkRes } = await adminClient.functions.invoke("create-razorpay-link", {
+              body: {
+                invoiceId: invoice.id,
+                amount: pendingAmt,
+                branchId: reminder.branch_id,
+                customerName: name,
+                customerPhone: member.profiles?.phone,
+                customerEmail: member.profiles?.email,
+              },
+            });
+            if (linkRes?.short_url) paymentLink = linkRes.short_url;
+          }
+        } catch (e) {
+          console.warn("razorpay link mint failed:", (e as Error).message);
+        }
+      }
+
+      const dueDateStr = invoice?.payment_due_date || invoice?.due_date || "";
+      const variables: Record<string, string> = {
+        member_name: name,
+        invoice_number: invoice?.invoice_number || "",
+        pending_amount: `₹${pendingAmt.toFixed(0)}`,
+        total_amount: `₹${totalAmt.toFixed(0)}`,
+        due_date: dueDateStr,
+        payment_link: paymentLink || "https://incline.lovable.app/my-invoices",
+      };
 
       notifications.push({
         user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
-        message: `Hi ${name}, your payment is ${reminderCopy}.`,
+        message: `Hi ${name}, ₹${pendingAmt.toFixed(0)} ${reminderCopy} on invoice ${invoice?.invoice_number || ""}.`,
         type: "warning", category: "payment", action_url: "/my-invoices",
       });
 
+      // Resolve approved WhatsApp template for this event so Meta accepts it.
+      const { data: tpl } = await adminClient
+        .from("templates")
+        .select("id, content, subject")
+        .eq("type", "whatsapp")
+        .eq("trigger_event", triggerEvent)
+        .eq("meta_template_status", "APPROVED")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       const subject = "Payment Reminder";
-      const message = `Hi ${name}, your payment is ${reminderCopy}. Open your invoices in the app to pay.`;
+      const fallbackMsg = `Hi ${name}, ₹${pendingAmt.toFixed(0)} is ${reminderCopy} on invoice ${invoice?.invoice_number || ""}.${paymentLink ? ` Pay now: ${paymentLink}` : " Open the app to pay."}`;
       const channel = (reminder.channel as Channel) || getChannel(reminder.branch_id, "payment_due");
 
-      const delivery = await deliver(channel, {
-        branchId: reminder.branch_id,
-        memberId: reminder.member_id,
-        phone: member.profiles?.phone,
-        email: member.profiles?.email,
-        subject,
-        message,
-      });
-
-      logComm(delivery, {
-        branchId: reminder.branch_id,
-        memberId: reminder.member_id,
-        recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-        subject,
-        message,
-      });
+      // Use dispatcher directly so we can pass template_id + variables.
+      let deliveryStatus: "sent" | "failed" | "skipped" = "skipped";
+      let deliveryErr: string | null = null;
+      try {
+        const { error: dispErr } = await adminClient.functions.invoke("dispatch-communication", {
+          body: {
+            branch_id: reminder.branch_id,
+            channel,
+            category: "transactional",
+            recipient: channel === "email" ? member.profiles?.email : member.profiles?.phone,
+            template_id: channel === "whatsapp" ? tpl?.id ?? null : null,
+            payload: {
+              subject: tpl?.subject || subject,
+              body: tpl?.content || fallbackMsg,
+              variables,
+            },
+            dedupe_key: `payment_reminder:${reminder.id}`,
+            member_id: reminder.member_id,
+            force: false,
+          },
+        });
+        if (dispErr) { deliveryStatus = "failed"; deliveryErr = dispErr.message; }
+        else deliveryStatus = "sent";
+      } catch (e) {
+        deliveryStatus = "failed"; deliveryErr = (e as Error).message;
+      }
 
       await adminClient
         .from("payment_reminders")
         .update({
-          status: delivery.status === "sent" ? "sent" : delivery.status === "failed" ? "failed" : "skipped",
-          delivery_status: delivery.status,
-          last_error: delivery.error,
+          status: deliveryStatus,
+          delivery_status: deliveryStatus,
+          last_error: deliveryErr,
           attempt_count: (reminder.attempt_count || 0) + 1,
-          sent_at: delivery.status === "sent" ? now.toISOString() : null,
+          sent_at: deliveryStatus === "sent" ? now.toISOString() : null,
+          delivery_metadata: { payment_link: paymentLink || null, template_used: !!tpl?.id },
         })
         .eq("id", reminder.id);
 
-      if (delivery.status === "sent") results.payment_reminders++;
-      else if (delivery.status === "failed") failures.payment_reminders++;
+      if (deliveryStatus === "sent") results.payment_reminders++;
+      else if (deliveryStatus === "failed") failures.payment_reminders++;
     }
 
     // ── 2. Birthday wishes (in-app only — kept lightweight) ─────────
