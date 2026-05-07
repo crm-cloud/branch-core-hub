@@ -1,4 +1,4 @@
-// v3.2.1 — Fix duplicate chatPlatform declaration causing boot error.
+// v3.3.0 — Move chatPlatform decl above use; nurture inbound-only chats too.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
 
