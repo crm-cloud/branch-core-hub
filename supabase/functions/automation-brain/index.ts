@@ -76,7 +76,6 @@ async function callEdge(name: string, payload: unknown): Promise<{ ok: boolean; 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: ANON_KEY,
       Authorization: `Bearer ${SERVICE_KEY}`,
     },
     body: JSON.stringify(payload ?? {}),
