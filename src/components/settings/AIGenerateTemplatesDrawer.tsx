@@ -120,7 +120,8 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
       setStep('review');
       toast.success(`Generated ${list.length} ${Meta.label} proposals`);
     } catch (e: any) {
-      toast.error(e.message || 'Generation failed');
+      const msg = e?.context?.error || e?.message || 'Generation failed';
+      toast.error(String(msg));
     } finally {
       setGenerating(false);
     }
