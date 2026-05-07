@@ -335,6 +335,56 @@ export default function MemberProfile() {
           </CardContent>
         </Card>
 
+        {/* Health & Fitness (read-only — edits via staff registration drawer) */}
+        {(healthData?.fitness_goals || healthData?.health_conditions || healthData?.par_q) && (
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <HeartPulse className="h-5 w-5" />
+                Health & Fitness
+              </CardTitle>
+              <CardDescription>From your registration form</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {healthData?.fitness_goals && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Primary Goal</p>
+                  <UIBadge variant="secondary">{healthData.fitness_goals}</UIBadge>
+                </div>
+              )}
+              {parsedConditions.selected.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Health Conditions</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedConditions.selected.map((c) => (
+                      <UIBadge key={c} variant="outline">
+                        {c === 'Other' && parsedConditions.other ? `Other: ${parsedConditions.other}` : c}
+                      </UIBadge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {healthData?.par_q && (
+                <div className="flex items-center gap-2 text-sm pt-2 border-t border-border/50">
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">PAR-Q completed</span>
+                  <UIBadge variant={parqYesCount > 0 ? 'destructive' : 'default'}>
+                    {parqYesCount} flagged
+                  </UIBadge>
+                  {healthData.signed_at && (
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {format(new Date(healthData.signed_at), 'dd MMM yyyy')}
+                    </span>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                To update, contact reception — these answers form part of your signed waiver.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Communication preferences */}
         {member?.id && (member as any)?.branch_id && (
           <CommunicationPreferences memberId={member.id} branchId={(member as any).branch_id} />
