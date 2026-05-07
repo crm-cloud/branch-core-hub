@@ -69,6 +69,7 @@ import Picker from '@emoji-mart/react';
 interface ChatContact {
   phone_number: string;
   contact_name: string | null;
+  contact_avatar_url?: string | null;
   member_id: string | null;
   last_message: string;
   last_message_time: string;
