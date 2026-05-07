@@ -74,14 +74,15 @@ function nextCron(expr: string, after: Date): Date {
 // ---------- Worker dispatch ----------
 async function callEdge(name: string, payload: unknown): Promise<{ ok: boolean; status: number; body: string }> {
   const url = `${SUPABASE_URL}/functions/v1/${name}`;
-  // Gateway requires `apikey` to be the ANON or publishable key.
-  // Use SERVICE_KEY only in `Authorization` so child functions detect a system call.
+  // New signing-keys gateway rejects when both `apikey` and `Authorization`
+  // are sb_ keys ("Conflicting API keys"). Send SERVICE_KEY in `apikey` only;
+  // child functions detect the system call via a custom header.
   const r = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: ANON_KEY || SERVICE_KEY,
-      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+      "x-system-call": "automation-brain",
     },
     body: JSON.stringify(payload ?? {}),
   });
