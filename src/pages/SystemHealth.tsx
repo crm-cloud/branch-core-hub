@@ -541,7 +541,7 @@ export default function SystemHealth() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Source</p>
                   <Badge variant="outline" className="gap-1">
-                    {(() => { const s = SOURCE_CONFIG[selectedError.source || 'frontend']; return <><s.icon className={`h-3 w-3 ${s.color}`} />{s.label}</>; })()}
+                    {(() => { const s = getSourceConfig(selectedError.source); return <><s.icon className={`h-3 w-3 ${s.color}`} />{s.label}</>; })()}
                   </Badge>
                 </div>
                 <div>
