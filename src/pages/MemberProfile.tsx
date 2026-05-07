@@ -9,10 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useMemberData } from '@/hooks/useMemberData';
 import { supabase } from '@/integrations/supabase/client';
-import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, KeyRound } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, KeyRound, HeartPulse } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { CommunicationPreferences } from '@/components/profile/CommunicationPreferences';
+import { useQuery } from '@tanstack/react-query';
+import { Badge as UIBadge } from '@/components/ui/badge';
+import { PARQ_QUESTIONS, parseHealthConditions } from '@/lib/registration/healthQuestions';
 
 export default function MemberProfile() {
   const { profile, refreshProfile } = useAuth();
@@ -27,6 +30,38 @@ export default function MemberProfile() {
     emergency_contact_name: profile?.emergency_contact_name || '',
     emergency_contact_phone: profile?.emergency_contact_phone || '',
   });
+
+  // Pull canonical health/fitness data straight from members + latest PAR-Q snapshot
+  const { data: healthData } = useQuery({
+    queryKey: ['member-health', member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const [memRes, parqRes] = await Promise.all([
+        supabase.from('members').select('fitness_goals, health_conditions').eq('id', member!.id).maybeSingle(),
+        supabase
+          .from('member_onboarding_signatures')
+          .select('par_q, signed_at')
+          .eq('member_id', member!.id)
+          .order('signed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      return {
+        fitness_goals: memRes.data?.fitness_goals as string | null | undefined,
+        health_conditions: memRes.data?.health_conditions as string | null | undefined,
+        par_q: (parqRes.data?.par_q ?? null) as Record<string, string> | null,
+        signed_at: parqRes.data?.signed_at as string | null | undefined,
+      };
+    },
+  });
+
+  const parsedConditions = parseHealthConditions(healthData?.health_conditions);
+  const parqYesCount = healthData?.par_q
+    ? PARQ_QUESTIONS.filter((q, i) => {
+        const v = (healthData.par_q as Record<string, string>)[q] ?? (healthData.par_q as Record<string, string>)[`q${i}`];
+        return v === 'yes';
+      }).length
+    : 0;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -299,6 +334,56 @@ export default function MemberProfile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Health & Fitness (read-only — edits via staff registration drawer) */}
+        {(healthData?.fitness_goals || healthData?.health_conditions || healthData?.par_q) && (
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <HeartPulse className="h-5 w-5" />
+                Health & Fitness
+              </CardTitle>
+              <CardDescription>From your registration form</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {healthData?.fitness_goals && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Primary Goal</p>
+                  <UIBadge variant="secondary">{healthData.fitness_goals}</UIBadge>
+                </div>
+              )}
+              {parsedConditions.selected.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Health Conditions</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedConditions.selected.map((c) => (
+                      <UIBadge key={c} variant="outline">
+                        {c === 'Other' && parsedConditions.other ? `Other: ${parsedConditions.other}` : c}
+                      </UIBadge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {healthData?.par_q && (
+                <div className="flex items-center gap-2 text-sm pt-2 border-t border-border/50">
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">PAR-Q completed</span>
+                  <UIBadge variant={parqYesCount > 0 ? 'destructive' : 'default'}>
+                    {parqYesCount} flagged
+                  </UIBadge>
+                  {healthData.signed_at && (
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {format(new Date(healthData.signed_at), 'dd MMM yyyy')}
+                    </span>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                To update, contact reception — these answers form part of your signed waiver.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Communication preferences */}
         {member?.id && (member as any)?.branch_id && (

@@ -17,33 +17,15 @@ import { SignaturePad, type SignaturePadHandle } from "@/components/registration
 import { toast } from "sonner";
 import {
   Loader2, ShieldCheck, Dumbbell, ArrowRight, ArrowLeft,
-  Flame, Trophy, Activity, Heart, Sparkles, RefreshCw, ChevronDown, MapPin,
+  Sparkles, RefreshCw, ChevronDown, MapPin,
 } from "lucide-react";
 import heroImage from "@/assets/registration-hero-v2.jpg";
-
-const PARQ_QUESTIONS = [
-  "Has a doctor ever said you have a heart condition?",
-  "Do you feel chest pain when you do physical activity?",
-  "Have you had chest pain when not doing physical activity in the last month?",
-  "Do you lose balance because of dizziness or lose consciousness?",
-  "Do you have a bone or joint problem worsened by exercise?",
-  "Are you currently on prescribed medication for blood pressure or heart?",
-  "Do you know any other reason you should not do physical activity?",
-];
-
-const PRIMARY_GOALS = [
-  { key: "Weight Loss", icon: Flame },
-  { key: "Muscle Gain", icon: Trophy },
-  { key: "Endurance", icon: Activity },
-  { key: "General Fitness", icon: Heart },
-] as const;
-const MORE_GOALS = ["Flexibility", "Body Recomposition"] as const;
-
-const HEALTH_CONDITION_OPTIONS = [
-  "Diabetes", "Hypertension / High BP", "Heart condition", "Asthma / Respiratory",
-  "Thyroid disorder", "Back / Spine pain", "Knee / Joint injury", "Shoulder injury",
-  "Recent surgery", "Pregnancy", "PCOS / PCOD", "Cholesterol", "Migraine", "Other",
-];
+import {
+  PARQ_QUESTIONS,
+  PRIMARY_GOALS,
+  MORE_GOALS,
+  HEALTH_CONDITION_OPTIONS,
+} from "@/lib/registration/healthQuestions";
 
 const detailsSchema = z.object({
   full_name: z.string().trim().min(2, "Full name required").max(120),
