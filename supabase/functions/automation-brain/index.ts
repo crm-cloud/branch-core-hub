@@ -225,6 +225,17 @@ async function processRule(rule: any) {
     last_dispatched_count: dispatched,
   }).eq("id", rule.id);
 
+  if (status === "error" && errorMsg) {
+    try {
+      await admin.rpc("log_error_event", {
+        p_source: "automation_brain",
+        p_severity: "error",
+        p_message: `Automation rule "${rule.key}" failed: ${errorMsg}`.slice(0, 1000),
+        p_context: { rule_id: rule.id, rule_key: rule.key, worker: rule.worker, branch_id: rule.branch_id },
+      });
+    } catch (_) { /* swallow logging failures */ }
+  }
+
   return { rule: rule.key, status, dispatched, error: errorMsg };
 }
 
