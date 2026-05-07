@@ -486,27 +486,140 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
             </div>
           </div>
 
-          {/* Fitness Goals & Medical */}
+          {/* Fitness Goals & Medical — chip pickers (parity with /register) */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <HeartPulse className="h-4 w-4 text-primary" />
               <Label className="font-semibold">Health & Fitness</Label>
             </div>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Fitness Goals</Label>
-                <Textarea value={fitnessGoals} onChange={e => setFitnessGoals(e.target.value)}
-                  placeholder="e.g. Weight loss, muscle gain, general fitness, flexibility improvement"
-                  className="min-h-[60px]" />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Primary Fitness Goal</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {PRIMARY_GOALS.map((g) => {
+                    const Icon = g.icon;
+                    const active = fitnessGoals === g.key;
+                    return (
+                      <button
+                        key={g.key}
+                        type="button"
+                        onClick={() => setFitnessGoals(active ? '' : g.key)}
+                        className={`flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all ${
+                          active
+                            ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+                            : 'border-border bg-background hover:bg-muted'
+                        }`}
+                      >
+                        <div className={`rounded-lg p-1.5 ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                          <Icon className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="text-xs font-medium">{g.key}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMoreGoals((v) => !v)}
+                  className="mt-1 flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMoreGoals ? 'rotate-180' : ''}`} />
+                  {showMoreGoals ? 'Fewer' : 'More options'}
+                </button>
+                {showMoreGoals && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {MORE_GOALS.map((g) => {
+                      const active = fitnessGoals === g;
+                      return (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => setFitnessGoals(active ? '' : g)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                            active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Medical Conditions / Injuries (if any)</Label>
-                <Textarea value={medicalConditions} onChange={e => setMedicalConditions(e.target.value)}
-                  placeholder="e.g. Back pain, knee injury, diabetes, heart condition — or leave blank"
-                  className="min-h-[60px]" />
+
+              <div className="space-y-2">
+                <Label className="text-xs">Health Conditions / Injuries (tap all that apply)</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {HEALTH_CONDITION_OPTIONS.map((opt) => {
+                    const checked = healthChips.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() =>
+                          setHealthChips((prev) => checked ? prev.filter((p) => p !== opt) : [...prev, opt])
+                        }
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium transition-all ${
+                          checked
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'bg-muted text-muted-foreground ring-1 ring-inset ring-border hover:bg-muted/70'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+                {healthChips.includes('Other') && (
+                  <Input
+                    placeholder="Please specify"
+                    value={healthOther}
+                    onChange={(e) => setHealthOther(e.target.value)}
+                    className="mt-2"
+                  />
+                )}
+                <p className="text-[11px] text-muted-foreground">Confidential — only the member's trainer & medical staff see this.</p>
               </div>
             </div>
           </div>
+
+          {/* PAR-Q Health Screen */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="h-4 w-4 text-primary" />
+              <Label className="font-semibold">PAR-Q Health Screen</Label>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">Quick health check — answer honestly to keep the member safe.</p>
+            <div className="space-y-2">
+              {PARQ_QUESTIONS.map((q, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card p-3">
+                  <p className="text-xs font-medium mb-2">{i + 1}. {q}</p>
+                  <div className="flex gap-2">
+                    {(['no', 'yes'] as const).map((v) => {
+                      const active = parq[`q${i}`] === v;
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setParq((p) => ({ ...p, [`q${i}`]: v }))}
+                          className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                            active
+                              ? v === 'yes'
+                                ? 'bg-amber-500 text-white shadow-sm'
+                                : 'bg-emerald-500 text-white shadow-sm'
+                              : 'bg-muted text-muted-foreground ring-1 ring-inset ring-border hover:bg-muted/70'
+                          }`}
+                        >
+                          {v.toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
 
           {/* Custom T&C */}
           <div>
