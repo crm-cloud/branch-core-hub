@@ -31,6 +31,38 @@ export default function MemberProfile() {
     emergency_contact_phone: profile?.emergency_contact_phone || '',
   });
 
+  // Pull canonical health/fitness data straight from members + latest PAR-Q snapshot
+  const { data: healthData } = useQuery({
+    queryKey: ['member-health', member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const [memRes, parqRes] = await Promise.all([
+        supabase.from('members').select('fitness_goals, health_conditions').eq('id', member!.id).maybeSingle(),
+        supabase
+          .from('member_onboarding_signatures')
+          .select('par_q, signed_at')
+          .eq('member_id', member!.id)
+          .order('signed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      return {
+        fitness_goals: memRes.data?.fitness_goals as string | null | undefined,
+        health_conditions: memRes.data?.health_conditions as string | null | undefined,
+        par_q: (parqRes.data?.par_q ?? null) as Record<string, string> | null,
+        signed_at: parqRes.data?.signed_at as string | null | undefined,
+      };
+    },
+  });
+
+  const parsedConditions = parseHealthConditions(healthData?.health_conditions);
+  const parqYesCount = healthData?.par_q
+    ? PARQ_QUESTIONS.filter((q, i) => {
+        const v = (healthData.par_q as Record<string, string>)[q] ?? (healthData.par_q as Record<string, string>)[`q${i}`];
+        return v === 'yes';
+      }).length
+    : 0;
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
