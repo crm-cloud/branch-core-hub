@@ -131,6 +131,20 @@ function normalizePhone(phone: string): string {
   return phone.replace(/^\+/, '');
 }
 
+/** True for raw Instagram-Scoped IDs (long numeric string, no '+'). */
+function isIgsid(value: string): boolean {
+  return /^\d{12,}$/.test(value);
+}
+
+/** Friendly display label when no resolved name is available. */
+function displayLabel(c: { contact_name: string | null; phone_number: string; platform?: string }): string {
+  if (c.contact_name && c.contact_name.trim()) return c.contact_name;
+  if ((c.platform === 'instagram' || c.platform === 'messenger') && isIgsid(c.phone_number)) {
+    return c.platform === 'instagram' ? 'Instagram User' : 'Messenger User';
+  }
+  return formatPhoneDisplay(c.phone_number);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function WhatsAppChatPage() {
