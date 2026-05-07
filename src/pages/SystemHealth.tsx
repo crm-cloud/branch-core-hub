@@ -429,7 +429,7 @@ export default function SystemHealth() {
                       </TableHeader>
                       <TableBody>
                         {errors.map((err) => {
-                          const src = SOURCE_CONFIG[err.source || 'frontend'] || SOURCE_CONFIG.frontend;
+                          const src = getSourceConfig(err.source);
                           const sev = (err.severity || 'error').toLowerCase();
                           const sevClass =
                             sev === 'critical' ? 'bg-rose-100 text-rose-700' :
