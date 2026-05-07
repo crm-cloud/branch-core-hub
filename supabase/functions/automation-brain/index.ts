@@ -1,6 +1,8 @@
-// automation-brain v1.1.0
+// automation-brain v1.2.0
 // Single tick orchestrator: reads automation_rules, dispatches due ones, updates next_run_at.
 // v1.1.0 — Birthday worker rewritten as two-step query (no auto-gen FK aliases).
+// v1.2.0 — Drop conflicting `apikey` header (caused HTTP 401 on every child invoke).
+//          Mirror failures into error_logs via log_error_event for System Health.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -74,7 +76,6 @@ async function callEdge(name: string, payload: unknown): Promise<{ ok: boolean; 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: ANON_KEY,
       Authorization: `Bearer ${SERVICE_KEY}`,
     },
     body: JSON.stringify(payload ?? {}),
@@ -223,6 +224,17 @@ async function processRule(rule: any) {
     last_error: errorMsg,
     last_dispatched_count: dispatched,
   }).eq("id", rule.id);
+
+  if (status === "error" && errorMsg) {
+    try {
+      await admin.rpc("log_error_event", {
+        p_source: "automation_brain",
+        p_severity: "error",
+        p_message: `Automation rule "${rule.key}" failed: ${errorMsg}`.slice(0, 1000),
+        p_context: { rule_id: rule.id, rule_key: rule.key, worker: rule.worker, branch_id: rule.branch_id },
+      });
+    } catch (_) { /* swallow logging failures */ }
+  }
 
   return { rule: rule.key, status, dispatched, error: errorMsg };
 }

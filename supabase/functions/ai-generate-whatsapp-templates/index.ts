@@ -1,7 +1,7 @@
-// v2.1.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
-// v2.1.0: document-bearing events forced to header_type='none' + {{document_link}}
-// in body (Meta rejects DOCUMENT headers without an uploaded media handle;
-// the dispatcher already injects the actual PDF at send-time).
+// v2.2.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
+// v2.1.0: document-bearing events forced to header_type='none' + {{document_link}}.
+// v2.2.0: chunk events internally (batches of 20) up to 60 — no more silent 400
+//         when "Select all missing" picks 30+ events.
 // Returns proposals (NOT submitted to Meta). Frontend reviews before save.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -122,55 +122,63 @@ Deno.serve(async (req) => {
     if (!body.branch_id || !Array.isArray(body.events) || body.events.length === 0) {
       return json({ error: "Missing branch_id or events[]" }, 400);
     }
-    if (body.events.length > 30) return json({ error: "Max 30 events per call" }, 400);
+    if (body.events.length > 60) return json({ error: "Max 60 events per call" }, 400);
 
     const channel: Channel = (body.channel === 'sms' || body.channel === 'email') ? body.channel : 'whatsapp';
     const apiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!apiKey) return json({ error: "AI Gateway not configured" }, 500);
 
-    const userPrompt = [
-      `Brand: ${body.brand || "Incline Fitness"}`,
-      `Channel: ${channel}`,
-      "",
-      "Events to generate templates for:",
-      ...body.events.map((e) => `- ${e.event}${DOCUMENT_EVENTS.has(e.event) ? ' [DOCUMENT]' : ''}${e.label ? ` (${e.label})` : ""}${e.hint ? ` — hint: ${e.hint}` : ""}`),
-      "",
-      "Existing templates (avoid duplicates):",
-      (body.existing || []).slice(0, 60).map((e) => `• ${e.name}: ${e.body.slice(0, 140).replace(/\n/g, " ")}`).join("\n") || "(none)",
-    ].join("\n");
-
     const TOOL_SCHEMA = buildToolSchema(channel);
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPTS[channel] },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [TOOL_SCHEMA],
-        tool_choice: { type: "function", function: { name: "propose_templates" } },
-      }),
-    });
 
-    if (aiRes.status === 429) return json({ error: "AI rate-limited. Try again in a moment." }, 429);
-    if (aiRes.status === 402) return json({ error: "AI credits exhausted — top up Lovable AI usage." }, 402);
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      console.error("AI gateway error", aiRes.status, t);
-      return json({ error: "AI gateway error", details: t.slice(0, 400) }, 502);
+    // Chunk into batches of 20 for reliability.
+    const BATCH = 20;
+    const allTemplates: any[] = [];
+    for (let i = 0; i < body.events.length; i += BATCH) {
+      const slice = body.events.slice(i, i + BATCH);
+      const userPrompt = [
+        `Brand: ${body.brand || "Incline Fitness"}`,
+        `Channel: ${channel}`,
+        "",
+        "Events to generate templates for:",
+        ...slice.map((e) => `- ${e.event}${DOCUMENT_EVENTS.has(e.event) ? ' [DOCUMENT]' : ''}${e.label ? ` (${e.label})` : ""}${e.hint ? ` — hint: ${e.hint}` : ""}`),
+        "",
+        "Existing templates (avoid duplicates):",
+        (body.existing || []).slice(0, 60).map((e) => `• ${e.name}: ${e.body.slice(0, 140).replace(/\n/g, " ")}`).join("\n") || "(none)",
+      ].join("\n");
+
+      const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-pro",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPTS[channel] },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [TOOL_SCHEMA],
+          tool_choice: { type: "function", function: { name: "propose_templates" } },
+        }),
+      });
+
+      if (aiRes.status === 429) return json({ error: "AI rate-limited. Try again in a moment." }, 429);
+      if (aiRes.status === 402) return json({ error: "AI credits exhausted — top up Lovable AI usage." }, 402);
+      if (!aiRes.ok) {
+        const t = await aiRes.text();
+        console.error("AI gateway error", aiRes.status, t);
+        return json({ error: "AI gateway error", details: t.slice(0, 400) }, 502);
+      }
+
+      const aiJson = await aiRes.json();
+      const toolCall = aiJson?.choices?.[0]?.message?.tool_calls?.[0];
+      if (!toolCall?.function?.arguments) continue;
+      let parsed: any;
+      try { parsed = JSON.parse(toolCall.function.arguments); } catch { continue; }
+      const templates = Array.isArray(parsed?.templates) ? parsed.templates : [];
+      for (const t of templates) allTemplates.push(t);
     }
 
-    const aiJson = await aiRes.json();
-    const toolCall = aiJson?.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) return json({ error: "AI returned no proposals" }, 500);
-    let parsed: any;
-    try { parsed = JSON.parse(toolCall.function.arguments); } catch { return json({ error: "Bad AI JSON" }, 500); }
-    const templates = Array.isArray(parsed?.templates) ? parsed.templates : [];
-
     // Hard-enforce the document rule regardless of what the model returned.
-    for (const t of templates) {
+    for (const t of allTemplates) {
       if (DOCUMENT_EVENTS.has(t.event)) {
         t.header_type = 'none';
         delete t.header_sample_url;
@@ -186,7 +194,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ success: true, channel, templates });
+    if (allTemplates.length === 0) return json({ error: "AI returned no proposals" }, 500);
+    return json({ success: true, channel, templates: allTemplates });
   } catch (e) {
     console.error("ai-generate-whatsapp-templates error:", e);
     return json({ error: (e as Error).message }, 500);

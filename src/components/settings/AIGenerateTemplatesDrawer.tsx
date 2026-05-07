@@ -120,7 +120,8 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
       setStep('review');
       toast.success(`Generated ${list.length} ${Meta.label} proposals`);
     } catch (e: any) {
-      toast.error(e.message || 'Generation failed');
+      const msg = e?.context?.error || e?.message || 'Generation failed';
+      toast.error(String(msg));
     } finally {
       setGenerating(false);
     }
@@ -269,7 +270,7 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
               <p className="text-xs text-muted-foreground">
                 <span className="font-semibold text-foreground">{missingEvents.length}</span> missing
                 · <span className="font-semibold text-foreground">{picked.size}</span> selected
-                · {candidates.length} total
+                · {candidates.length} total · <span className="text-amber-600">max 60 per run</span>
               </p>
               <div className="flex gap-2">
                 <Button
