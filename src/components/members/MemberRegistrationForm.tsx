@@ -662,6 +662,21 @@ function buildRegistrationFormPdf(args: BuildPdfArgs): Blob {
     ['Medical Conditions', medicalConditions || 'None declared'],
   ]);
 
+  if (parq && Object.keys(parq).length) {
+    section('PAR-Q Health Screen');
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Question', 'Answer']],
+      body: PARQ_QUESTIONS.map((q, i) => [String(i + 1), q, (parq[q] || 'no').toUpperCase()]),
+      theme: 'striped',
+      headStyles: { fillColor: [99, 102, 241], fontSize: 8.5, textColor: 255 },
+      bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59] },
+      columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 18, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: margin, right: margin },
+    });
+    y = (doc as any).lastAutoTable.finalY + 4;
+  }
+
   section('Membership Details');
   fieldsTable([
     ['Plan', data.planName || ''],
