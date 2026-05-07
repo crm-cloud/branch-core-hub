@@ -582,7 +582,7 @@ async function ingestInstagramComment(value: any, igAccountId: string) {
   if (!value) return;
   const commentId = String(value.id || "");
   const fromId = String(value.from?.id || "");
-  const fromUsername = value.from?.username ? `@${value.from.username}` : null;
+  const fromUsername = value.from?.username ? `@${value.from.username}` : (fromId ? "Instagram User" : null);
   const text = String(value.text || "[no text]");
   const mediaId = String(value.media?.id || "");
   if (!commentId || !fromId) {
