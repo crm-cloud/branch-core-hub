@@ -49,7 +49,13 @@ const SOURCE_CONFIG: Record<string, { label: string; icon: any; color: string }>
   edge_function: { label: 'Backend Function', icon: Server, color: 'text-violet-600' },
   database: { label: 'Database', icon: Database, color: 'text-amber-600' },
   trigger: { label: 'Trigger', icon: Zap, color: 'text-emerald-600' },
+  automation_brain: { label: 'Automation Brain', icon: Zap, color: 'text-indigo-600' },
+  cron: { label: 'Cron Job', icon: Clock, color: 'text-orange-600' },
+  worker: { label: 'Worker', icon: Server, color: 'text-teal-600' },
 };
+
+const FALLBACK_SOURCE = { label: 'Other', icon: Layers, color: 'text-slate-500' } as const;
+const getSourceConfig = (s?: string | null) => SOURCE_CONFIG[s || 'frontend'] || FALLBACK_SOURCE;
 
 const EMPTY_TABLE_CANDIDATES = [
   { name: 'role_permissions', note: 'Superseded by user_roles + has_role()' },
