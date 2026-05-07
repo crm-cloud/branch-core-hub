@@ -1,7 +1,7 @@
-// v2.1.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
-// v2.1.0: document-bearing events forced to header_type='none' + {{document_link}}
-// in body (Meta rejects DOCUMENT headers without an uploaded media handle;
-// the dispatcher already injects the actual PDF at send-time).
+// v2.2.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
+// v2.1.0: document-bearing events forced to header_type='none' + {{document_link}}.
+// v2.2.0: chunk events internally (batches of 20) up to 60 — no more silent 400
+//         when "Select all missing" picks 30+ events.
 // Returns proposals (NOT submitted to Meta). Frontend reviews before save.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
