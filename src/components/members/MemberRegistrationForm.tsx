@@ -578,13 +578,14 @@ interface BuildPdfArgs {
   govIdNumber: string;
   fitnessGoals: string;
   medicalConditions: string;
+  parq?: Record<string, string>;
   customTerms: string;
   terms: TermClause[];
   signatureDataUrl?: string | null;
 }
 
 function buildRegistrationFormPdf(args: BuildPdfArgs): Blob {
-  const { data, govIdType, govIdNumber, fitnessGoals, medicalConditions, customTerms, terms, signatureDataUrl } = args;
+  const { data, govIdType, govIdNumber, fitnessGoals, medicalConditions, parq, customTerms, terms, signatureDataUrl } = args;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = 210;
   const pageH = 297;
