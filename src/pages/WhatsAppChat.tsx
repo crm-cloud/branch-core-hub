@@ -1484,12 +1484,15 @@ export default function WhatsAppChatPage() {
                 {/* Profile card */}
                 <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-5 shadow-sm shadow-emerald-200/40 text-center">
                   <Avatar className="h-16 w-16 mx-auto mb-3 ring-2 ring-emerald-500/30">
+                    {selectedContact.contact_avatar_url && (
+                      <AvatarImage src={selectedContact.contact_avatar_url} alt={selectedContact.contact_name || 'avatar'} />
+                    )}
                     <AvatarFallback className="bg-emerald-500 text-white text-xl font-bold">
                       {(selectedContact.contact_name || selectedContact.phone_number)?.[0]?.toUpperCase() || <User className="h-6 w-6" />}
                     </AvatarFallback>
                   </Avatar>
                   <h3 className="font-semibold text-foreground text-base break-words">
-                    {selectedContact.contact_name || 'Unknown contact'}
+                    {displayLabel(selectedContact)}
                   </h3>
                   <button
                     onClick={() => {
