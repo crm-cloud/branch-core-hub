@@ -87,6 +87,10 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   const [govIdNumber, setGovIdNumber] = useState(data.governmentIdNumber || '');
   const [fitnessGoals, setFitnessGoals] = useState(data.fitnessGoals || '');
   const [medicalConditions, setMedicalConditions] = useState(data.medicalConditions || '');
+  const [healthChips, setHealthChips] = useState<string[]>(() => parseHealthConditions(data.medicalConditions).selected);
+  const [healthOther, setHealthOther] = useState<string>(() => parseHealthConditions(data.medicalConditions).other);
+  const [showMoreGoals, setShowMoreGoals] = useState(false);
+  const [parq, setParq] = useState<Record<string, 'yes' | 'no'>>({});
   const [customTerms, setCustomTerms] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -97,7 +101,39 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
     setGovIdNumber(data.governmentIdNumber || '');
     setFitnessGoals(data.fitnessGoals || '');
     setMedicalConditions(data.medicalConditions || '');
+    const parsed = parseHealthConditions(data.medicalConditions);
+    setHealthChips(parsed.selected);
+    setHealthOther(parsed.other);
   }, [open, data.memberId, data.governmentIdType, data.governmentIdNumber, data.fitnessGoals, data.medicalConditions]);
+
+  // Load PAR-Q from member_onboarding_signatures (if member registered via /register)
+  useEffect(() => {
+    if (!open || !data.memberId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: row } = await supabase
+        .from('member_onboarding_signatures')
+        .select('par_q')
+        .eq('member_id', data.memberId!)
+        .order('signed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !row?.par_q || typeof row.par_q !== 'object') return;
+      const map: Record<string, 'yes' | 'no'> = {};
+      const src = row.par_q as Record<string, string>;
+      PARQ_QUESTIONS.forEach((q, i) => {
+        const v = src[q] ?? src[`q${i}`];
+        if (v === 'yes' || v === 'no') map[`q${i}`] = v;
+      });
+      setParq(map);
+    })();
+    return () => { cancelled = true; };
+  }, [open, data.memberId]);
+
+  // Keep medicalConditions string in sync with chips for PDF/print
+  useEffect(() => {
+    setMedicalConditions(joinHealthConditions(healthChips, healthOther));
+  }, [healthChips, healthOther]);
 
   // Setup canvas for signature
   useEffect(() => {
