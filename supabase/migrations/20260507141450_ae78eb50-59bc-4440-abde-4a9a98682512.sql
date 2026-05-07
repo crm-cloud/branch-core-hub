@@ -1,0 +1,1 @@
+UPDATE automation_rules SET next_run_at = now() - interval '1 minute' WHERE key='benefit_t2h_reminders';

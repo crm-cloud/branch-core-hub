@@ -29,26 +29,28 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // System-call bypass: Automation Brain (and other server workers) call us
-    // with the service-role bearer. Skip the user JWT + role check in that case.
-    const bearer = authHeader.replace("Bearer ", "").trim();
-    const isSystemCall = bearer === supabaseServiceKey;
+    // System-call detection: Automation Brain (and other server workers) call
+    // us with the service-role key in either `Authorization: Bearer …` OR the
+    // `apikey` header (the new signing-keys gateway forbids putting an sb_
+    // service key in BOTH, so workers send it only via `apikey`).
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const apiKeyHeader = req.headers.get("apikey") ?? "";
+    const bearer = authHeader.startsWith("Bearer ") ? authHeader.replace("Bearer ", "").trim() : "";
+    const isSystemCall = bearer === supabaseServiceKey || apiKeyHeader === supabaseServiceKey;
     let callerId: string;
 
     if (isSystemCall) {
       callerId = "system";
     } else {
+      if (!authHeader.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      }
       const authClient = createClient(supabaseUrl, supabaseAnon, {
         global: { headers: { Authorization: authHeader } },
       });
