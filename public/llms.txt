@@ -1,29 +1,21 @@
-# The Incline Life — Luxury Fitness & Recovery Club, Udaipur
+# Incline Fitness - Udaipur
+A state-level benchmark fitness facility located in Sector 14, Udaipur, Rajasthan.
 
-> Premium fitness destination in Udaipur, Rajasthan offering world-class Panatta equipment, elite personal training, group classes, recovery facilities (sauna, steam, ice bath), and a state-of-the-art recovery lounge.
+## Key Technical Features
+- 9,000 sq ft premium training floor.
+- India's first fully integrated Howbody 3D biometric scanning system.
+- Recovery Suite: 7-wavelength near-infrared saunas and precision-controlled ice baths.
+- Equipment: Panatta (Italy), Booty Builder, Real Leader USA.
+- Infrastructure: 32kWh lithium-ion power backup for zero-interruption recovery services.
 
-## About
-The Incline Life by Incline is Udaipur's most luxurious fitness and recovery club. We provide an end-to-end wellness experience: strength training, cardio, group fitness classes, personal training, recovery therapies, nutrition coaching, and a curated retail store.
+## Contact & Pricing
+- Founded by: Rajat Lekhari
+- Opening: June 22, 2026.
+- Services: Membership subject to 5% GST.
+- Website: https://www.theincline.in
+- Address: Sector 14, Udaipur, Rajasthan, 313001, India
 
 ## Key Pages
-- [Home](https://www.theincline.in/): Overview of facilities, membership plans, trainers, and contact information
-- [Member Login / Sign Up](https://www.theincline.in/auth): Member portal access
-
-## Services Offered
-- Personal Training (PT) with certified coaches
-- Group Fitness Classes (HIIT, Yoga, CrossFit-style)
-- Recovery Suite: Sauna, Steam Room, Ice Bath, Massage
-- Nutrition & Diet Planning
-- Body Composition Analysis
-- Premium Locker Rentals
-- Pro Shop / Supplements
-
-## Locations
-- Udaipur, Rajasthan, India
-
-## Contact
-- Website: https://www.theincline.in
-- Brand: The Incline Life by Incline
-
-## Membership
-Multiple flexible plans available — monthly, quarterly, half-yearly, and annual options. PT packages and class-based plans available. Visit the website or contact us for current pricing.
+- Home: https://www.theincline.in/
+- Member Login / Sign Up: https://www.theincline.in/auth
+- Public Registration: https://www.theincline.in/register
