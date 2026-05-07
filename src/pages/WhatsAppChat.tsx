@@ -876,6 +876,9 @@ export default function WhatsAppChatPage() {
                     {/* Avatar */}
                     <div className="relative flex-shrink-0">
                       <Avatar className="h-11 w-11 ring-2 ring-background">
+                        {contact.contact_avatar_url && (
+                          <AvatarImage src={contact.contact_avatar_url} alt={contact.contact_name || 'avatar'} />
+                        )}
                         <AvatarFallback className={`font-bold text-sm ${
                           contact.platform === 'instagram'
                             ? 'bg-gradient-to-br from-pink-100 to-purple-100 text-pink-700'
@@ -883,7 +886,10 @@ export default function WhatsAppChatPage() {
                             ? 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700'
                             : 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700'
                         }`}>
-                          {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                          {(contact.contact_name?.[0]?.toUpperCase()) ||
+                           (contact.platform === 'instagram' ? <Instagram className="h-5 w-5" /> :
+                            contact.platform === 'messenger' ? <Facebook className="h-5 w-5" /> :
+                            <User className="h-5 w-5" />)}
                         </AvatarFallback>
                       </Avatar>
                       {/* Platform badge — always shown */}
