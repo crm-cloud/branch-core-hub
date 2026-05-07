@@ -270,7 +270,7 @@ export default function WhatsAppChatPage() {
       const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
       let q = supabase
         .from('whatsapp_messages')
-        .select('phone_number, contact_name, member_id, content, created_at, direction, platform')
+        .select('phone_number, contact_name, contact_avatar_url, member_id, content, created_at, direction, platform')
         .order('created_at', { ascending: false });
       if (branchFilter) q = q.eq('branch_id', branchFilter);
       const { data, error } = await q;
@@ -279,22 +279,28 @@ export default function WhatsAppChatPage() {
       (data || []).forEach((msg: {
         phone_number: string;
         contact_name: string | null;
+        contact_avatar_url: string | null;
         member_id: string | null;
         content: string | null;
         created_at: string;
         direction: string;
         platform: string | null;
       }) => {
-        if (!contactMap.has(msg.phone_number)) {
+        const existing = contactMap.get(msg.phone_number);
+        if (!existing) {
           contactMap.set(msg.phone_number, {
             phone_number: msg.phone_number,
             contact_name: msg.contact_name,
+            contact_avatar_url: msg.contact_avatar_url,
             member_id: msg.member_id,
             last_message: msg.content || '',
             last_message_time: msg.created_at,
             unread_count: 0,
             platform: msg.platform || 'whatsapp',
           });
+        } else if (!existing.contact_avatar_url && msg.contact_avatar_url) {
+          // Backfill avatar from older inbound msg if newest didn't have one
+          existing.contact_avatar_url = msg.contact_avatar_url;
         }
       });
       return Array.from(contactMap.values());
