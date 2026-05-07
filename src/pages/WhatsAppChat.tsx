@@ -962,6 +962,9 @@ export default function WhatsAppChatPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Avatar className="h-10 w-10">
+                        {selectedContact.contact_avatar_url && (
+                          <AvatarImage src={selectedContact.contact_avatar_url} alt={selectedContact.contact_name || 'avatar'} />
+                        )}
                         <AvatarFallback className={`font-bold ${
                           selectedContact.platform === 'instagram'
                             ? 'bg-gradient-to-br from-pink-100 to-purple-100 text-pink-700'
@@ -969,7 +972,10 @@ export default function WhatsAppChatPage() {
                             ? 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700'
                             : 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700'
                         }`}>
-                          {selectedContact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                          {(selectedContact.contact_name?.[0]?.toUpperCase()) ||
+                           (selectedContact.platform === 'instagram' ? <Instagram className="h-5 w-5" /> :
+                            selectedContact.platform === 'messenger' ? <Facebook className="h-5 w-5" /> :
+                            <User className="h-5 w-5" />)}
                         </AvatarFallback>
                       </Avatar>
                       {selectedContact.platform && selectedContact.platform !== 'whatsapp' && (
@@ -982,7 +988,7 @@ export default function WhatsAppChatPage() {
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
                         <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
-                          {selectedContact.contact_name || formatPhoneDisplay(selectedContact.phone_number)}
+                          {displayLabel(selectedContact)}
                         </h3>
                         {(() => {
                           const src = (selectedContact as any).identity_source as string | undefined;
