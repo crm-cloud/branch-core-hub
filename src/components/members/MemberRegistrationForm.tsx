@@ -225,6 +225,10 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
       if (!canvas) throw new Error('Canvas not found');
       const signatureDataUrl = canvas.toDataURL('image/png');
 
+      // Snapshot PAR-Q answers (default unanswered → 'no' for storage parity with public flow)
+      const parqMap: Record<string, string> = {};
+      PARQ_QUESTIONS.forEach((q, i) => { parqMap[q] = parq[`q${i}`] || 'no'; });
+
       // Build full registration form PDF (form fields + signature)
       const pdfBlob = buildRegistrationFormPdf({
         data,
@@ -232,6 +236,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         govIdNumber,
         fitnessGoals,
         medicalConditions,
+        parq: parqMap,
         customTerms,
         terms: DEFAULT_TERMS,
         signatureDataUrl,
