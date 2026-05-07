@@ -9,10 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useMemberData } from '@/hooks/useMemberData';
 import { supabase } from '@/integrations/supabase/client';
-import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, KeyRound } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, KeyRound, HeartPulse } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { CommunicationPreferences } from '@/components/profile/CommunicationPreferences';
+import { useQuery } from '@tanstack/react-query';
+import { Badge as UIBadge } from '@/components/ui/badge';
+import { PARQ_QUESTIONS, parseHealthConditions } from '@/lib/registration/healthQuestions';
 
 export default function MemberProfile() {
   const { profile, refreshProfile } = useAuth();
