@@ -10599,6 +10599,7 @@ export type Database = {
       whatsapp_messages: {
         Row: {
           branch_id: string
+          contact_avatar_url: string | null
           contact_name: string | null
           content: string | null
           created_at: string | null
@@ -10625,6 +10626,7 @@ export type Database = {
         }
         Insert: {
           branch_id: string
+          contact_avatar_url?: string | null
           contact_name?: string | null
           content?: string | null
           created_at?: string | null
@@ -10651,6 +10653,7 @@ export type Database = {
         }
         Update: {
           branch_id?: string
+          contact_avatar_url?: string | null
           contact_name?: string | null
           content?: string | null
           created_at?: string | null

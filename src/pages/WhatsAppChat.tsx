@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -69,6 +69,7 @@ import Picker from '@emoji-mart/react';
 interface ChatContact {
   phone_number: string;
   contact_name: string | null;
+  contact_avatar_url?: string | null;
   member_id: string | null;
   last_message: string;
   last_message_time: string;
@@ -128,6 +129,20 @@ type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats' | 'whatsapp' | '
 
 function normalizePhone(phone: string): string {
   return phone.replace(/^\+/, '');
+}
+
+/** True for raw Instagram-Scoped IDs (long numeric string, no '+'). */
+function isIgsid(value: string): boolean {
+  return /^\d{12,}$/.test(value);
+}
+
+/** Friendly display label when no resolved name is available. */
+function displayLabel(c: { contact_name: string | null; phone_number: string; platform?: string }): string {
+  if (c.contact_name && c.contact_name.trim()) return c.contact_name;
+  if ((c.platform === 'instagram' || c.platform === 'messenger') && isIgsid(c.phone_number)) {
+    return c.platform === 'instagram' ? 'Instagram User' : 'Messenger User';
+  }
+  return formatPhoneDisplay(c.phone_number);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -269,7 +284,7 @@ export default function WhatsAppChatPage() {
       const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
       let q = supabase
         .from('whatsapp_messages')
-        .select('phone_number, contact_name, member_id, content, created_at, direction, platform')
+        .select('phone_number, contact_name, contact_avatar_url, member_id, content, created_at, direction, platform')
         .order('created_at', { ascending: false });
       if (branchFilter) q = q.eq('branch_id', branchFilter);
       const { data, error } = await q;
@@ -278,22 +293,28 @@ export default function WhatsAppChatPage() {
       (data || []).forEach((msg: {
         phone_number: string;
         contact_name: string | null;
+        contact_avatar_url: string | null;
         member_id: string | null;
         content: string | null;
         created_at: string;
         direction: string;
         platform: string | null;
       }) => {
-        if (!contactMap.has(msg.phone_number)) {
+        const existing = contactMap.get(msg.phone_number);
+        if (!existing) {
           contactMap.set(msg.phone_number, {
             phone_number: msg.phone_number,
             contact_name: msg.contact_name,
+            contact_avatar_url: msg.contact_avatar_url,
             member_id: msg.member_id,
             last_message: msg.content || '',
             last_message_time: msg.created_at,
             unread_count: 0,
             platform: msg.platform || 'whatsapp',
           });
+        } else if (!existing.contact_avatar_url && msg.contact_avatar_url) {
+          // Backfill avatar from older inbound msg if newest didn't have one
+          existing.contact_avatar_url = msg.contact_avatar_url;
         }
       });
       return Array.from(contactMap.values());
@@ -855,6 +876,9 @@ export default function WhatsAppChatPage() {
                     {/* Avatar */}
                     <div className="relative flex-shrink-0">
                       <Avatar className="h-11 w-11 ring-2 ring-background">
+                        {contact.contact_avatar_url && (
+                          <AvatarImage src={contact.contact_avatar_url} alt={contact.contact_name || 'avatar'} />
+                        )}
                         <AvatarFallback className={`font-bold text-sm ${
                           contact.platform === 'instagram'
                             ? 'bg-gradient-to-br from-pink-100 to-purple-100 text-pink-700'
@@ -862,7 +886,10 @@ export default function WhatsAppChatPage() {
                             ? 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700'
                             : 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700'
                         }`}>
-                          {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                          {(contact.contact_name?.[0]?.toUpperCase()) ||
+                           (contact.platform === 'instagram' ? <Instagram className="h-5 w-5" /> :
+                            contact.platform === 'messenger' ? <Facebook className="h-5 w-5" /> :
+                            <User className="h-5 w-5" />)}
                         </AvatarFallback>
                       </Avatar>
                       {/* Platform badge — always shown */}
@@ -890,7 +917,7 @@ export default function WhatsAppChatPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-semibold text-sm text-foreground truncate">
-                            {contact.contact_name || formatPhoneDisplay(contact.phone_number)}
+                            {displayLabel(contact)}
                           </span>
                           <Badge variant="outline" className={`text-[9px] h-4 px-1 flex-shrink-0 rounded-md font-medium ${
                             contact.platform === 'instagram'
@@ -935,6 +962,9 @@ export default function WhatsAppChatPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Avatar className="h-10 w-10">
+                        {selectedContact.contact_avatar_url && (
+                          <AvatarImage src={selectedContact.contact_avatar_url} alt={selectedContact.contact_name || 'avatar'} />
+                        )}
                         <AvatarFallback className={`font-bold ${
                           selectedContact.platform === 'instagram'
                             ? 'bg-gradient-to-br from-pink-100 to-purple-100 text-pink-700'
@@ -942,7 +972,10 @@ export default function WhatsAppChatPage() {
                             ? 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700'
                             : 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700'
                         }`}>
-                          {selectedContact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                          {(selectedContact.contact_name?.[0]?.toUpperCase()) ||
+                           (selectedContact.platform === 'instagram' ? <Instagram className="h-5 w-5" /> :
+                            selectedContact.platform === 'messenger' ? <Facebook className="h-5 w-5" /> :
+                            <User className="h-5 w-5" />)}
                         </AvatarFallback>
                       </Avatar>
                       {selectedContact.platform && selectedContact.platform !== 'whatsapp' && (
@@ -955,7 +988,7 @@ export default function WhatsAppChatPage() {
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
                         <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
-                          {selectedContact.contact_name || formatPhoneDisplay(selectedContact.phone_number)}
+                          {displayLabel(selectedContact)}
                         </h3>
                         {(() => {
                           const src = (selectedContact as any).identity_source as string | undefined;
@@ -1451,12 +1484,15 @@ export default function WhatsAppChatPage() {
                 {/* Profile card */}
                 <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-5 shadow-sm shadow-emerald-200/40 text-center">
                   <Avatar className="h-16 w-16 mx-auto mb-3 ring-2 ring-emerald-500/30">
+                    {selectedContact.contact_avatar_url && (
+                      <AvatarImage src={selectedContact.contact_avatar_url} alt={selectedContact.contact_name || 'avatar'} />
+                    )}
                     <AvatarFallback className="bg-emerald-500 text-white text-xl font-bold">
                       {(selectedContact.contact_name || selectedContact.phone_number)?.[0]?.toUpperCase() || <User className="h-6 w-6" />}
                     </AvatarFallback>
                   </Avatar>
                   <h3 className="font-semibold text-foreground text-base break-words">
-                    {selectedContact.contact_name || 'Unknown contact'}
+                    {displayLabel(selectedContact)}
                   </h3>
                   <button
                     onClick={() => {
