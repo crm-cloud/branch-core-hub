@@ -9,13 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Save, FileSignature, Eraser, Dumbbell, Shield, HeartPulse, User, Calendar, MapPin } from 'lucide-react';
+import { Printer, Save, FileSignature, Eraser, Dumbbell, Shield, HeartPulse, User, Calendar, MapPin, ChevronDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { e } from '@/utils/htmlEscape';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import {
+  PARQ_QUESTIONS,
+  PRIMARY_GOALS,
+  MORE_GOALS,
+  HEALTH_CONDITION_OPTIONS,
+  parseHealthConditions,
+  joinHealthConditions,
+} from '@/lib/registration/healthQuestions';
 
 interface RegistrationFormData {
   memberName: string;
