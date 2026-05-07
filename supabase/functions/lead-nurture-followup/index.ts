@@ -121,8 +121,12 @@ serve(async (req) => {
         .maybeSingle();
       if (linkedMember?.id) continue;
 
-      // Skip if no lead AND no partial data (nothing to nurture)
-      if (!lead && !partialData) continue;
+      // v3.3.0: Allow nurture for bare inbound chats too — a "Hi" with no
+      // lead/partial data should still get one re-engagement nudge.
+
+      // Determine platform for send routing (must be defined BEFORE we insert
+      // the outbound row that references it — earlier versions had a TDZ bug).
+      const chatPlatform = chat.platform || "whatsapp";
 
       // Generate contextual nudge message
       let nudgeMessage: string | undefined;
