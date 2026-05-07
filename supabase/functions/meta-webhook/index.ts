@@ -685,21 +685,20 @@ async function ingestInstagramMention(value: any, igAccountId: string) {
 
 // ─── F4: Instagram sender profile resolution ──────────────────────────────────
 
-const _igProfileCache = new Map<string, { name: string | null; ts: number }>();
-async function resolveInstagramSenderName(igUserId: string, integration: any): Promise<string | null> {
+type IgProfile = { name: string | null; avatar_url: string | null };
+const _igProfileCache = new Map<string, { profile: IgProfile; ts: number }>();
+
+async function resolveInstagramSenderProfile(igUserId: string, integration: any): Promise<IgProfile> {
   const cached = _igProfileCache.get(igUserId);
-  if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) return cached.name;
+  if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) return cached.profile;
 
+  const empty: IgProfile = { name: null, avatar_url: null };
   const accessToken = integration?.credentials?.access_token || integration?.credentials?.page_access_token;
-  if (!accessToken) return null;
+  if (!accessToken) return empty;
 
-  // F4 fix: IGAA Instagram-Login tokens are NOT valid against graph.facebook.com.
-  // Detect host from token shape and fall back across both bases when ambiguous.
   const { isInstagramLogin } = detectMetaHost(accessToken);
   const primaryBase = isInstagramLogin ? IG_API_BASE : META_API_BASE;
   const fallbackBase = isInstagramLogin ? META_API_BASE : IG_API_BASE;
-  // profile_pic requires extra perms on Instagram Login — request it but tolerate
-  // a partial response. Username is the most reliable field across both APIs.
   const fields = "name,username,profile_pic_url";
 
   async function attempt(base: string): Promise<{ ok: boolean; data: any; status: number }> {
@@ -721,19 +720,24 @@ async function resolveInstagramSenderName(igUserId: string, integration: any): P
       result = await attempt(fallbackBase);
     }
     if (!result.ok) {
-      console.warn(`[IG profile] both bases failed for ${igUserId}: ${result.data?.error?.message || result.status}`);
-      _igProfileCache.set(igUserId, { name: null, ts: Date.now() });
-      return null;
+      _igProfileCache.set(igUserId, { profile: empty, ts: Date.now() });
+      return empty;
     }
     const username = result.data.username ? `@${result.data.username}` : null;
     const display = result.data.name || username || null;
-    _igProfileCache.set(igUserId, { name: display, ts: Date.now() });
-    if (display) console.log(`[IG profile] resolved ${igUserId} → ${display}`);
-    return display;
+    const profile: IgProfile = { name: display, avatar_url: result.data.profile_pic_url || null };
+    _igProfileCache.set(igUserId, { profile, ts: Date.now() });
+    if (display) console.log(`[IG profile] resolved ${igUserId} → ${display}${profile.avatar_url ? ' (with avatar)' : ''}`);
+    return profile;
   } catch (e) {
     console.warn(`[IG profile] error for ${igUserId}:`, e instanceof Error ? e.message : e);
-    return null;
+    return empty;
   }
+}
+
+// Backward-compat shim
+async function resolveInstagramSenderName(igUserId: string, integration: any): Promise<string | null> {
+  return (await resolveInstagramSenderProfile(igUserId, integration)).name;
 }
 
 async function fetchInstagramMessageByMid(mid: string, integration: any): Promise<any | null> {
