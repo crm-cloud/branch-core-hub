@@ -418,10 +418,13 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
     }
   }
 
-  // F4: resolve IG sender display name on first contact
+// F4: resolve IG sender display name + avatar on first contact
   let contactName: string | null = null;
+  let contactAvatarUrl: string | null = null;
   if (platform === "instagram" && !isOutbound && integration) {
-    contactName = await resolveInstagramSenderName(contactId, integration);
+    const profile = await resolveInstagramSenderProfile(contactId, integration);
+    contactName = profile?.name ?? null;
+    contactAvatarUrl = profile?.avatar_url ?? null;
   }
 
   const { data: inserted, error } = await supabase
@@ -430,6 +433,7 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
       branch_id: branchId,
       phone_number: contactId,
       contact_name: contactName,
+      contact_avatar_url: contactAvatarUrl,
       message_type: messageType,
       content,
       media_url: mediaUrl,
