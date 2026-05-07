@@ -1,8 +1,10 @@
-// automation-brain v1.2.0
+// automation-brain v1.3.0
 // Single tick orchestrator: reads automation_rules, dispatches due ones, updates next_run_at.
 // v1.1.0 — Birthday worker rewritten as two-step query (no auto-gen FK aliases).
 // v1.2.0 — Drop conflicting `apikey` header (caused HTTP 401 on every child invoke).
 //          Mirror failures into error_logs via log_error_event for System Health.
+// v1.3.0 — Re-add `apikey` using SERVICE_KEY (same value as Authorization) so gateway
+//          accepts the request without raising "Conflicting API key".
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -72,10 +74,14 @@ function nextCron(expr: string, after: Date): Date {
 // ---------- Worker dispatch ----------
 async function callEdge(name: string, payload: unknown): Promise<{ ok: boolean; status: number; body: string }> {
   const url = `${SUPABASE_URL}/functions/v1/${name}`;
+  // Use SERVICE_KEY for BOTH apikey and Authorization to avoid the gateway's
+  // "Conflicting API key" 401 (which happens when the two headers use different keys),
+  // while still satisfying the gateway's mandatory `apikey` requirement.
   const r = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      apikey: SERVICE_KEY,
       Authorization: `Bearer ${SERVICE_KEY}`,
     },
     body: JSON.stringify(payload ?? {}),

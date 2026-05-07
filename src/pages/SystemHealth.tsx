@@ -49,7 +49,13 @@ const SOURCE_CONFIG: Record<string, { label: string; icon: any; color: string }>
   edge_function: { label: 'Backend Function', icon: Server, color: 'text-violet-600' },
   database: { label: 'Database', icon: Database, color: 'text-amber-600' },
   trigger: { label: 'Trigger', icon: Zap, color: 'text-emerald-600' },
+  automation_brain: { label: 'Automation Brain', icon: Zap, color: 'text-indigo-600' },
+  cron: { label: 'Cron Job', icon: Clock, color: 'text-orange-600' },
+  worker: { label: 'Worker', icon: Server, color: 'text-teal-600' },
 };
+
+const FALLBACK_SOURCE = { label: 'Other', icon: Layers, color: 'text-slate-500' } as const;
+const getSourceConfig = (s?: string | null) => SOURCE_CONFIG[s || 'frontend'] || FALLBACK_SOURCE;
 
 const EMPTY_TABLE_CANDIDATES = [
   { name: 'role_permissions', note: 'Superseded by user_roles + has_role()' },
@@ -423,7 +429,7 @@ export default function SystemHealth() {
                       </TableHeader>
                       <TableBody>
                         {errors.map((err) => {
-                          const src = SOURCE_CONFIG[err.source || 'frontend'] || SOURCE_CONFIG.frontend;
+                          const src = getSourceConfig(err.source);
                           const sev = (err.severity || 'error').toLowerCase();
                           const sevClass =
                             sev === 'critical' ? 'bg-rose-100 text-rose-700' :
@@ -535,7 +541,7 @@ export default function SystemHealth() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Source</p>
                   <Badge variant="outline" className="gap-1">
-                    {(() => { const s = SOURCE_CONFIG[selectedError.source || 'frontend']; return <><s.icon className={`h-3 w-3 ${s.color}`} />{s.label}</>; })()}
+                    {(() => { const s = getSourceConfig(selectedError.source); return <><s.icon className={`h-3 w-3 ${s.color}`} />{s.label}</>; })()}
                   </Badge>
                 </div>
                 <div>
