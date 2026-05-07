@@ -645,7 +645,7 @@ async function ingestInstagramMention(value: any, igAccountId: string) {
   const commentId = String(value.comment_id || value.media_id || "");
   const mediaId = String(value.media_id || "");
   const fromId = String(value.from?.id || "");
-  const fromUsername = value.from?.username ? `@${value.from.username}` : null;
+  const fromUsername = value.from?.username ? `@${value.from.username}` : (fromId ? "Instagram User" : null);
   if (!commentId) {
     console.log("[IG] mention missing id, skipping");
     return;
