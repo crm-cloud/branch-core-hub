@@ -125,6 +125,7 @@ async function rateLimitOtp(phone: string): Promise<boolean> {
 
 async function sendOtpHandler(req: Request, body: Record<string, unknown>): Promise<Response> {
   const phone = normalizePhone(String(body.phone || ""));
+  const email = body.email ? String(body.email).trim().toLowerCase() : null;
   if (!/^\+\d{10,15}$/.test(phone)) return json(400, { error: "invalid_phone" });
 
   if (await isExistingMember(phone)) {
@@ -146,7 +147,7 @@ async function sendOtpHandler(req: Request, body: Record<string, unknown>): Prom
     return json(500, { error: "otp_persist_failed" });
   }
 
-  // Resolve a branch_id to satisfy dispatcher; fall back to first active branch.
+  // Resolve a branch_id and the approved AUTHENTICATION otp_verification template.
   const { data: branchRow } = await admin
     .from("branches")
     .select("id")
@@ -155,33 +156,68 @@ async function sendOtpHandler(req: Request, body: Record<string, unknown>): Prom
     .limit(1)
     .maybeSingle();
   const branch_id = branchRow?.id;
+  if (!branch_id) return json(500, { error: "no_active_branch" });
 
-  if (!branch_id) {
-    return json(500, { error: "no_active_branch" });
-  }
+  const { data: otpTpl } = await admin
+    .from("templates")
+    .select("id, content")
+    .eq("type", "whatsapp")
+    .eq("trigger_event", "otp_verification")
+    .eq("meta_template_status", "APPROVED")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   const dedupe_key = `otp:${phone}:${Date.now()}`;
-  try {
-    await admin.functions.invoke("dispatch-communication", {
+  const fallbackBody = `Your Incline verification code is *${code}*. It expires in 5 minutes. Do not share this code.`;
+
+  const deliveries: Promise<unknown>[] = [];
+  // 1) WhatsApp via approved authentication template (so Meta accepts it
+  //    outside the 24h customer-care window).
+  deliveries.push(admin.functions.invoke("dispatch-communication", {
+    body: {
+      branch_id,
+      channel: "whatsapp",
+      category: "transactional",
+      recipient: phone,
+      template_id: otpTpl?.id ?? null,
+      payload: {
+        body: otpTpl?.content || fallbackBody,
+        variables: { code, otp: code, expires_in: "5", "1": code },
+      },
+      dedupe_key,
+      force: true,
+    },
+  }).catch((e) => captureEdgeError("register-member", e, { route: "send_otp_whatsapp" })));
+
+  // 2) Email fallback when caller supplies an email — gives the user a
+  //    second channel if WhatsApp is blocked / not on their phone.
+  if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    deliveries.push(admin.functions.invoke("dispatch-communication", {
       body: {
         branch_id,
-        channel: "whatsapp",
+        channel: "email",
         category: "transactional",
-        recipient: phone,
+        recipient: email,
         payload: {
-          body: `Your Incline verification code is *${code}*. It expires in 5 minutes. Do not share this code.`,
-          variables: { code, expires_in: "5 minutes" },
+          subject: "Your Incline verification code",
+          body: `<p>Hi,</p><p>Your verification code is <strong style="font-size:24px;letter-spacing:4px">${code}</strong></p><p>It expires in 5 minutes. Do not share this code.</p>`,
+          variables: { code },
         },
-        dedupe_key,
+        dedupe_key: `${dedupe_key}:email`,
         force: true,
       },
-    });
-  } catch (e) {
-    await captureEdgeError("register-member", e, { route: "send_otp_dispatch" });
-    // Still return success — OTP is stored; user can retry
+    }).catch((e) => captureEdgeError("register-member", e, { route: "send_otp_email" })));
   }
 
-  return json(200, { status: "sent", expires_in_seconds: 300 });
+  await Promise.allSettled(deliveries);
+
+  return json(200, {
+    status: "sent",
+    expires_in_seconds: 300,
+    channels: email ? ["whatsapp", "email"] : ["whatsapp"],
+    template_used: !!otpTpl?.id,
+  });
 }
 
 async function generateWaiverPdf(input: {

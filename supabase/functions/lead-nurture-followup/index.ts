@@ -1,4 +1,4 @@
-// v3.2.1 — Fix duplicate chatPlatform declaration causing boot error.
+// v3.3.0 — Move chatPlatform decl above use; nurture inbound-only chats too.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
 
@@ -121,8 +121,12 @@ serve(async (req) => {
         .maybeSingle();
       if (linkedMember?.id) continue;
 
-      // Skip if no lead AND no partial data (nothing to nurture)
-      if (!lead && !partialData) continue;
+      // v3.3.0: Allow nurture for bare inbound chats too — a "Hi" with no
+      // lead/partial data should still get one re-engagement nudge.
+
+      // Determine platform for send routing (must be defined BEFORE we insert
+      // the outbound row that references it — earlier versions had a TDZ bug).
+      const chatPlatform = chat.platform || "whatsapp";
 
       // Generate contextual nudge message
       let nudgeMessage: string | undefined;
@@ -199,9 +203,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
         continue;
       }
 
-      // Determine platform for send routing
-      const chatPlatform = chat.platform || "whatsapp";
-
+      // (chatPlatform is defined above, before the message insert)
       try {
         if (chatPlatform === "whatsapp") {
           const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {

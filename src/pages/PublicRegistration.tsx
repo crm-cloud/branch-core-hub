@@ -95,14 +95,20 @@ export default function PublicRegistration() {
 
   const sendOtp = useMutation({
     mutationFn: async (phone: string) => {
-      const { data, error } = await supabase.functions.invoke("register-member", { body: { mode: "send_otp", phone } });
+      const { data, error } = await supabase.functions.invoke("register-member", {
+        body: { mode: "send_otp", phone, email: details?.email ?? null },
+      });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       if (data?.status === "already_member") throw new Error("This number is already registered. Please log in.");
-      return data;
+      return data as { channels?: string[] };
     },
-    onSuccess: () => { toast.success("OTP sent on WhatsApp"); setStep("otp"); },
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: (data) => {
+      const ch = data?.channels?.includes("email") ? "WhatsApp & email" : "WhatsApp";
+      toast.success(`OTP sent on ${ch}`);
+      setStep("otp");
+    },
+    onError: (e: Error) => toast.error(`OTP send failed — ${e.message}. Tap Resend.`),
   });
 
   const verifyAndRegister = useMutation({
