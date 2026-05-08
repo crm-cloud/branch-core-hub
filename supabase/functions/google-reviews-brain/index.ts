@@ -16,6 +16,8 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
 type Action =
   | "test_connection"
+  | "list_accounts"
+  | "list_locations"
   | "fetch_reviews"
   | "classify"
   | "reply"
@@ -24,6 +26,7 @@ type Action =
 interface Body {
   action: Action;
   branch_id?: string;
+  account_id?: string; // for list_locations
   inbound_id?: string;
   reply_text?: string;
   // for request_member_review (legacy shim)
