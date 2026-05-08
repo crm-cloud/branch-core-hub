@@ -1,11 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { drAssets } from "./vite-plugins/dr-assets";
-
-const SUPABASE_URL = "https://iyqqpbvnszyrrgerniog.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5cXFwYnZuc3p5cnJnZXJuaW9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMzE1NjIsImV4cCI6MjA4MTgwNzU2Mn0.EAmMC21oRiyV8sgixS8eQE3-b17_-Y9kn2-os8fv0Eo";
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
@@ -16,13 +11,6 @@ export default defineConfig(() => ({
   },
   plugins: [
     react(),
-    drAssets({
-      supabaseUrl: SUPABASE_URL,
-      supabaseAnonKey: SUPABASE_ANON_KEY,
-      env: process.env.VITE_APP_ENV ?? "primary",
-      version: process.env.VITE_BUILD_SHA,
-      supportEmail: "support@theincline.in",
-    }),
   ],
   build: {
     // Raised after vendor split lands. Charts/data vendors legitimately
