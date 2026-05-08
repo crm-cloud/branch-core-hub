@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Star, MessageSquare, CheckCircle, Clock, Eye, Globe, Download,
   Send, AlertTriangle, MailQuestion, ThumbsUp, Reply,
@@ -17,6 +18,7 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
 import { format, subDays } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
+import ExternalReviewsTab from '@/components/feedback/ExternalReviewsTab';
 
 type RequestStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'failed';
 
@@ -157,25 +159,35 @@ export default function FeedbackPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Member Feedback</h1>
-            <p className="text-muted-foreground">Review feedback, request Google reviews from happy members, and recover unhappy ones.</p>
+            <h1 className="text-2xl font-bold">Feedback & Reviews</h1>
+            <p className="text-muted-foreground">Member feedback in-app, plus inbound Google reviews with AI triage.</p>
           </div>
-          <Button variant="outline" size="sm" className="gap-1.5 self-start" onClick={() => {
-            const rows = feedbackList.map((f: any) => ({
-              Member: f.member_name || 'Unknown',
-              Rating: f.rating,
-              Feedback: f.feedback_text || '',
-              Category: f.category || '',
-              Status: f.status || '',
-              ReviewRequest: f.google_review_request_status || 'not_sent',
-              GoogleReviewId: f.google_review_id || '',
-              Date: f.created_at ? format(new Date(f.created_at), 'yyyy-MM-dd') : '',
-            }));
-            exportToCSV(rows, 'feedback');
-          }}>
-            <Download className="h-4 w-4" /> Export
-          </Button>
         </div>
+
+        <Tabs defaultValue="member" className="w-full">
+          <TabsList>
+            <TabsTrigger value="member">Member Feedback</TabsTrigger>
+            <TabsTrigger value="external">External Reviews</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="member" className="space-y-6 mt-6">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+                const rows = feedbackList.map((f: any) => ({
+                  Member: f.member_name || 'Unknown',
+                  Rating: f.rating,
+                  Feedback: f.feedback_text || '',
+                  Category: f.category || '',
+                  Status: f.status || '',
+                  ReviewRequest: f.google_review_request_status || 'not_sent',
+                  GoogleReviewId: f.google_review_id || '',
+                  Date: f.created_at ? format(new Date(f.created_at), 'yyyy-MM-dd') : '',
+                }));
+                exportToCSV(rows, 'feedback');
+              }}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
+            </div>
 
         {/* Dashboard cards */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
@@ -353,6 +365,12 @@ export default function FeedbackPage() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="external" className="mt-6">
+            <ExternalReviewsTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );

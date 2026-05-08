@@ -4129,6 +4129,121 @@ export type Database = {
           },
         ]
       }
+      google_reviews_inbound: {
+        Row: {
+          ai_classification: string | null
+          ai_classified_at: string | null
+          ai_draft_reply: string | null
+          ai_reasoning: string | null
+          author_name: string | null
+          author_photo_url: string | null
+          branch_id: string
+          created_at: string
+          google_reply_text: string | null
+          google_reply_updated_at: string | null
+          google_review_id: string
+          id: string
+          language: string | null
+          match_confidence: number | null
+          match_evidence: Json | null
+          match_type: string | null
+          matched_lead_id: string | null
+          matched_member_id: string | null
+          posted_at: string | null
+          rating: number | null
+          raw: Json | null
+          replied_at: string | null
+          replied_by: string | null
+          reply_status: string | null
+          reply_text: string | null
+          reported_to_google_at: string | null
+          review_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_classification?: string | null
+          ai_classified_at?: string | null
+          ai_draft_reply?: string | null
+          ai_reasoning?: string | null
+          author_name?: string | null
+          author_photo_url?: string | null
+          branch_id: string
+          created_at?: string
+          google_reply_text?: string | null
+          google_reply_updated_at?: string | null
+          google_review_id: string
+          id?: string
+          language?: string | null
+          match_confidence?: number | null
+          match_evidence?: Json | null
+          match_type?: string | null
+          matched_lead_id?: string | null
+          matched_member_id?: string | null
+          posted_at?: string | null
+          rating?: number | null
+          raw?: Json | null
+          replied_at?: string | null
+          replied_by?: string | null
+          reply_status?: string | null
+          reply_text?: string | null
+          reported_to_google_at?: string | null
+          review_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_classification?: string | null
+          ai_classified_at?: string | null
+          ai_draft_reply?: string | null
+          ai_reasoning?: string | null
+          author_name?: string | null
+          author_photo_url?: string | null
+          branch_id?: string
+          created_at?: string
+          google_reply_text?: string | null
+          google_reply_updated_at?: string | null
+          google_review_id?: string
+          id?: string
+          language?: string | null
+          match_confidence?: number | null
+          match_evidence?: Json | null
+          match_type?: string | null
+          matched_lead_id?: string | null
+          matched_member_id?: string | null
+          posted_at?: string | null
+          rating?: number | null
+          raw?: Json | null
+          replied_at?: string | null
+          replied_by?: string | null
+          reply_status?: string | null
+          reply_text?: string | null
+          reported_to_google_at?: string | null
+          review_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_reviews_inbound_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_reviews_inbound_matched_lead_id_fkey"
+            columns: ["matched_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_reviews_inbound_matched_member_id_fkey"
+            columns: ["matched_member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hardware_access_events: {
         Row: {
           actor_user_id: string | null
@@ -12189,6 +12304,8 @@ export type Database = {
           reason: string
         }[]
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       staff_check_in:
         | {
             Args: { p_branch_id: string; p_notes?: string; p_user_id: string }
