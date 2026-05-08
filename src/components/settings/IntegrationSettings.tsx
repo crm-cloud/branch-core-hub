@@ -963,6 +963,28 @@ export function IntegrationSettings() {
                           <Settings className="h-4 w-4 mr-2" />
                           {config ? 'Configure' : 'Setup'}
                         </Button>
+                        {config?.is_active && config?.branch_id && (
+                          <Button
+                            className="w-full mt-2"
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              const t = toast.loading('Testing Google connection…');
+                              try {
+                                const { data, error } = await supabase.functions.invoke('google-reviews-brain', {
+                                  body: { action: 'test_connection', branch_id: config.branch_id },
+                                });
+                                if (error) throw error;
+                                if ((data as any)?.ok) toast.success('Connected to Google Business', { id: t });
+                                else toast.error((data as any)?.reason ?? 'Test failed', { id: t });
+                              } catch (e: any) {
+                                toast.error(e?.message ?? 'Test failed', { id: t });
+                              }
+                            }}
+                          >
+                            Test connection
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   );
