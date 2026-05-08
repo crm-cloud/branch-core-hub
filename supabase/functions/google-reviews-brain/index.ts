@@ -203,8 +203,6 @@ async function findAuthorMatch(branch_id: string, author_name: string | null) {
   const sb = supa();
 
   // Members: members.user_id -> profiles.full_name (branch-scoped)
-  const { data: members } = await sb.rpc("noop_dummy").catch(() => ({ data: null }));
-  // Use direct query: pull members of branch + their profile names
   const { data: branchMembers } = await sb
     .from("members")
     .select("id, user_id, joined_at, status, lifecycle_state, profiles!members_user_id_fkey(full_name)")
