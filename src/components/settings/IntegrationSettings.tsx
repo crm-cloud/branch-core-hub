@@ -1075,6 +1075,15 @@ export function IntegrationSettings() {
         {...configSheet} 
         onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
         branchId={branchFilter}
+        onRequestDiscover={
+          configSheet.type === 'google_business' && branchFilter
+            ? () => setDiscoverOpen({
+                branchId: branchFilter,
+                accountId: (configSheet.existing?.config as any)?.account_id,
+                locationId: (configSheet.existing?.config as any)?.location_id,
+              })
+            : undefined
+        }
       />
 
       {discoverOpen && (
