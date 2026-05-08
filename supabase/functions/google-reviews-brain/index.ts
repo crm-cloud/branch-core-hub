@@ -182,11 +182,10 @@ async function refreshAccessToken(branch_id: string, cfg: any): Promise<string |
   await sb
     .from("integration_settings")
     .update({
-      credentials: {
-        ...cfg,
+      credentials: googleCredentialsForPersist(cfg, {
         access_token: newAccess,
         token_expires_at: expiresAt,
-      },
+      }),
     })
     .eq("integration_type", "google_business")
     .eq("provider", "google_business")
