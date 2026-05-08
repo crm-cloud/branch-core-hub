@@ -48,7 +48,7 @@ async function getGoogleConfig(branch_id: string) {
   const { data } = await sb
     .from("integration_settings")
     .select("config, credentials, is_active")
-    .eq("type", "google_business")
+    .eq("integration_type", "google_business")
     .eq("provider", "google_business")
     .eq("branch_id", branch_id)
     .maybeSingle();
@@ -103,7 +103,7 @@ async function refreshAccessToken(branch_id: string, cfg: any): Promise<string |
         token_expires_at: expiresAt,
       },
     })
-    .eq("type", "google_business")
+    .eq("integration_type", "google_business")
     .eq("provider", "google_business")
     .eq("branch_id", branch_id);
   return newAccess;
@@ -255,7 +255,7 @@ async function fetchReviews(branch_id?: string) {
     const { data } = await sb
       .from("integration_settings")
       .select("branch_id, config, is_active")
-      .eq("type", "google_business")
+      .eq("integration_type", "google_business")
       .eq("provider", "google_business")
       .eq("is_active", true);
     branches = (data ?? [])
