@@ -20,7 +20,7 @@ import {
   CreditCard, MessageSquare, Mail, Phone,
   Settings, CheckCircle, XCircle, Save, Globe, Webhook, Copy, ExternalLink,
   RefreshCw, ChevronDown, ChevronRight, Clock, PauseCircle, Send,
-  Instagram, Facebook,
+  Instagram, Facebook, Search,
 } from 'lucide-react';
 import GoogleBusinessDiscovery from './GoogleBusinessDiscovery';
 
