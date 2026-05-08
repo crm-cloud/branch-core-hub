@@ -1,66 +1,34 @@
-# Fix Google OAuth — Recreate Deleted Client
+## Findings
 
-Your screenshot shows **Error 401: deleted_client** — the OAuth client you were using has been deleted in Google Cloud. The Client Secret you pasted (`GOCSPX-…`) belongs to that deleted client and will no longer work, so we need to create a fresh one and wire it up.
+- The app is still generating the Google consent URL with this saved Client ID: `401987773801-go8vch1cm698tbi0elbtbhk4sar4iig1.apps.googleusercontent.com`.
+- The screenshot error mentions a different Client ID: `122775204755-60j9ml5129nj89b837q2i5r2s0jk6ugg.apps.googleusercontent.com`.
+- The current saved integration has **no refresh token**, so account/location discovery cannot run yet.
+- The redirect URI wiring is correct and must match exactly:
+  `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/google-reviews-brain`
+- The pasted client secret is exposed in chat and should be rotated/replaced in Google Cloud.
 
-⚠️ **Security note:** You pasted a client secret directly in chat. Even though this client is deleted, please rotate any secret you ever share in plain text. I will request the new secret via the secure secrets form, never in chat.
+## Plan
 
----
+1. **Update the saved Google Business credentials**
+   - Replace the stale/deleted OAuth credentials in `integration_settings` for the branch with the new Web application Client ID and the rotated/new Client Secret.
+   - Keep existing Google config fields where possible, but clear stale OAuth tokens so the app forces a clean consent flow.
 
-## Step 1 — Create a new OAuth Client in Google Cloud
+2. **Harden the Google OAuth UI**
+   - Add a visible diagnostic line in the Configure drawer showing which Client ID is currently saved, masked enough to confirm it matches Google Cloud.
+   - Add a warning/help state for `deleted_client`: “The saved Client ID was deleted in Google Cloud. Create/save a new Web application OAuth client, then reconnect.”
+   - Clarify that JavaScript origins are optional for this server-side OAuth flow, while the Authorized redirect URI is mandatory.
 
-In **Google Auth Platform → Clients → Create client**:
+3. **Improve backend error handling**
+   - Update `google-reviews-brain` to detect Google OAuth errors such as `deleted_client`, `invalid_client`, and `redirect_uri_mismatch` and return specific setup guidance instead of generic failures.
+   - Add a small debug payload from `oauth_start` with the current redirect URI and masked Client ID so curl tests are easier.
 
-- **Application type:** Web application
-- **Name:** Incline CRM (or anything you like)
+4. **Update setup guide/docs**
+   - Update the in-app guide and `docs/google-reviews-ai-brain.md` with the current Google Console navigation:
+     - Google Auth Platform → Clients → Web application
+     - Authorized redirect URI: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/google-reviews-brain`
+     - APIs: My Business Account Management API, My Business Business Information API, Google My Business API
+   - Add a troubleshooting section for `deleted_client`, `invalid_client`, and missing refresh token.
 
-**Authorised JavaScript origins** (add both):
-```
-https://iyqqpbvnszyrrgerniog.supabase.co
-https://id-preview--d9395869-4f5c-4b42-8e1d-4027aacab172.lovable.app
-```
-(Plus `https://www.theincline.in` and `https://incline.lovable.app` if you want to start the flow from the live app too.)
-
-**Authorised redirect URIs** (this is the critical one — must match EXACTLY):
-```
-https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/google-reviews-brain
-```
-
-Click **Create**. Google will show you the new **Client ID** and **Client Secret** — copy both.
-
-## Step 2 — Make sure required APIs are enabled
-
-In Google Cloud → APIs & Services → Library, enable:
-- My Business Account Management API
-- My Business Business Information API
-- Google My Business API (legacy — needed for reviews list/reply)
-
-## Step 3 — Save credentials in Incline
-
-Two options, pick one:
-
-**A) Per-branch (recommended)** — open Settings → Integrations → Google Business Profile → Configure, paste the new Client ID + Client Secret + API Key into the credentials fields, Save.
-
-**B) Global fallback** — I'll request them as Lovable Cloud secrets (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`) so any branch without per-branch creds inherits them. Tell me if you want this and I'll trigger the secure form.
-
-## Step 4 — Connect & Discover
-
-1. Click **Connect Google** in the Configure drawer → sign in with the Google account that owns the Business Profile → consent.
-2. The callback writes a `refresh_token` into `integration_settings`.
-3. Click **Auto-discover IDs** → Account ID + Location ID auto-populate.
-4. **Test connection** → should show "Connected — N accounts visible".
-
----
-
-## What I'll change in code (only if needed)
-
-Most likely **no code changes are required** — the redirect URI, OAuth start, callback handler, and discovery are already implemented from the previous round. After you recreate the client and save the new credentials, the flow should just work.
-
-If during testing we hit a new Google API surface change (e.g. account listing moved endpoints again), I'll patch `google-reviews-brain` and re-test with `curl` against the live function.
-
----
-
-## Confirm before I proceed
-
-Reply with:
-1. "Done, created new client" — then I'll walk you through saving credentials and run a live `curl` test against `oauth_start` and `list_accounts` to verify end-to-end.
-2. Or "Use global secrets" — and I'll open the secure secrets form for `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`.
+5. **Run live verification after changes**
+   - Curl `oauth_start` and confirm the generated URL uses the newly saved Client ID and exact redirect URI.
+   - After you complete the Google consent screen, curl `list_accounts` to confirm Google returns the Business Profile account list.
