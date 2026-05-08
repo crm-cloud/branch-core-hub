@@ -1422,7 +1422,7 @@ function IntegrationConfigSheet({
               onClick={async () => {
                 try {
                   const { data, error } = await supabase.functions.invoke('test-integration', {
-                    body: { type, provider, config, credentials },
+                    body: { type, provider, config, credentials, branch_id: isBranchSpecific ? branchId : null },
                   });
                   if (error) throw error;
                   if (data?.success) {
