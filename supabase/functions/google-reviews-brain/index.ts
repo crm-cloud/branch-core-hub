@@ -81,7 +81,7 @@ async function getGoogleConfig(branch_id: string) {
   };
 }
 
-async function startGoogleOAuth(branch_id: string, requestUrl: URL) {
+async function startGoogleOAuth(branch_id: string) {
   const cfg = await getGoogleConfig(branch_id);
   if (!cfg) return json({ ok: false, reason: "Save and enable Google Business settings for this branch first." }, 200);
   if (!cfg.client_id || !cfg.client_secret) {
@@ -702,7 +702,7 @@ Deno.serve(async (req) => {
         return await testConnection(body.branch_id);
       case "oauth_start":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
-        return await startGoogleOAuth(body.branch_id, requestUrl);
+        return await startGoogleOAuth(body.branch_id);
       case "list_accounts":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
         return await listAccounts(body.branch_id);
