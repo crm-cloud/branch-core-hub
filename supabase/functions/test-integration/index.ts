@@ -1,3 +1,4 @@
+// v1.4.0 — google_business test delegates to google-reviews-brain (list_accounts).
 // v1.3.0 — Phase G: pinned to shared META_API_BASE / IG_API_BASE (v25.0) with IG fallback.
 // v1.2.0 — Instagram now auto-detects IGAA (Instagram Login) vs EAA (Facebook Login) tokens
 //          and routes to graph.instagram.com or graph.facebook.com respectively.
