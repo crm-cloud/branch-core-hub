@@ -62,14 +62,14 @@ export default function ExternalReviewsTab() {
     queryKey: ['gri-integration', branchId],
     queryFn: async () => {
       if (!branchId) return null;
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('integration_settings')
         .select('is_active, config')
         .eq('type', 'google_business')
         .eq('provider', 'google_business')
         .eq('branch_id', branchId)
         .maybeSingle();
-      return data;
+      return data as { is_active: boolean; config: any } | null;
     },
     enabled: !!branchId,
   });
