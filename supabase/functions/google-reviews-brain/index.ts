@@ -15,6 +15,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const APP_BASE = Deno.env.get("APP_BASE_URL") || "https://incline.lovable.app";
+const GOOGLE_OAUTH_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/google-reviews-brain`;
 
 type Action =
   | "test_connection"
@@ -86,10 +87,9 @@ async function startGoogleOAuth(branch_id: string, requestUrl: URL) {
   if (!cfg.client_id || !cfg.client_secret) {
     return json({ ok: false, reason: "Save OAuth Client ID and Client Secret before connecting Google." }, 200);
   }
-  const redirectUri = `${requestUrl.origin}${requestUrl.pathname}`;
   const params = new URLSearchParams({
     client_id: cfg.client_id,
-    redirect_uri: redirectUri,
+    redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
     response_type: "code",
     scope: "https://www.googleapis.com/auth/business.manage",
     access_type: "offline",
@@ -97,7 +97,7 @@ async function startGoogleOAuth(branch_id: string, requestUrl: URL) {
     include_granted_scopes: "true",
     state: branch_id,
   });
-  return json({ ok: true, auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, redirect_uri: redirectUri });
+  return json({ ok: true, auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, redirect_uri: GOOGLE_OAUTH_REDIRECT_URI });
 }
 
 async function handleGoogleOAuthCallback(url: URL) {
@@ -114,7 +114,6 @@ async function handleGoogleOAuthCallback(url: URL) {
   if (!cfg?.client_id || !cfg?.client_secret) {
     return htmlResponse("Google app not configured", `<h1>OAuth credentials missing</h1><p>Save the OAuth Client ID and Client Secret for this branch, then connect again.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
   }
-  const redirectUri = `${url.origin}${url.pathname}`;
   const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -123,7 +122,7 @@ async function handleGoogleOAuthCallback(url: URL) {
       client_secret: cfg.client_secret,
       code,
       grant_type: "authorization_code",
-      redirect_uri: redirectUri,
+      redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
     }),
   });
   const tokenData = await tokenResp.json().catch(() => ({}));
