@@ -36,28 +36,12 @@ interface MirrorReport {
 async function getOrCreateToken(
   primary: ReturnType<typeof createClient>,
 ): Promise<string> {
-  const { data: row, error } = await primary
-    .schema("private")
-    .from("dr_config")
-    .select("token")
-    .maybeSingle();
-  if (error) throw new Error(`dr_config read: ${error.message}`);
-  if (row?.token) return row.token as string;
-  const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
-  const { error: insErr } = await primary
-    .schema("private")
-    .from("dr_config")
-    .insert({ id: true, token });
-  if (insErr) {
-    const { data: row2 } = await primary
-      .schema("private")
-      .from("dr_config")
-      .select("token")
-      .maybeSingle();
-    if (row2?.token) return row2.token as string;
-    throw new Error(`dr_config write: ${insErr.message}`);
+  const { data, error } = await primary.rpc("dr_get_or_create_token");
+  if (error) throw new Error(`dr_get_or_create_token: ${error.message}`);
+  if (!data || typeof data !== "string") {
+    throw new Error("dr_get_or_create_token returned no token");
   }
-  return token;
+  return data;
 }
 
 Deno.serve(async (req) => {
