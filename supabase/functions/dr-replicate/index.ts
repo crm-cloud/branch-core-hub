@@ -1,17 +1,11 @@
 // supabase/functions/dr-replicate/index.ts
-// v1.0.0 — Mirror auth.users + storage object bytes from PRIMARY → DR.
+// v1.1.0 — Mirror auth.users + storage object bytes from PRIMARY → DR.
 //
-// Designed to be:
-//  • Idempotent (safe to run on cron)
-//  • Resumable (one bucket+chunk per call when invoked with ?chunk=…)
-//  • Service-role only (validates header below)
-//
-// Auth: requires header  x-dr-secret: <DR_REPLICATE_SECRET>  OR a service-role JWT.
-//
-// Trigger via pg_cron every 6h:
-//   net.http_post('https://<primary>.supabase.co/functions/v1/dr-replicate',
-//                 '{"mode":"all"}'::jsonb,
-//                 jsonb_build_object('x-dr-secret', '<secret>'))
+// Self-managing security:
+//   • Token lives in private.dr_config (one row, service-role only).
+//   • On first call, the function generates the token and stores it.
+//   • Caller (cron / "Sync now" button) passes it in `x-dr-secret` header.
+//   • Service-role JWT is also accepted.
 //
 // Returns JSON { ok, mirrored: { authUsers, buckets, objects, bytes }, errors }
 
@@ -39,25 +33,35 @@ interface MirrorReport {
   errors: string[];
 }
 
+async function getOrCreateToken(
+  primary: ReturnType<typeof createClient>,
+): Promise<string> {
+  const { data, error } = await primary.rpc("dr_get_or_create_token");
+  if (error) throw new Error(`dr_get_or_create_token: ${error.message}`);
+  if (!data || typeof data !== "string") {
+    throw new Error("dr_get_or_create_token returned no token");
+  }
+  return data;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // ── Authn: service-role JWT OR shared secret ────────────────────────────
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const primaryUrl = Deno.env.get("SUPABASE_URL")!;
+    const primary = createClient(primaryUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
     const auth = req.headers.get("authorization") ?? "";
     const sharedSecret = req.headers.get("x-dr-secret") ?? "";
-    const expectedSecret = Deno.env.get("DR_REPLICATE_SECRET") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const isServiceJwt = auth === `Bearer ${serviceRoleKey}`;
-    const isSharedSecret =
-      expectedSecret.length > 0 && sharedSecret === expectedSecret;
-    console.log("[dr-replicate] auth check", {
-      hasAuth: auth.length > 0,
-      hasSharedSecret: sharedSecret.length > 0,
-      sharedSecretLen: sharedSecret.length,
-      expectedSecretLen: expectedSecret.length,
-      match: isSharedSecret,
-    });
+    let isSharedSecret = false;
+    if (sharedSecret.length > 0) {
+      const expected = await getOrCreateToken(primary);
+      isSharedSecret = sharedSecret === expected;
+    }
     if (!isServiceJwt && !isSharedSecret) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
@@ -68,10 +72,6 @@ Deno.serve(async (req) => {
     const drServiceKey = Deno.env.get("DR_SERVICE_ROLE_KEY");
     if (!drServiceKey) throw new Error("DR_SERVICE_ROLE_KEY not configured");
 
-    const primaryUrl = Deno.env.get("SUPABASE_URL")!;
-    const primary = createClient(primaryUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
     const dr = createClient(DR_URL, drServiceKey, {
       auth: { persistSession: false },
     });

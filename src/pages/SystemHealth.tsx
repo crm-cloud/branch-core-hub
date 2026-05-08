@@ -19,6 +19,7 @@ import { CommunicationFunnelCard } from '@/components/system/CommunicationFunnel
 import { ReconciliationFindingsCard } from '@/components/system/ReconciliationFindingsCard';
 import { WhatsAppDeliveryHealthCard } from '@/components/system/WhatsAppDeliveryHealthCard';
 import { PolicyAuditCard } from '@/components/system/PolicyAuditCard';
+import { DisasterRecoveryCard } from '@/components/system/DisasterRecoveryCard';
 
 interface ErrorLog {
   id: string;
@@ -376,6 +377,8 @@ export default function SystemHealth() {
         </div>
 
         <PolicyAuditCard />
+
+        <DisasterRecoveryCard />
 
 
         <Card className="rounded-2xl border-border/50 shadow-lg">
