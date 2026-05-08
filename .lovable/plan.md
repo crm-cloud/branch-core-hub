@@ -1,118 +1,76 @@
 ## Goal
 
-Set up the connected secondary Supabase project as a true warm-standby of the current primary (`iyqqpbvnszyrrgerniog`) so that if the primary becomes unreachable, the live app automatically switches over with zero code redeploy. Nothing currently deployed changes behaviour — the fallback is dormant until needed.
+Make the disaster-recovery sync **dead simple**:
+- One nightly cron (already running, inside Supabase — no GitHub Actions).
+- Zero secrets to coordinate (no `DR_REPLICATE_SECRET` to keep in sync between two places).
+- Same end result: live database → DR backup, every night at 02:30 IST.
 
-## What gets mirrored
+You keep the warm-standby project you've already paid for, but you stop babysitting passwords and external pipelines.
 
-1. **Database** — `public` + `auth` + `storage` metadata (full pg_dump nightly).
-2. **Storage object bytes** — every bucket (member docs, scans, attachments, announcements, etc.).
-3. **Edge functions** — all ~80 functions deployed to the DR project too, with the same names.
-4. **Secrets / integration credentials** — re-created on the DR project (WhatsApp, Razorpay, MIPS, Lovable AI, Resend, Round SMS, HOWBODY, Meta, Google, Gemini, etc.).
+## What changes
 
-## Architecture
+### 1. Remove the shared-secret dance
+
+Today: the edge function and the cron job both need to know the same `DR_REPLICATE_SECRET`. They drifted, sync fails with 401.
+
+New: the function generates its own secret on first boot, stores it in a private database row, and the cron reads from the same row at run time. They can never drift again.
 
 ```text
-            ┌──────────── PRIMARY (iyqqpbvnszyrrgerniog) ───────────┐
-            │  Postgres • Auth • Storage • 80 edge fns • secrets    │
-            └───────────────────────────────────────────────────────┘
-                          │  nightly 02:30 IST
-                          ▼  (GitHub Actions: backup → restore → verify)
-            ┌──────────── FALLBACK (new ref) ───────────────────────┐
-            │  Mirror of schema + data + objects + fns + secrets    │
-            │  dr_mode = TRUE  → dr_block_writes trigger keeps it   │
-            │  read-only until promoted                             │
-            └───────────────────────────────────────────────────────┘
-
-Browser app:
-  primary client (default) ──── healthz every 60s ────► /healthz
-                                  3 failures in a row
-                                          │
-                                          ▼
-                         swap to fallback client + show banner
+   ┌─ first boot ─┐
+   │ edge fn      │──── stores random token ───►  private.dr_config (1 row)
+   └──────────────┘                                          ▲
+                                                             │ reads token
+   ┌─ every night 02:30 IST ─┐                              │
+   │ cron                    │──────────────────────────────┘
+   └─────────────────────────┘
 ```
 
-## Step-by-step plan
+After this change: I can delete the `DR_REPLICATE_SECRET` runtime secret entirely. Nothing for you to manage.
 
-### Phase 1 — Wire DR credentials (no code change yet)
-1. Request the following secrets via the secrets tool (you paste values):
-   - `DR_PROJECT_REF`
-   - `DR_SUPABASE_URL`
-   - `DR_SUPABASE_ANON_KEY`
-   - `DR_SERVICE_ROLE_KEY`
-   - `DR_DB_URL`
-   - `DR_BUCKET` (name of mirror bucket on DR project)
-   - `SUPABASE_ACCESS_TOKEN` (personal access token for CLI)
-2. Verify with `supabase--cloud_status` that primary is healthy before any sync.
+### 2. Delete the GitHub Actions path
 
-### Phase 2 — Initial full sync (one-time)
-3. Run `scripts/dr/backup.sh` against primary → produces `_dr-out/<ts>/` with `public.sql`, `auth.sql`, `storage.sql`, `storage-objects/*`, `manifest.json`.
-4. On the DR project: enable `dr_mode=true` flag and the `dr_block_writes` trigger (already coded — apply via migration on DR ref only).
-5. Run `scripts/dr/restore.sh --i-understand-this-overwrites` against DR_DB_URL (sets `app.dr_restore=true` inside txn so trigger lets writes through).
-6. Mirror storage object bytes via `supabase storage cp -r` (already in restore.sh).
-7. Deploy all edge functions to DR: loop `supabase functions deploy <name> --project-ref $DR_PROJECT_REF` for every dir under `supabase/functions/`.
-8. Re-create runtime secrets on DR: I will list every secret currently in primary; you paste the same values into the DR project's function secrets via Supabase dashboard (one-time).
-9. Run `scripts/dr/verify.sh` — diffs row counts and SHA-256 of every storage object. Fail loudly if mismatch.
-10. Run `scripts/dr/smoke-login.sh` to prove `auth.users` was restored correctly.
+The `scripts/dr/` shell scripts (backup.sh, restore.sh, verify.sh, smoke-login.sh) and their README will be removed. They were the "enterprise" path. We don't need them — Supabase's pg_cron + the edge function does the same job from inside Supabase, with no external CI to maintain.
 
-### Phase 3 — Scheduled mirror
-11. The existing `.github/workflows/dr-backup.yml` already runs nightly at 02:30 IST. Extend it to also:
-    - call `restore.sh` against DR after backup,
-    - run `verify.sh`,
-    - post a Slack/log line on failure.
-12. Add a second workflow `dr-functions-sync.yml` that on every merge to `main` redeploys changed edge functions to BOTH primary and DR.
+Daily Postgres snapshots that Supabase already takes (free, automatic, 7-day retention) cover schema-level backups. Our edge function adds the cross-project mirror on top.
 
-### Phase 4 — Runtime auto-failover (the only app-side change)
-13. Add `VITE_SUPABASE_FALLBACK_URL` and `VITE_SUPABASE_FALLBACK_ANON_KEY` to env (publishable values, safe in client).
-14. Create `src/integrations/supabase/failoverClient.ts` — wraps the existing client; exposes `getActiveClient()` and a `useFailoverHealth()` hook.
-15. Add `src/lib/dr/healthMonitor.ts` — singleton that pings `${PRIMARY_URL}/functions/v1/healthz` every 60s; after 3 consecutive failures (or any 5xx burst) flips a Zustand `useFailoverStore` flag.
-16. Modify `src/integrations/supabase/client.ts` re-export only — internally route through `failoverClient`. **No service or component changes needed** because every file imports `{ supabase } from "@/integrations/supabase/client"`.
-17. Add a top-of-app `<FailoverBanner />` (red strip): "Running on backup system — some writes may be temporarily disabled." Shown only when failover flag is true.
-18. When in failover mode, respect the DR project's `dr_mode` — if it's still TRUE the user gets read-only; you (owner) can flip `dr_mode=false` via a one-click button on `/dr-readiness` to make DR writable.
+### 3. Add a one-click "Run sync now" button
 
-### Phase 5 — Rollback safety
-19. Switching back to primary: monitor auto-recovers — once `/healthz` returns 200 for 5 minutes the flag flips back. Manual override toggle on `/dr-readiness` page.
-20. Document a "data drift" reconciliation step in `docs/dr-runbook.md` for any writes that happened on DR while primary was down (currently out of scope — DR stays read-only by default unless you explicitly promote it).
+In `Settings → System Health` (or a new `Settings → Disaster Recovery` card), add a button visible only to Owner role: **"Sync to fallback now"**. It triggers the same edge function on demand. Useful before risky migrations or if you want to verify freshness.
 
-### Phase 6 — Verify nothing broke on primary
-21. Build passes, all existing edge functions untouched on primary.
-22. `useFailoverStore` defaults to `primary` → app behaves identically to today.
-23. Manual smoke test: kill primary URL in DevTools (block request) → confirm banner appears + reads continue from DR.
+### 4. Keep what already works
 
-## Files to add / change
+- ✅ The `dr-replicate` edge function (the actual data-mirroring code) — keep
+- ✅ The nightly 02:30 IST cron — keep, just rewrite it to fetch the token from the DB
+- ✅ The `dr_block_writes` trigger on the DR project (prevents accidental writes to the standby) — keep
+- ✅ The `DrBanner` component + `useDrMode` hook (in-app warning if you're on the DR site) — keep
+- ✅ The `healthz` edge function — keep
 
-**New:**
-- `src/integrations/supabase/failoverClient.ts`
-- `src/lib/dr/healthMonitor.ts`
-- `src/lib/dr/useFailoverStore.ts` (Zustand)
-- `src/components/dr/FailoverBanner.tsx`
-- `.github/workflows/dr-functions-sync.yml`
-- `scripts/dr/sync-functions.sh` — loops `supabase functions deploy` over all dirs
-- `scripts/dr/initial-bootstrap.sh` — orchestrates phase-2 steps 3–9
-- `supabase/migrations/<ts>_dr_enable_block_writes.sql` — applied **only against DR ref**, not primary
-- `docs/dr-failover-runbook.md`
+## Files touched
 
-**Modified (minimal, safe):**
-- `src/integrations/supabase/client.ts` — internal re-export through failover wrapper (public API unchanged)
-- `src/App.tsx` — mount `<FailoverBanner />` once near the root
-- `.github/workflows/dr-backup.yml` — chain restore + verify after backup
-- `src/pages/DRReadiness.tsx` — add fallback health card + manual flip button
-- `.env` (you, not me) — add `VITE_SUPABASE_FALLBACK_URL` + `VITE_SUPABASE_FALLBACK_ANON_KEY`
-
-## Risks & mitigations
-
-| Risk | Mitigation |
+| File | Action |
 |---|---|
-| Restore overwrites real DR data | `--i-understand-this-overwrites` flag + `dr_block_writes` keeps DR read-only |
-| Edge functions on DR call primary URLs | Functions read `SUPABASE_URL` from env injected per project — no code change needed |
-| Webhook URLs (Meta, Razorpay, MIPS) point only at primary | During failover you manually swap webhook URLs in those dashboards (documented in runbook). Out of scope for auto-switch. |
-| Auth sessions break on swap | Both projects share the same `auth.users` rows after restore, but JWTs are signed with different keys → users will be asked to log in again on failover (acceptable RTO trade-off) |
-| Secrets drift between projects | Quarterly checklist in runbook; future enhancement = secret-sync script |
+| `supabase/functions/dr-replicate/index.ts` | Update: read/write token from `private.dr_config` instead of env var |
+| New migration | Create `private.dr_config(token text)` table, owner-only RLS |
+| Cron schedule (via insert tool, not migration) | Rewrite to `SELECT token FROM private.dr_config` inside the http_post call |
+| `scripts/dr/` folder | Delete entirely (5 files + README) |
+| `src/components/system/` (or wherever System Health lives) | Add "Sync to fallback now" button card |
+| `DR_REPLICATE_SECRET` runtime secret | Delete from project secrets — no longer used |
 
-## What this plan explicitly does NOT do
+## What you do after I implement
 
-- No real-time replication (RPO = 24h by your choice).
-- No automatic webhook URL swap on third-party providers.
-- No automatic promotion of DR to writable — that stays a deliberate human action.
-- No changes to current production behaviour until failover triggers.
+Nothing. The first time the new function runs (cron or button), it generates its own token. Cron picks up the same token. Sync runs nightly forever.
 
-After you approve, Phase 1 starts with a secrets request — you paste DR credentials, then I run the bootstrap.
+Optional: hit the new "Sync to fallback now" button once to confirm it works. We'll see the green ✅ row count parity within ~30 seconds.
+
+## What this does NOT cover (intentionally)
+
+- **Sub-minute data loss** — if you need streaming replication, standard Supabase doesn't offer cross-project. This stays nightly.
+- **Auto-failover on the live site** — the `DrBanner` shows up if the DB flag is flipped, but flipping it is a manual decision (correctly so — you don't want a transient outage to flip your whole app to read-only).
+- **Edge function code mirroring to the DR project** — out of scope for this round. If primary dies, DR has the data but not the ~70 edge functions. Adding that needs the Supabase Management API access token, a separate one-time deploy script. Can do it next round if you want.
+
+## Technical notes (for me)
+
+- `private.dr_config` is a one-row table in a `private` schema with no public RLS grants — only the function (service role) and Postgres superuser can read it.
+- Function flow: `SELECT token FROM private.dr_config` → if NULL, generate `gen_random_uuid()::text` and insert it. Then validate request header against that value.
+- Cron uses `(SELECT token FROM private.dr_config)` inline in the `jsonb_build_object` for headers.
+- All atomic via existing `cron.schedule` reschedule pattern.
