@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "Admin access required" });
     }
 
-    const { type, provider, config, credentials } = await req.json();
+    const { type, provider, config, credentials, branch_id } = await req.json();
 
     if (!type || !provider) {
       return json({ success: false, error: "Missing type or provider" });
