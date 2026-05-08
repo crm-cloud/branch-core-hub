@@ -10,3 +10,6 @@
 /healthz.json
   Cache-Control: no-store, max-age=0
   Access-Control-Allow-Origin: *
+
+/incline-logo.png
+  Cache-Control: public, max-age=31536000, immutable

@@ -20,6 +20,17 @@ export default defineConfig(() => ({
     // Raised after vendor split lands. Charts/data vendors legitimately
     // approach 600 KB; anything above that is a regression worth investigating.
     chunkSizeWarningLimit: 700,
+    // Force esbuild minification on every emitted chunk. Some vendor chunks
+    // (notably lucide-react) were shipping unminified; this guarantees they
+    // pass through the minifier even when their source ESM is already "minified-ish".
+    minify: 'esbuild',
+    cssMinify: true,
+    // Don't auto-preload every imported chunk on first load. With our manual
+    // chunking this was causing the landing page to also fetch charts-vendor /
+    // data-vendor / radix-vendor for routes the user hasn't visited yet.
+    // Lazy routes still load their chunks on navigation — they just aren't
+    // preloaded during the initial paint of `/`.
+    modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         // Vendor-aware manual chunks. Each route only pays for what it imports;
