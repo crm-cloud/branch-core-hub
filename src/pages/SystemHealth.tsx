@@ -378,6 +378,8 @@ export default function SystemHealth() {
 
         <PolicyAuditCard />
 
+        <DisasterRecoveryCard />
+
 
         <Card className="rounded-2xl border-border/50 shadow-lg">
           <CardHeader className="pb-3">
