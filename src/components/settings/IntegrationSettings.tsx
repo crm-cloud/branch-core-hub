@@ -1036,8 +1036,9 @@ export function IntegrationSettings() {
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Create a Web application OAuth Client ID. Add this callback URL as an Authorized redirect URI: <code className="font-mono text-primary break-all">{SUPABASE_FUNCTION_BASE}/google-reviews-brain</code></p>
+                        <h4 className="font-semibold text-sm">Create OAuth Client (Web application)</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Go to <strong>Google Auth Platform → Clients → Create Client → Web application</strong>. Add this exact <strong>Authorized redirect URI</strong> (no trailing slash): <code className="font-mono text-primary break-all">{SUPABASE_FUNCTION_BASE}/google-reviews-brain</code>. Authorized JavaScript origins are optional for this server-side flow but you can add your app domain if Google warns you.</p>
+                        <p className="text-xs text-muted-foreground mt-1">Seeing <code className="font-mono">Error 401: deleted_client</code>? The client was removed in Google Cloud — create a fresh Web application client and use its new ID + Secret here.</p>
                       </div>
                     </div>
                     <div className="flex gap-3">
