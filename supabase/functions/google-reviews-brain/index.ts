@@ -675,6 +675,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const requestUrl = new URL(req.url);
+    if (req.method === "GET" && (requestUrl.searchParams.has("code") || requestUrl.searchParams.has("error"))) {
+      return await handleGoogleOAuthCallback(requestUrl);
+    }
+
     const body = (await req.json()) as Body;
     const action = body.action;
     if (!action) return json({ error: "action required" }, 400);
@@ -696,6 +701,9 @@ Deno.serve(async (req) => {
       case "test_connection":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
         return await testConnection(body.branch_id);
+      case "oauth_start":
+        if (!body.branch_id) return json({ error: "branch_id required" }, 400);
+        return await startGoogleOAuth(body.branch_id, requestUrl);
       case "list_accounts":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
         return await listAccounts(body.branch_id);
