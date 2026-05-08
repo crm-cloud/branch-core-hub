@@ -1368,6 +1368,26 @@ function IntegrationConfigSheet({
             </div>
           )}
 
+          {type === 'google_business' && (
+            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-2">
+              <p className="text-xs text-indigo-900">
+                <strong>Don't know your Account ID / Location ID?</strong> Use Auto-discover to fetch them from your connected Google account — no need to hunt in Google Cloud Console.
+              </p>
+              {onRequestDiscover && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="bg-white"
+                  onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                >
+                  <Search className="h-3.5 w-3.5 mr-1.5" />
+                  Auto-discover IDs
+                </Button>
+              )}
+            </div>
+          )}
+
           {configFields.length > 0 && (
             <div className="space-y-4">
               <h4 className="font-semibold">Configuration</h4>
