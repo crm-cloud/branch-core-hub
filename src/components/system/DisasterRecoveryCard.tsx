@@ -29,9 +29,9 @@ const formatBytes = (n: number) => {
 };
 
 export function DisasterRecoveryCard() {
-  const { roles } = useAuth();
+  const { hasAnyRole } = useAuth();
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
-  const isOwner = roles?.includes("owner");
+  const isOwner = hasAnyRole(["owner"]);
 
   const sync = useMutation({
     mutationFn: async () => {
