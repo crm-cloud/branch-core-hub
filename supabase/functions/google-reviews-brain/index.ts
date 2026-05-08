@@ -80,6 +80,73 @@ async function getGoogleConfig(branch_id: string) {
   };
 }
 
+async function startGoogleOAuth(branch_id: string, requestUrl: URL) {
+  const cfg = await getGoogleConfig(branch_id);
+  if (!cfg) return json({ ok: false, reason: "Save and enable Google Business settings for this branch first." }, 200);
+  if (!cfg.client_id || !cfg.client_secret) {
+    return json({ ok: false, reason: "Save OAuth Client ID and Client Secret before connecting Google." }, 200);
+  }
+  const redirectUri = `${requestUrl.origin}${requestUrl.pathname}`;
+  const params = new URLSearchParams({
+    client_id: cfg.client_id,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "https://www.googleapis.com/auth/business.manage",
+    access_type: "offline",
+    prompt: "consent",
+    include_granted_scopes: "true",
+    state: branch_id,
+  });
+  return json({ ok: true, auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, redirect_uri: redirectUri });
+}
+
+async function handleGoogleOAuthCallback(url: URL) {
+  const code = url.searchParams.get("code");
+  const branchId = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
+  if (error) {
+    return htmlResponse("Google authorization failed", `<h1>Authorization failed</h1><p>${error}</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  if (!code || !branchId) {
+    return htmlResponse("Invalid Google callback", `<h1>Missing callback data</h1><p>This URL must be opened by Google after authorization.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  const cfg = await getGoogleConfig(branchId);
+  if (!cfg?.client_id || !cfg?.client_secret) {
+    return htmlResponse("Google app not configured", `<h1>OAuth credentials missing</h1><p>Save the OAuth Client ID and Client Secret for this branch, then connect again.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  const redirectUri = `${url.origin}${url.pathname}`;
+  const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: cfg.client_id,
+      client_secret: cfg.client_secret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+    }),
+  });
+  const tokenData = await tokenResp.json().catch(() => ({}));
+  if (!tokenResp.ok || !tokenData?.access_token) {
+    console.error("Google OAuth exchange failed", tokenData);
+    return htmlResponse("Google token exchange failed", `<h1>Token exchange failed</h1><p>${tokenData?.error_description || tokenData?.error || "Google refused the authorization code."}</p><p>Confirm the redirect URI in Google Cloud matches this callback URL exactly.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  const expiresAt = new Date(Date.now() + Number(tokenData.expires_in ?? 3600) * 1000).toISOString();
+  const sb = supa();
+  await sb.from("integration_settings").update({
+    credentials: {
+      ...cfg,
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token ?? cfg.refresh_token,
+      token_expires_at: expiresAt,
+      scope: tokenData.scope,
+    },
+    is_active: true,
+    updated_at: new Date().toISOString(),
+  }).eq("integration_type", "google_business").eq("provider", "google_business").eq("branch_id", branchId);
+  return redirect(`${APP_BASE}/settings?tab=integrations&google_oauth=success`);
+}
+
 async function refreshAccessToken(branch_id: string, cfg: any): Promise<string | null> {
   if (!cfg.refresh_token || !cfg.client_id || !cfg.client_secret) return cfg.access_token ?? null;
   // Skip refresh if token still valid for >2min
