@@ -51,6 +51,13 @@ Deno.serve(async (req) => {
     const isServiceJwt = auth === `Bearer ${serviceRoleKey}`;
     const isSharedSecret =
       expectedSecret.length > 0 && sharedSecret === expectedSecret;
+    console.log("[dr-replicate] auth check", {
+      hasAuth: auth.length > 0,
+      hasSharedSecret: sharedSecret.length > 0,
+      sharedSecretLen: sharedSecret.length,
+      expectedSecretLen: expectedSecret.length,
+      match: isSharedSecret,
+    });
     if (!isServiceJwt && !isSharedSecret) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
