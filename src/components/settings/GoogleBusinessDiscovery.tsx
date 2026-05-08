@@ -96,8 +96,7 @@ export default function GoogleBusinessDiscovery({
       const { data: row, error: selErr } = await (supabase as any)
         .from('integration_settings')
         .select('id, config')
-        .eq('type', 'google_business')
-        .eq('provider', 'google_business')
+        .eq('integration_type', 'google_business')
         .eq('branch_id', branchId)
         .maybeSingle();
       if (selErr) throw selErr;

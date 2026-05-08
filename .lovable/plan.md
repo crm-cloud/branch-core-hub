@@ -1,77 +1,36 @@
-# Auto-fetch Google Business Account & Location IDs
+# Fix Google Business Configure drawer & "find my IDs" flow
 
-## Problem
-Today, staff must manually paste `account_id` and `location_id` into the Google Business integration card. Both values are hard to find (buried in Google Business Profile / API Explorer), error-prone, and a frequent reason `fetch_reviews` returns 412.
+## What's broken
 
-Google exposes both via authenticated API calls once OAuth is connected, so we can eliminate the manual step entirely.
-
-## Goal
-After a branch finishes OAuth (refresh_token saved), staff click **"Discover"** and pick their Business Account and Location from dropdowns. Both IDs auto-save to `integration_settings`. No more copy-paste.
-
----
+1. **"Unsupported type: google_business"** toast on the Configure drawer comes from `Test connection` calling `test-integration` edge fn — that function's `switch (type)` only handles sms/email/whatsapp/instagram/messenger. Google Business falls through to the default `Unsupported type` branch.
+2. **Auto-discover save will silently fail** — `GoogleBusinessDiscovery.tsx` (lines 99–100) filters `integration_settings` by `.eq('type', 'google_business')` and `.eq('provider', 'google_business')`, but the actual columns are `integration_type` and (for this row) `integration_type` is the discriminator. Same bug pattern we just fixed in the edge function.
+3. Users don't realise the **Auto-discover IDs** button on the Google Business card is the answer to "how do I find my Account ID / Location ID" — there's no inline hint inside the Configure drawer.
 
 ## Plan
 
-### 1. Extend `google-reviews-brain` edge function — 2 new actions
-Reuse the existing OAuth/token-refresh helper. No new edge function.
+### A. Route Google Business test through the AI brain (1 edge fn rule)
+- In `supabase/functions/test-integration/index.ts`, add a `case "google_business"` that internally invokes `google-reviews-brain` with `{ action: "list_accounts", branch_id }` and returns `{ success: true }` if at least one account comes back, otherwise surfaces the brain's error verbatim (`OAuth not connected`, `Token expired`, `My Business API not enabled`, etc.).
+- Keeps the "one edge function for Google reviews" rule from the earlier brief — `test-integration` just delegates.
 
-- **`list_accounts`** → `GET https://mybusinessaccountinfo.googleapis.com/v1/accounts`
-  - Returns `[{ name: "accounts/123…", accountName, type, role }]`
-  - Strips `accounts/` prefix → returns clean `account_id` for UI
-- **`list_locations`** → `GET https://mybusinessbusinessinformation.googleapis.com/v1/accounts/{account_id}/locations?readMask=name,title,storefrontAddress,storeCode`
-  - Returns `[{ location_id, title, address, storeCode }]`
-  - Strips `locations/` prefix
+### B. Fix the Discovery save bug
+- In `src/components/settings/GoogleBusinessDiscovery.tsx` `handleSave`, change `.eq('type', 'google_business')` → `.eq('integration_type', 'google_business')` and drop the redundant `.eq('provider', ...)` (or keep it if the row uses provider too — verified row uses `integration_type`).
 
-Both actions:
-- Require `branch_id` in body
-- Use existing `getValidAccessToken(branch_id)` helper (lazy refresh)
-- Return `{ ok, items }` or `{ ok: false, reason }` with friendly messages for 401 (re-auth needed), 403 (API not enabled), 404 (no accounts)
-- Wrapped in `captureEdgeError` like other actions
+### C. Make "find your IDs" obvious inside the Configure drawer
+- In the Configure drawer (`IntegrationSettings.tsx`, Google Business branch around line 1158+), above the **Account ID** and **Location ID** inputs add a soft indigo info card:
+  > "Don't know your IDs? Close this and click **Auto-discover IDs** on the Google Business card — we'll fetch them from your connected Google account."
+- Add a secondary `Auto-discover` link-button inside the drawer that closes the Configure sheet and opens `GoogleBusinessDiscovery` directly, so the user doesn't have to back out manually.
 
-### 2. UI — `IntegrationSettings.tsx` Google Business config drawer
-Replace the two free-text inputs with a guided 2-step picker:
-
-```text
-┌─ Google Business Profile (Branch: INCLINE) ────────────┐
-│ OAuth Status: ✓ Connected (refresh token on file)     │
-│                                                        │
-│ [ Discover Account & Location ]  ← new button         │
-│                                                        │
-│ Business Account:  [ Incline Life Pvt Ltd  ▼ ]        │
-│ Location:          [ INCLINE — Hiran Magri ▼ ]        │
-│                                                        │
-│ ☑ Auto-fetch reviews every 4 hours                     │
-│                                                        │
-│ [ Test connection ]   [ Save ]                        │
-└────────────────────────────────────────────────────────┘
-```
-
-Behavior:
-- "Discover" disabled until `refresh_token` exists
-- Clicking it calls `list_accounts` → populates Account dropdown
-- Selecting an account auto-calls `list_locations` for that account → populates Location dropdown
-- On Save, persist both raw IDs (without `accounts/` / `locations/` prefixes) to `integration_settings.config`
-- Manual override link ("Enter IDs manually") collapses dropdowns back to text inputs as a fallback for edge cases (e.g. service accounts with weird perms)
-- Loading skeletons + inline error banner on API failure (with re-auth CTA when 401)
-
-### 3. Telemetry / errors
-- All discovery failures logged via `log_error_event` with fingerprint `google_discover_<branch_id>_<status>`
-- Toast shows the friendly reason (`"Re-connect Google to refresh permissions"`, `"Enable My Business Business Information API in Google Cloud Console"`, etc.)
-
-### 4. Docs update
-- Append a "Auto-discovery" section to `docs/google-reviews-ai-brain.md` listing the two new actions, the Google API endpoints, and the required scopes (`https://www.googleapis.com/auth/business.manage`).
-
-### 5. Non-goals
-- No change to OAuth flow itself (still uses existing managed credentials).
-- No change to `fetch_reviews` / `classify` / `reply` logic.
-- No new tables, no new cron, no new secrets.
-
----
+### D. Audit notes (no code change, just confirm in plan)
+- `integration_settings` row for Google Business is **branch-scoped** (already enforced by `isBranchSpecific` flag at line 1159) — Auto-discover already passes `branchId`. ✓
+- `google-reviews-brain` already reads creds via `integration_type='google_business'` after the previous fix. ✓
+- OAuth Client ID / Secret / API Key live in `credentials` JSON; `account_id` / `location_id` live in `config` JSON. Discovery writes to `config` only — correct. ✓
 
 ## Files touched
-- `supabase/functions/google-reviews-brain/index.ts` — add 2 action handlers (~80 LOC)
-- `src/components/settings/IntegrationSettings.tsx` — swap text inputs for dropdown picker in Google Business drawer (~120 LOC)
-- `docs/google-reviews-ai-brain.md` — append Auto-discovery section
+- `supabase/functions/test-integration/index.ts` — add `google_business` case delegating to brain
+- `src/components/settings/GoogleBusinessDiscovery.tsx` — fix column name in save query
+- `src/components/settings/IntegrationSettings.tsx` — inline hint + "Auto-discover" shortcut inside Configure drawer
 
-## Risk
-Low. Pure additive: existing manual-entry path stays as fallback. No schema changes.
+## Outcome
+- `Test connection` returns a real status ("Connected — 2 accounts visible" / "Token expired, reconnect OAuth") instead of the misleading "Unsupported type".
+- Auto-discover actually persists the picked Account ID + Location ID.
+- Anyone opening the Configure drawer immediately sees how to fetch IDs without leaving the screen or hunting in Google Cloud Console.
