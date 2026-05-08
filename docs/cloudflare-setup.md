@@ -58,6 +58,6 @@ Currently we have none, so leave it off.
 
 ## Expected result
 
-After Polish + Cache Rule are enabled and `_headers` ships, Lighthouse
+After Polish + Cache Rule are enabled in the Cloudflare dashboard, Lighthouse
 performance on `theincline.in` should move from **55 → ~80** with no
 visual changes.
