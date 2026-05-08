@@ -1,64 +1,118 @@
-## Audit Findings
+## Goal
 
-### 1. Logo preload warning
-`index.html` line 12 preloads `/incline-logo.png` with `fetchpriority="high"`. But:
-- `AuthVisualPanel.tsx` imports the logo as a hashed Vite asset (`@/assets/incline-logo.png`), not the public path.
-- `InclineAscent.tsx` is the only consumer of `/incline-logo.png`, and it's a route-specific lazy page.
-- On every other route (including `/`, `/register`, `/auth`) the preload is never used → browser warning.
+Set up the connected secondary Supabase project as a true warm-standby of the current primary (`iyqqpbvnszyrrgerniog`) so that if the primary becomes unreachable, the live app automatically switches over with zero code redeploy. Nothing currently deployed changes behaviour — the fallback is dormant until needed.
 
-**Fix:** Remove the global `<link rel="preload">` for the logo from `index.html`. The `InclineAscent` page can self-preload via its own `<link>` injected on mount if needed.
+## What gets mirrored
 
-### 2. Health-question mismatch (Public vs Staff registration)
+1. **Database** — `public` + `auth` + `storage` metadata (full pg_dump nightly).
+2. **Storage object bytes** — every bucket (member docs, scans, attachments, announcements, etc.).
+3. **Edge functions** — all ~80 functions deployed to the DR project too, with the same names.
+4. **Secrets / integration credentials** — re-created on the DR project (WhatsApp, Razorpay, MIPS, Lovable AI, Resend, Round SMS, HOWBODY, Meta, Google, Gemini, etc.).
 
-| Field | Public `/register` (`PublicRegistration.tsx`) | Staff drawer (`MemberRegistrationForm.tsx`) |
-|---|---|---|
-| **PAR-Q (7 questions)** | Yes — saved to `member_onboarding_signatures.par_q` | **Missing entirely** |
-| **Fitness goal** | Chip picker (4 primary + 2 more) → `members.fitness_goals` | Free-text textarea |
-| **Health conditions** | 14-option chip multi-select + "Other" → `members.health_conditions` | Free-text textarea |
-| **Consents (DPDP / WhatsApp / Photo / Waiver)** | 4 explicit checkboxes | Not captured |
-| **Signed waiver PDF** | Auto-generated to `member-onboarding` bucket | Separate `registration_form` PDF to `documents` bucket |
+## Architecture
 
-The staff form doesn't surface PAR-Q answers already submitted online, and goals/conditions are typed free-text vs. structured chips → data drift.
+```text
+            ┌──────────── PRIMARY (iyqqpbvnszyrrgerniog) ───────────┐
+            │  Postgres • Auth • Storage • 80 edge fns • secrets    │
+            └───────────────────────────────────────────────────────┘
+                          │  nightly 02:30 IST
+                          ▼  (GitHub Actions: backup → restore → verify)
+            ┌──────────── FALLBACK (new ref) ───────────────────────┐
+            │  Mirror of schema + data + objects + fns + secrets    │
+            │  dr_mode = TRUE  → dr_block_writes trigger keeps it   │
+            │  read-only until promoted                             │
+            └───────────────────────────────────────────────────────┘
 
-### 3. Sync gap
-- Public flow writes structured strings (`"Diabetes, Hypertension"`) into `members.health_conditions`.
-- Staff drawer overwrites it with free-text. No round-trip read of existing chip selection.
-- PAR-Q stored in `member_onboarding_signatures` is not displayed in staff registration drawer or `MemberProfile`.
+Browser app:
+  primary client (default) ──── healthz every 60s ────► /healthz
+                                  3 failures in a row
+                                          │
+                                          ▼
+                         swap to fallback client + show banner
+```
 
----
+## Step-by-step plan
 
-## Plan
+### Phase 1 — Wire DR credentials (no code change yet)
+1. Request the following secrets via the secrets tool (you paste values):
+   - `DR_PROJECT_REF`
+   - `DR_SUPABASE_URL`
+   - `DR_SUPABASE_ANON_KEY`
+   - `DR_SERVICE_ROLE_KEY`
+   - `DR_DB_URL`
+   - `DR_BUCKET` (name of mirror bucket on DR project)
+   - `SUPABASE_ACCESS_TOKEN` (personal access token for CLI)
+2. Verify with `supabase--cloud_status` that primary is healthy before any sync.
 
-### A. Logo preload (1 file)
-- `index.html` — delete the `<link rel="preload" as="image" href="/incline-logo.png" …>` line.
+### Phase 2 — Initial full sync (one-time)
+3. Run `scripts/dr/backup.sh` against primary → produces `_dr-out/<ts>/` with `public.sql`, `auth.sql`, `storage.sql`, `storage-objects/*`, `manifest.json`.
+4. On the DR project: enable `dr_mode=true` flag and the `dr_block_writes` trigger (already coded — apply via migration on DR ref only).
+5. Run `scripts/dr/restore.sh --i-understand-this-overwrites` against DR_DB_URL (sets `app.dr_restore=true` inside txn so trigger lets writes through).
+6. Mirror storage object bytes via `supabase storage cp -r` (already in restore.sh).
+7. Deploy all edge functions to DR: loop `supabase functions deploy <name> --project-ref $DR_PROJECT_REF` for every dir under `supabase/functions/`.
+8. Re-create runtime secrets on DR: I will list every secret currently in primary; you paste the same values into the DR project's function secrets via Supabase dashboard (one-time).
+9. Run `scripts/dr/verify.sh` — diffs row counts and SHA-256 of every storage object. Fail loudly if mismatch.
+10. Run `scripts/dr/smoke-login.sh` to prove `auth.users` was restored correctly.
 
-### B. Unify health/goals UI in staff Member Registration drawer
-Refactor `src/components/members/MemberRegistrationForm.tsx`:
-1. Extract the chip option arrays (`PRIMARY_GOALS`, `MORE_GOALS`, `HEALTH_CONDITION_OPTIONS`, `PARQ_QUESTIONS`) into a shared module: `src/lib/registration/healthQuestions.ts`.
-2. Replace the free-text "Fitness Goals" textarea with the same chip picker used in `PublicRegistration`.
-3. Replace the free-text "Medical Conditions" textarea with the same multi-chip picker + "Other" input.
-4. Add a PAR-Q section (7 yes/no rows) above the signature pad — pre-filled from `member_onboarding_signatures.par_q` when present, editable by staff.
-5. On save:
-   - Write structured `members.fitness_goals` / `members.health_conditions` (same comma-joined format the public flow uses).
-   - Upsert PAR-Q answers into `member_onboarding_signatures` (or insert a `manual` source row if member registered offline).
-6. Update the generated PDF (`buildRegistrationFormPdf`) to render the PAR-Q table.
+### Phase 3 — Scheduled mirror
+11. The existing `.github/workflows/dr-backup.yml` already runs nightly at 02:30 IST. Extend it to also:
+    - call `restore.sh` against DR after backup,
+    - run `verify.sh`,
+    - post a Slack/log line on failure.
+12. Add a second workflow `dr-functions-sync.yml` that on every merge to `main` redeploys changed edge functions to BOTH primary and DR.
 
-### C. Use shared arrays in PublicRegistration
-- Replace inline arrays in `src/pages/PublicRegistration.tsx` with imports from `src/lib/registration/healthQuestions.ts` so the two forms stay in lock-step forever.
+### Phase 4 — Runtime auto-failover (the only app-side change)
+13. Add `VITE_SUPABASE_FALLBACK_URL` and `VITE_SUPABASE_FALLBACK_ANON_KEY` to env (publishable values, safe in client).
+14. Create `src/integrations/supabase/failoverClient.ts` — wraps the existing client; exposes `getActiveClient()` and a `useFailoverHealth()` hook.
+15. Add `src/lib/dr/healthMonitor.ts` — singleton that pings `${PRIMARY_URL}/functions/v1/healthz` every 60s; after 3 consecutive failures (or any 5xx burst) flips a Zustand `useFailoverStore` flag.
+16. Modify `src/integrations/supabase/client.ts` re-export only — internally route through `failoverClient`. **No service or component changes needed** because every file imports `{ supabase } from "@/integrations/supabase/client"`.
+17. Add a top-of-app `<FailoverBanner />` (red strip): "Running on backup system — some writes may be temporarily disabled." Shown only when failover flag is true.
+18. When in failover mode, respect the DR project's `dr_mode` — if it's still TRUE the user gets read-only; you (owner) can flip `dr_mode=false` via a one-click button on `/dr-readiness` to make DR writable.
 
-### D. Display existing answers in MemberProfile (read-only)
-- Add a small "Health & Fitness" card to `src/pages/MemberProfile.tsx` showing parsed `health_conditions`, `fitness_goals`, and PAR-Q summary (count of "yes" answers + link to view full waiver PDF). No edit — edits go through the staff drawer.
+### Phase 5 — Rollback safety
+19. Switching back to primary: monitor auto-recovers — once `/healthz` returns 200 for 5 minutes the flag flips back. Manual override toggle on `/dr-readiness` page.
+20. Document a "data drift" reconciliation step in `docs/dr-runbook.md` for any writes that happened on DR while primary was down (currently out of scope — DR stays read-only by default unless you explicitly promote it).
 
-### E. Verification
-- Open staff drawer for a member who registered via `/register` → confirm chips reflect their saved choices and PAR-Q rows are pre-checked.
-- Submit a new staff registration → confirm DB rows match the public-flow shape (no free-text drift).
-- Reload `/register` and `/` → confirm no preload warning in console.
+### Phase 6 — Verify nothing broke on primary
+21. Build passes, all existing edge functions untouched on primary.
+22. `useFailoverStore` defaults to `primary` → app behaves identically to today.
+23. Manual smoke test: kill primary URL in DevTools (block request) → confirm banner appears + reads continue from DR.
 
-### Files touched
-- `index.html` (1 line removed)
-- `src/lib/registration/healthQuestions.ts` (new — shared constants)
-- `src/components/members/MemberRegistrationForm.tsx` (chip pickers + PAR-Q section + PDF update)
-- `src/pages/PublicRegistration.tsx` (import shared constants)
-- `src/pages/MemberProfile.tsx` (read-only Health & Fitness card)
+## Files to add / change
 
-No DB migration needed — schema already supports both flows (`members.fitness_goals`, `members.health_conditions`, `member_onboarding_signatures.par_q`).
+**New:**
+- `src/integrations/supabase/failoverClient.ts`
+- `src/lib/dr/healthMonitor.ts`
+- `src/lib/dr/useFailoverStore.ts` (Zustand)
+- `src/components/dr/FailoverBanner.tsx`
+- `.github/workflows/dr-functions-sync.yml`
+- `scripts/dr/sync-functions.sh` — loops `supabase functions deploy` over all dirs
+- `scripts/dr/initial-bootstrap.sh` — orchestrates phase-2 steps 3–9
+- `supabase/migrations/<ts>_dr_enable_block_writes.sql` — applied **only against DR ref**, not primary
+- `docs/dr-failover-runbook.md`
+
+**Modified (minimal, safe):**
+- `src/integrations/supabase/client.ts` — internal re-export through failover wrapper (public API unchanged)
+- `src/App.tsx` — mount `<FailoverBanner />` once near the root
+- `.github/workflows/dr-backup.yml` — chain restore + verify after backup
+- `src/pages/DRReadiness.tsx` — add fallback health card + manual flip button
+- `.env` (you, not me) — add `VITE_SUPABASE_FALLBACK_URL` + `VITE_SUPABASE_FALLBACK_ANON_KEY`
+
+## Risks & mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Restore overwrites real DR data | `--i-understand-this-overwrites` flag + `dr_block_writes` keeps DR read-only |
+| Edge functions on DR call primary URLs | Functions read `SUPABASE_URL` from env injected per project — no code change needed |
+| Webhook URLs (Meta, Razorpay, MIPS) point only at primary | During failover you manually swap webhook URLs in those dashboards (documented in runbook). Out of scope for auto-switch. |
+| Auth sessions break on swap | Both projects share the same `auth.users` rows after restore, but JWTs are signed with different keys → users will be asked to log in again on failover (acceptable RTO trade-off) |
+| Secrets drift between projects | Quarterly checklist in runbook; future enhancement = secret-sync script |
+
+## What this plan explicitly does NOT do
+
+- No real-time replication (RPO = 24h by your choice).
+- No automatic webhook URL swap on third-party providers.
+- No automatic promotion of DR to writable — that stays a deliberate human action.
+- No changes to current production behaviour until failover triggers.
+
+After you approve, Phase 1 starts with a secrets request — you paste DR credentials, then I run the bootstrap.
