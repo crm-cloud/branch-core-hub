@@ -22,6 +22,7 @@ import {
   RefreshCw, ChevronDown, ChevronRight, Clock, PauseCircle, Send,
   Instagram, Facebook,
 } from 'lucide-react';
+import GoogleBusinessDiscovery from './GoogleBusinessDiscovery';
 
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram' | 'messenger';
 
