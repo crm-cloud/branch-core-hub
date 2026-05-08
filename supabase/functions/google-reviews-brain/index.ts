@@ -1,5 +1,5 @@
-// v1.0.0 — Single edge function handling all Google Reviews operations.
-// Actions: test_connection | fetch_reviews | classify | reply | request_member_review
+// v1.1.0 — Single edge function handling all Google Reviews operations.
+// Actions: test_connection | list_accounts | list_locations | fetch_reviews | classify | reply | request_member_review
 // Reads OAuth credentials from integration_settings(provider='google_business', branch_id=…)
 // Uses LOVABLE_API_KEY (Lovable AI Gateway) for classification + draft reply generation.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
