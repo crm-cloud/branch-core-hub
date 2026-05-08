@@ -101,6 +101,35 @@ Deno.serve(async (req) => {
           error: "Messenger integration is not yet supported end-to-end. This provider has been temporarily disabled in the UI.",
         };
         break;
+      case "google_business": {
+        if (!branch_id) {
+          result = { success: false, error: "Select a branch before testing Google Business." };
+          break;
+        }
+        try {
+          const brainResp = await fetch(`${supabaseUrl}/functions/v1/google-reviews-brain`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+              apikey: supabaseAnon,
+            },
+            body: JSON.stringify({ action: "list_accounts", branch_id }),
+          });
+          const brainData = await brainResp.json().catch(() => ({}));
+          if (!brainResp.ok || brainData?.error) {
+            result = { success: false, error: brainData?.error || `Google Business test failed (HTTP ${brainResp.status})` };
+          } else {
+            const count = Array.isArray(brainData?.accounts) ? brainData.accounts.length : 0;
+            result = count > 0
+              ? { success: true, message: `Connected — ${count} Google Business account(s) visible` }
+              : { success: false, error: "Connected to Google, but no Business Profile accounts are visible for this user." };
+          }
+        } catch (e: any) {
+          result = { success: false, error: e?.message || "Failed to reach google-reviews-brain" };
+        }
+        break;
+      }
       default:
         result = { success: false, error: `Unsupported type: ${type}` };
     }
