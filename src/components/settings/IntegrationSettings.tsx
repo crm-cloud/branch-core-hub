@@ -1076,6 +1076,18 @@ export function IntegrationSettings() {
         onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
         branchId={branchFilter}
       />
+
+      {discoverOpen && (
+        <GoogleBusinessDiscovery
+          open={!!discoverOpen}
+          onOpenChange={(v) => !v && setDiscoverOpen(null)}
+          branchId={discoverOpen.branchId}
+          branchName={discoverOpen.branchName}
+          initialAccountId={discoverOpen.accountId}
+          initialLocationId={discoverOpen.locationId}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['integrations'] })}
+        />
+      )}
     </div>
   );
 }
