@@ -42,3 +42,21 @@ OAuth refresh: the brain refreshes `access_token` lazily (>2 min before expiry t
 - `google_reviews_inbound` SELECT/UPDATE: owner/admin OR branch manager OR `staff_branches` member
 - DELETE: owner/admin only
 - INSERT: service role only (via edge function)
+
+## Auto-discovery (v1.1.0)
+
+Two new actions remove the manual paste of `account_id` / `location_id`:
+
+| Action | Endpoint | Notes |
+|---|---|---|
+| `list_accounts` | `GET https://mybusinessaccountmanagement.googleapis.com/v1/accounts` | Lists every Business Profile account the connected Google login can manage. Strips `accounts/` prefix. |
+| `list_locations` | `GET https://mybusinessbusinessinformation.googleapis.com/v1/accounts/{account_id}/locations?readMask=name,title,storefrontAddress,storeCode,websiteUri` | Lists locations under a chosen account. Strips `locations/` prefix. |
+
+**Required scope:** `https://www.googleapis.com/auth/business.manage` (already included in the Google Business OAuth flow).
+
+**APIs to enable in the Google Cloud project** (or 403 SERVICE_DISABLED):
+- My Business Account Management API
+- My Business Business Information API
+- My Business v4 (used by `fetch_reviews` / `reply`)
+
+**UI:** `Settings → Integrations → Google Business Profile → Auto-discover IDs` opens a Sheet with two cascading dropdowns. Save persists `account_id` + `location_id` into `integration_settings.config`. The manual text fields in the configure drawer remain available as a fallback.

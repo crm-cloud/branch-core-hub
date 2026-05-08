@@ -20,8 +20,9 @@ import {
   CreditCard, MessageSquare, Mail, Phone,
   Settings, CheckCircle, XCircle, Save, Globe, Webhook, Copy, ExternalLink,
   RefreshCw, ChevronDown, ChevronRight, Clock, PauseCircle, Send,
-  Instagram, Facebook,
+  Instagram, Facebook, Search,
 } from 'lucide-react';
+import GoogleBusinessDiscovery from './GoogleBusinessDiscovery';
 
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram' | 'messenger';
 
@@ -102,6 +103,7 @@ export function IntegrationSettings() {
   }>({ open: false, type: 'payment_gateway', provider: '' });
   const [diagnostics, setDiagnostics] = useState<{ ok: boolean; checks: any[] } | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
+  const [discoverOpen, setDiscoverOpen] = useState<{ branchId: string; branchName?: string; accountId?: string; locationId?: string } | null>(null);
   const queryClient = useQueryClient();
 
   const runMetaDiagnostics = async () => {
@@ -985,6 +987,22 @@ export function IntegrationSettings() {
                             Test connection
                           </Button>
                         )}
+                        {config?.branch_id && (
+                          <Button
+                            className="w-full mt-2"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setDiscoverOpen({
+                              branchId: config.branch_id,
+                              branchName: (config as any)?.branch_name,
+                              accountId: (config.config as any)?.account_id,
+                              locationId: (config.config as any)?.location_id,
+                            })}
+                          >
+                            <Search className="h-4 w-4 mr-2" />
+                            Auto-discover IDs
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   );
@@ -1058,6 +1076,18 @@ export function IntegrationSettings() {
         onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
         branchId={branchFilter}
       />
+
+      {discoverOpen && (
+        <GoogleBusinessDiscovery
+          open={!!discoverOpen}
+          onOpenChange={(v) => !v && setDiscoverOpen(null)}
+          branchId={discoverOpen.branchId}
+          branchName={discoverOpen.branchName}
+          initialAccountId={discoverOpen.accountId}
+          initialLocationId={discoverOpen.locationId}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['integrations'] })}
+        />
+      )}
     </div>
   );
 }

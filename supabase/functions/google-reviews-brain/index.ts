@@ -1,5 +1,5 @@
-// v1.0.0 — Single edge function handling all Google Reviews operations.
-// Actions: test_connection | fetch_reviews | classify | reply | request_member_review
+// v1.1.0 — Single edge function handling all Google Reviews operations.
+// Actions: test_connection | list_accounts | list_locations | fetch_reviews | classify | reply | request_member_review
 // Reads OAuth credentials from integration_settings(provider='google_business', branch_id=…)
 // Uses LOVABLE_API_KEY (Lovable AI Gateway) for classification + draft reply generation.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -16,6 +16,8 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
 type Action =
   | "test_connection"
+  | "list_accounts"
+  | "list_locations"
   | "fetch_reviews"
   | "classify"
   | "reply"
@@ -24,6 +26,7 @@ type Action =
 interface Body {
   action: Action;
   branch_id?: string;
+  account_id?: string; // for list_locations
   inbound_id?: string;
   reply_text?: string;
   // for request_member_review (legacy shim)
@@ -123,7 +126,74 @@ async function testConnection(branch_id: string) {
   return json({ ok: true });
 }
 
-// ─── Action: fetch_reviews ───
+// ─── Action: list_accounts ───
+function friendlyGoogleError(status: number, txt: string): string {
+  if (status === 401) return "Re-connect Google to refresh permissions (token rejected).";
+  if (status === 403) {
+    if (/SERVICE_DISABLED|has not been used|API has not/i.test(txt))
+      return "Enable 'My Business Account Management API' and 'My Business Business Information API' in Google Cloud Console for this project.";
+    return "Permission denied by Google. Confirm this Google account manages the Business Profile.";
+  }
+  if (status === 404) return "No Business Profile accounts found for this Google login.";
+  if (status === 429) return "Google rate limit hit — try again in a minute.";
+  return `Google API ${status}: ${txt.slice(0, 200)}`;
+}
+
+async function listAccounts(branch_id: string) {
+  const cfg = await getGoogleConfig(branch_id);
+  if (!cfg) return json({ ok: false, reason: "Google Business integration not configured for this branch" }, 200);
+  if (!cfg.refresh_token) return json({ ok: false, reason: "OAuth not connected. Connect Google first." }, 200);
+  const token = await refreshAccessToken(branch_id, cfg);
+  if (!token) return json({ ok: false, reason: "Could not obtain access token. Re-connect Google." }, 200);
+  const res = await fetch("https://mybusinessaccountmanagement.googleapis.com/v1/accounts", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    return json({ ok: false, reason: friendlyGoogleError(res.status, txt) }, 200);
+  }
+  const j = await res.json();
+  const items = ((j.accounts ?? []) as any[]).map((a) => ({
+    account_id: String(a.name ?? "").replace(/^accounts\//, ""),
+    name: a.accountName ?? a.name,
+    type: a.type,
+    role: a.role,
+    verification_state: a.verificationState,
+  })).filter((a) => a.account_id);
+  return json({ ok: true, items });
+}
+
+// ─── Action: list_locations ───
+async function listLocations(branch_id: string, account_id: string) {
+  const cfg = await getGoogleConfig(branch_id);
+  if (!cfg) return json({ ok: false, reason: "Google Business integration not configured for this branch" }, 200);
+  if (!cfg.refresh_token) return json({ ok: false, reason: "OAuth not connected. Connect Google first." }, 200);
+  const token = await refreshAccessToken(branch_id, cfg);
+  if (!token) return json({ ok: false, reason: "Could not obtain access token. Re-connect Google." }, 200);
+  const cleanAcc = account_id.replace(/^accounts\//, "");
+  const url = `https://mybusinessbusinessinformation.googleapis.com/v1/accounts/${cleanAcc}/locations?readMask=name,title,storefrontAddress,storeCode,websiteUri&pageSize=100`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const txt = await res.text();
+    return json({ ok: false, reason: friendlyGoogleError(res.status, txt) }, 200);
+  }
+  const j = await res.json();
+  const items = ((j.locations ?? []) as any[]).map((l) => {
+    const addr = l.storefrontAddress;
+    const addrLine = addr ? [
+      ...(addr.addressLines ?? []),
+      addr.locality, addr.administrativeArea, addr.postalCode,
+    ].filter(Boolean).join(", ") : "";
+    return {
+      location_id: String(l.name ?? "").replace(/^locations\//, ""),
+      title: l.title,
+      address: addrLine,
+      store_code: l.storeCode,
+      website: l.websiteUri,
+    };
+  }).filter((l) => l.location_id);
+  return json({ ok: true, items });
+}
 async function fetchReviewsForBranch(branch_id: string) {
   const sb = supa();
   const cfg = await getGoogleConfig(branch_id);
@@ -547,6 +617,13 @@ Deno.serve(async (req) => {
       case "test_connection":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
         return await testConnection(body.branch_id);
+      case "list_accounts":
+        if (!body.branch_id) return json({ error: "branch_id required" }, 400);
+        return await listAccounts(body.branch_id);
+      case "list_locations":
+        if (!body.branch_id) return json({ error: "branch_id required" }, 400);
+        if (!body.account_id) return json({ error: "account_id required" }, 400);
+        return await listLocations(body.branch_id, body.account_id);
       case "fetch_reviews":
         return await fetchReviews(body.branch_id);
       case "classify": {
