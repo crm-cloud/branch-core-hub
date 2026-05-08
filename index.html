@@ -11,7 +11,17 @@
     <link rel="dns-prefetch" href="https://storage.googleapis.com" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap" />
+    <!-- Non-blocking font load: stylesheet is fetched as a low-priority
+         preload then promoted to a stylesheet once it lands, so it no longer
+         blocks the initial render. The <noscript> fallback keeps the font
+         working when JS is disabled. -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap" /></noscript>
 
     <title>The Incline Life | Luxury Fitness & Recovery Club in Udaipur</title>
     <meta name="description" content="The Incline Life — Udaipur's luxury 24/7 fitness & recovery club. Panatta strength equipment, 7-wavelength infrared sauna, precision ice bath, 3D body & posture analysis, elite personal training and recovery lounge in Sector 14, Udaipur." />
