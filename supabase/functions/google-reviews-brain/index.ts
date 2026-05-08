@@ -1,3 +1,4 @@
+// v1.2.0 — Adds OAuth connect/callback + updated Google Business Profile API guidance.
 // v1.1.0 — Single edge function handling all Google Reviews operations.
 // Actions: test_connection | list_accounts | list_locations | fetch_reviews | classify | reply | request_member_review
 // Reads OAuth credentials from integration_settings(provider='google_business', branch_id=…)
@@ -13,9 +14,11 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const APP_BASE = Deno.env.get("APP_BASE_URL") || "https://incline.lovable.app";
 
 type Action =
   | "test_connection"
+  | "oauth_start"
   | "list_accounts"
   | "list_locations"
   | "fetch_reviews"
@@ -41,6 +44,15 @@ const json = (payload: unknown, status = 200) =>
   });
 
 const supa = () => createClient(SUPABASE_URL, SERVICE_ROLE);
+
+function htmlResponse(title: string, body: string, status = 200): Response {
+  return new Response(
+    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#0f172a}.card{background:#fff;border-radius:16px;padding:32px;max-width:520px;box-shadow:0 18px 45px -25px rgba(15,23,42,.35)}h1{margin:0 0 12px;font-size:22px}p{margin:8px 0;color:#475569;line-height:1.5}a{color:#4f46e5;text-decoration:none;font-weight:700}</style></head><body><div class="card">${body}</div></body></html>`,
+    { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
+  );
+}
+
+const redirect = (url: string) => new Response(null, { status: 302, headers: { Location: url } });
 
 // ─── Credential resolver ───
 async function getGoogleConfig(branch_id: string) {
