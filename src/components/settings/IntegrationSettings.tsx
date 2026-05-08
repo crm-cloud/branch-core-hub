@@ -1392,45 +1392,74 @@ function IntegrationConfigSheet({
             </div>
           )}
 
-          {type === 'google_business' && (
-            <div className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-2">
-              <p className="text-xs text-foreground">
-                <strong>Step 1:</strong> Save OAuth Client ID + Client Secret, then connect Google to create the refresh token required for API Explorer-style discovery.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <strong>Step 2:</strong> Use Auto-discover to fetch Account ID and Location ID from the connected Google account.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    const t = toast.loading('Opening Google authorization…');
-                    try {
-                      await connectGoogleBusiness();
-                    } catch (e: any) {
-                      toast.error(e?.message || 'Could not connect Google', { id: t });
-                    }
-                  }}
-                >
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                  Connect Google
-                </Button>
-                {onRequestDiscover && (
+          {type === 'google_business' && (() => {
+            const savedClientId = (existing?.credentials as any)?.client_id as string | undefined;
+            const hasRefreshToken = !!(existing?.credentials as any)?.refresh_token;
+            const maskedSaved = savedClientId
+              ? `${savedClientId.slice(0, 8)}…${savedClientId.slice(-16)}`
+              : null;
+            return (
+              <div className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-3">
+                <div className="space-y-2">
+                  <p className="text-xs text-foreground">
+                    <strong>Step 1:</strong> Save OAuth Client ID + Client Secret, then click Connect Google to create the refresh token used for API discovery.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Step 2:</strong> Use Auto-discover to fetch Account ID and Location ID from the connected Google account.
+                  </p>
+                </div>
+
+                {maskedSaved && (
+                  <div className="text-xs p-2 rounded-lg bg-background/60 border border-border space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Saved Client ID</span>
+                      <code className="font-mono text-[11px] break-all text-foreground">{maskedSaved}</code>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">OAuth refresh token</span>
+                      <span className={hasRefreshToken ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
+                        {hasRefreshToken ? 'Connected' : 'Not connected'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-[11px] p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300">
+                  Seeing <code className="font-mono">Error 401: deleted_client</code> from Google? The OAuth client was removed in Google Cloud. Open Google Auth Platform → Clients, create a new <strong>Web application</strong> client, paste the new Client ID + Secret here, save, then Connect Google.
+                </div>
+
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
-                    onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                    variant="outline"
+                    onClick={async () => {
+                      const t = toast.loading('Opening Google authorization…');
+                      try {
+                        await connectGoogleBusiness();
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Could not connect Google', { id: t });
+                      }
+                    }}
                   >
-                    <Search className="h-3.5 w-3.5 mr-1.5" />
-                    Auto-discover IDs
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    Connect Google
                   </Button>
-                )}
+                  {onRequestDiscover && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                    >
+                      <Search className="h-3.5 w-3.5 mr-1.5" />
+                      Auto-discover IDs
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {configFields.length > 0 && (
             <div className="space-y-4">
