@@ -1098,7 +1098,8 @@ function IntegrationConfigSheet({
   type, 
   provider, 
   existing,
-  branchId
+  branchId,
+  onRequestDiscover,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1106,6 +1107,7 @@ function IntegrationConfigSheet({
   provider: string;
   existing?: any;
   branchId?: string;
+  onRequestDiscover?: () => void;
 }) {
   const [isActive, setIsActive] = useState(existing?.is_active || false);
   const [config, setConfig] = useState<Record<string, string>>(existing?.config || {});
