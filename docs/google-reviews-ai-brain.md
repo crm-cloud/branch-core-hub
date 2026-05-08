@@ -64,11 +64,22 @@ Two new actions remove the manual paste of `account_id` / `location_id`:
 
 ## Current Google Console/API Library notes (May 2026 audit)
 
+- The OAuth client lives in **Google Auth Platform → Clients** (the legacy "APIs & Services → Credentials" page redirects here). Create a **Web application** client.
+- Required **Authorized redirect URI** (exact, no trailing slash): `https://<project-ref>.supabase.co/functions/v1/google-reviews-brain`. Authorized JavaScript origins are optional for this server-side flow.
 - Google split Business Profile surfaces across multiple API Library entries. Account discovery is **not** served by the older v4 reviews host.
 - Account list endpoint remains `GET https://mybusinessaccountmanagement.googleapis.com/v1/accounts`.
 - Location list endpoint remains `GET https://mybusinessbusinessinformation.googleapis.com/v1/accounts/{account_id}/locations` and **requires** `readMask`.
 - Review list/reply endpoints still use `https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews` and require a verified location.
 - API keys alone cannot list accounts/locations. Discovery requires an OAuth refresh token for a Google user that manages the Business Profile.
-- If the app says `OAuth not connected`, the saved integration row exists but `credentials.refresh_token` is missing. Use Configure → Save OAuth Client ID/Secret → Connect Google → Auto-discover IDs.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Error 401: deleted_client` on Google's screen | The OAuth client was deleted in Google Cloud. Create a new Web application client in Google Auth Platform → Clients, save the new Client ID + Secret in **Settings → Integrations → Google Business Profile → Configure**, then click **Connect Google**. |
+| `invalid_client` on token exchange | Client ID/Secret pair mismatched. Re-copy both from Google Auth Platform (no spaces) and save again. |
+| `redirect_uri_mismatch` | Add the exact callback URL above as an Authorized redirect URI in Google Cloud (no trailing slash). |
+| `OAuth not connected` in the app | Save Client ID + Secret, then click **Connect Google** — it stores the refresh token used by `list_accounts` / `list_locations` / `fetch_reviews`. |
+| `403 SERVICE_DISABLED` from a Google API | Enable the missing API in Google Cloud → APIs & Services → Library (My Business Account Management API, My Business Business Information API, Google My Business API). |
 
 **UI:** `Settings → Integrations → Google Business Profile → Auto-discover IDs` opens a Sheet with two cascading dropdowns. Save persists `account_id` + `location_id` into `integration_settings.config`. The manual text fields in the configure drawer remain available as a fallback.
