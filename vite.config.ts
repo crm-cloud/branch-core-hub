@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { drAssets } from "./vite-plugins/dr-assets";
 
 const SUPABASE_URL = "https://iyqqpbvnszyrrgerniog.supabase.co";
 const SUPABASE_ANON_KEY =
@@ -16,13 +15,6 @@ export default defineConfig(() => ({
   },
   plugins: [
     react(),
-    drAssets({
-      supabaseUrl: SUPABASE_URL,
-      supabaseAnonKey: SUPABASE_ANON_KEY,
-      env: process.env.VITE_APP_ENV ?? "primary",
-      version: process.env.VITE_BUILD_SHA,
-      supportEmail: "support@theincline.in",
-    }),
   ],
   build: {
     // Raised after vendor split lands. Charts/data vendors legitimately
