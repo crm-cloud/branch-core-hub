@@ -1,36 +1,66 @@
-# Fix Google Business Configure drawer & "find my IDs" flow
+# Fix Google OAuth — Recreate Deleted Client
 
-## What's broken
+Your screenshot shows **Error 401: deleted_client** — the OAuth client you were using has been deleted in Google Cloud. The Client Secret you pasted (`GOCSPX-…`) belongs to that deleted client and will no longer work, so we need to create a fresh one and wire it up.
 
-1. **"Unsupported type: google_business"** toast on the Configure drawer comes from `Test connection` calling `test-integration` edge fn — that function's `switch (type)` only handles sms/email/whatsapp/instagram/messenger. Google Business falls through to the default `Unsupported type` branch.
-2. **Auto-discover save will silently fail** — `GoogleBusinessDiscovery.tsx` (lines 99–100) filters `integration_settings` by `.eq('type', 'google_business')` and `.eq('provider', 'google_business')`, but the actual columns are `integration_type` and (for this row) `integration_type` is the discriminator. Same bug pattern we just fixed in the edge function.
-3. Users don't realise the **Auto-discover IDs** button on the Google Business card is the answer to "how do I find my Account ID / Location ID" — there's no inline hint inside the Configure drawer.
+⚠️ **Security note:** You pasted a client secret directly in chat. Even though this client is deleted, please rotate any secret you ever share in plain text. I will request the new secret via the secure secrets form, never in chat.
 
-## Plan
+---
 
-### A. Route Google Business test through the AI brain (1 edge fn rule)
-- In `supabase/functions/test-integration/index.ts`, add a `case "google_business"` that internally invokes `google-reviews-brain` with `{ action: "list_accounts", branch_id }` and returns `{ success: true }` if at least one account comes back, otherwise surfaces the brain's error verbatim (`OAuth not connected`, `Token expired`, `My Business API not enabled`, etc.).
-- Keeps the "one edge function for Google reviews" rule from the earlier brief — `test-integration` just delegates.
+## Step 1 — Create a new OAuth Client in Google Cloud
 
-### B. Fix the Discovery save bug
-- In `src/components/settings/GoogleBusinessDiscovery.tsx` `handleSave`, change `.eq('type', 'google_business')` → `.eq('integration_type', 'google_business')` and drop the redundant `.eq('provider', ...)` (or keep it if the row uses provider too — verified row uses `integration_type`).
+In **Google Auth Platform → Clients → Create client**:
 
-### C. Make "find your IDs" obvious inside the Configure drawer
-- In the Configure drawer (`IntegrationSettings.tsx`, Google Business branch around line 1158+), above the **Account ID** and **Location ID** inputs add a soft indigo info card:
-  > "Don't know your IDs? Close this and click **Auto-discover IDs** on the Google Business card — we'll fetch them from your connected Google account."
-- Add a secondary `Auto-discover` link-button inside the drawer that closes the Configure sheet and opens `GoogleBusinessDiscovery` directly, so the user doesn't have to back out manually.
+- **Application type:** Web application
+- **Name:** Incline CRM (or anything you like)
 
-### D. Audit notes (no code change, just confirm in plan)
-- `integration_settings` row for Google Business is **branch-scoped** (already enforced by `isBranchSpecific` flag at line 1159) — Auto-discover already passes `branchId`. ✓
-- `google-reviews-brain` already reads creds via `integration_type='google_business'` after the previous fix. ✓
-- OAuth Client ID / Secret / API Key live in `credentials` JSON; `account_id` / `location_id` live in `config` JSON. Discovery writes to `config` only — correct. ✓
+**Authorised JavaScript origins** (add both):
+```
+https://iyqqpbvnszyrrgerniog.supabase.co
+https://id-preview--d9395869-4f5c-4b42-8e1d-4027aacab172.lovable.app
+```
+(Plus `https://www.theincline.in` and `https://incline.lovable.app` if you want to start the flow from the live app too.)
 
-## Files touched
-- `supabase/functions/test-integration/index.ts` — add `google_business` case delegating to brain
-- `src/components/settings/GoogleBusinessDiscovery.tsx` — fix column name in save query
-- `src/components/settings/IntegrationSettings.tsx` — inline hint + "Auto-discover" shortcut inside Configure drawer
+**Authorised redirect URIs** (this is the critical one — must match EXACTLY):
+```
+https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/google-reviews-brain
+```
 
-## Outcome
-- `Test connection` returns a real status ("Connected — 2 accounts visible" / "Token expired, reconnect OAuth") instead of the misleading "Unsupported type".
-- Auto-discover actually persists the picked Account ID + Location ID.
-- Anyone opening the Configure drawer immediately sees how to fetch IDs without leaving the screen or hunting in Google Cloud Console.
+Click **Create**. Google will show you the new **Client ID** and **Client Secret** — copy both.
+
+## Step 2 — Make sure required APIs are enabled
+
+In Google Cloud → APIs & Services → Library, enable:
+- My Business Account Management API
+- My Business Business Information API
+- Google My Business API (legacy — needed for reviews list/reply)
+
+## Step 3 — Save credentials in Incline
+
+Two options, pick one:
+
+**A) Per-branch (recommended)** — open Settings → Integrations → Google Business Profile → Configure, paste the new Client ID + Client Secret + API Key into the credentials fields, Save.
+
+**B) Global fallback** — I'll request them as Lovable Cloud secrets (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`) so any branch without per-branch creds inherits them. Tell me if you want this and I'll trigger the secure form.
+
+## Step 4 — Connect & Discover
+
+1. Click **Connect Google** in the Configure drawer → sign in with the Google account that owns the Business Profile → consent.
+2. The callback writes a `refresh_token` into `integration_settings`.
+3. Click **Auto-discover IDs** → Account ID + Location ID auto-populate.
+4. **Test connection** → should show "Connected — N accounts visible".
+
+---
+
+## What I'll change in code (only if needed)
+
+Most likely **no code changes are required** — the redirect URI, OAuth start, callback handler, and discovery are already implemented from the previous round. After you recreate the client and save the new credentials, the flow should just work.
+
+If during testing we hit a new Google API surface change (e.g. account listing moved endpoints again), I'll patch `google-reviews-brain` and re-test with `curl` against the live function.
+
+---
+
+## Confirm before I proceed
+
+Reply with:
+1. "Done, created new client" — then I'll walk you through saving credentials and run a live `curl` test against `oauth_start` and `list_accounts` to verify end-to-end.
+2. Or "Use global secrets" — and I'll open the secure secrets form for `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`.
