@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Star, MessageSquare, CheckCircle, Clock, Eye, Globe, Download,
   Send, AlertTriangle, MailQuestion, ThumbsUp, Reply,
@@ -17,6 +18,7 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
 import { format, subDays } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
+import ExternalReviewsTab from '@/components/feedback/ExternalReviewsTab';
 
 type RequestStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'failed';
 
