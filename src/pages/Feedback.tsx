@@ -365,6 +365,12 @@ export default function FeedbackPage() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="external" className="mt-6">
+            <ExternalReviewsTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );
