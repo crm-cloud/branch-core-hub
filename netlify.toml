@@ -27,6 +27,12 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# Vite emits hashed filenames into /assets/* — safe to cache forever.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 [[headers]]
   for = "/*"
   [headers.values]
