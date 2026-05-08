@@ -1196,8 +1196,20 @@ function IntegrationConfigSheet({
       const existingCreds: Record<string, string> = (existing?.credentials as any) || {};
       const mergedCredentials: Record<string, string> = { ...existingCreds };
       for (const [k, v] of Object.entries(credentials)) {
-        if (touchedCredentials[k]) mergedCredentials[k] = v;
-        else if (!(k in existingCreds) && v) mergedCredentials[k] = v;
+        const cleanValue = typeof v === 'string' ? v.trim() : v;
+        if (touchedCredentials[k]) mergedCredentials[k] = cleanValue;
+        else if (!(k in existingCreds) && cleanValue) mergedCredentials[k] = cleanValue;
+      }
+
+      const googleOAuthChanged = type === 'google_business' && provider === 'google_business' && (
+        (touchedCredentials.client_id && mergedCredentials.client_id !== existingCreds.client_id) ||
+        touchedCredentials.client_secret
+      );
+      if (googleOAuthChanged) {
+        delete mergedCredentials.access_token;
+        delete mergedCredentials.refresh_token;
+        delete mergedCredentials.token_expires_at;
+        delete mergedCredentials.scope;
       }
 
       const payload = {
@@ -1246,7 +1258,10 @@ function IntegrationConfigSheet({
           <Label>{field.label}</Label>
           <Select
             value={values[field.key] || field.options[0]?.value || ''}
-            onValueChange={(v) => setter({ ...values, [field.key]: v })}
+            onValueChange={(v) => {
+              setter({ ...values, [field.key]: v });
+              if (field.section === 'credentials') setTouchedCredentials((p) => ({ ...p, [field.key]: true }));
+            }}
           >
             <SelectTrigger><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
             <SelectContent>
@@ -1329,7 +1344,10 @@ function IntegrationConfigSheet({
         <Input
           type={field.type === 'password' ? 'password' : 'text'}
           value={values[field.key] || ''}
-          onChange={(e) => setter({ ...values, [field.key]: e.target.value })}
+          onChange={(e) => {
+            setter({ ...values, [field.key]: e.target.value });
+            if (field.section === 'credentials') setTouchedCredentials((p) => ({ ...p, [field.key]: true }));
+          }}
           placeholder={field.placeholder}
         />
       </div>
