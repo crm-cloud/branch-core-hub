@@ -1029,29 +1029,29 @@ export function IntegrationSettings() {
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Enable Google Business Profile API</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Go to <span className="font-mono text-primary">console.cloud.google.com</span> → APIs & Services → Enable "Google My Business API".</p>
+                        <h4 className="font-semibold text-sm">Enable Google API Library services</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">In Google Cloud Console → APIs & Services → Library, enable <strong>My Business Account Management API</strong>, <strong>My Business Business Information API</strong>, and <strong>Google My Business API</strong>.</p>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
                       <div>
                         <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">In Google Cloud Console → Credentials → Create OAuth 2.0 Client ID.</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Create a Web application OAuth Client ID. Add this callback URL as an Authorized redirect URI: <code className="font-mono text-primary break-all">{SUPABASE_FUNCTION_BASE}/google-reviews-brain</code></p>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Get Your Account & Location IDs</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Use the API Explorer to find your <strong>Account ID</strong> and <strong>Location ID</strong>.</p>
+                        <h4 className="font-semibold text-sm">Save credentials and connect OAuth</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Paste Client ID + Client Secret, save, then click <strong>Connect Google</strong>. The app requests <code className="font-mono">business.manage</code> with offline access so it can store a refresh token.</p>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Configure Above & Test</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Click "Setup" above and enter your credentials.</p>
+                        <h4 className="font-semibold text-sm">Auto-discover IDs and test</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Click <strong>Auto-discover IDs</strong> to call Google's current Account Management and Business Information APIs, save the selected location, then test the connection.</p>
                       </div>
                     </div>
                   </div>
