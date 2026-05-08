@@ -93,7 +93,7 @@ export default function GoogleBusinessDiscovery({
     }
     setSaving(true);
     try {
-      const { data: row, error: selErr } = await supabase
+      const { data: row, error: selErr } = await (supabase as any)
         .from('integration_settings')
         .select('id, config')
         .eq('type', 'google_business')
@@ -106,7 +106,7 @@ export default function GoogleBusinessDiscovery({
         return;
       }
       const newConfig = { ...((row.config as any) ?? {}), account_id: accountId, location_id: locationId };
-      const { error: updErr } = await supabase
+      const { error: updErr } = await (supabase as any)
         .from('integration_settings')
         .update({ config: newConfig })
         .eq('id', row.id);
