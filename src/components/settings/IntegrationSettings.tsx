@@ -987,6 +987,22 @@ export function IntegrationSettings() {
                             Test connection
                           </Button>
                         )}
+                        {config?.branch_id && (
+                          <Button
+                            className="w-full mt-2"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setDiscoverOpen({
+                              branchId: config.branch_id,
+                              branchName: (config as any)?.branch_name,
+                              accountId: (config.config as any)?.account_id,
+                              locationId: (config.config as any)?.location_id,
+                            })}
+                          >
+                            <Search className="h-4 w-4 mr-2" />
+                            Auto-discover IDs
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   );
