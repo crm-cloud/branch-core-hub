@@ -81,6 +81,14 @@ async function getGoogleConfig(branch_id: string) {
   };
 }
 
+function googleCredentialsForPersist(cfg: any, updates: Record<string, unknown>) {
+  const base: Record<string, unknown> = {};
+  for (const key of ["client_id", "client_secret", "api_key", "access_token", "refresh_token", "token_expires_at", "scope"]) {
+    if (cfg?.[key] !== undefined) base[key] = cfg[key];
+  }
+  return { ...base, ...updates };
+}
+
 async function startGoogleOAuth(branch_id: string) {
   const cfg = await getGoogleConfig(branch_id);
   if (!cfg) return json({ ok: false, reason: "Save and enable Google Business settings for this branch first." }, 200);
@@ -133,13 +141,12 @@ async function handleGoogleOAuthCallback(url: URL) {
   const expiresAt = new Date(Date.now() + Number(tokenData.expires_in ?? 3600) * 1000).toISOString();
   const sb = supa();
   await sb.from("integration_settings").update({
-    credentials: {
-      ...cfg,
+    credentials: googleCredentialsForPersist(cfg, {
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token ?? cfg.refresh_token,
       token_expires_at: expiresAt,
       scope: tokenData.scope,
-    },
+    }),
     is_active: true,
     updated_at: new Date().toISOString(),
   }).eq("integration_type", "google_business").eq("provider", "google_business").eq("branch_id", branchId);
