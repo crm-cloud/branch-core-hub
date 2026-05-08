@@ -1,3 +1,4 @@
+// v1.3.0 — Adds masked client_id diagnostic to oauth_start + maps deleted_client / invalid_client / redirect_uri_mismatch errors with actionable guidance.
 // v1.2.0 — Adds OAuth connect/callback + updated Google Business Profile API guidance.
 // v1.1.0 — Single edge function handling all Google Reviews operations.
 // Actions: test_connection | list_accounts | list_locations | fetch_reviews | classify | reply | request_member_review
@@ -105,7 +106,16 @@ async function startGoogleOAuth(branch_id: string) {
     include_granted_scopes: "true",
     state: branch_id,
   });
-  return json({ ok: true, auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, redirect_uri: GOOGLE_OAUTH_REDIRECT_URI });
+  const cidStr = String(cfg.client_id || "");
+  const masked_client_id = cidStr.length > 14
+    ? `${cidStr.slice(0, 8)}…${cidStr.slice(-12)}`
+    : cidStr;
+  return json({
+    ok: true,
+    auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+    redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
+    masked_client_id,
+  });
 }
 
 async function handleGoogleOAuthCallback(url: URL) {
@@ -136,7 +146,25 @@ async function handleGoogleOAuthCallback(url: URL) {
   const tokenData = await tokenResp.json().catch(() => ({}));
   if (!tokenResp.ok || !tokenData?.access_token) {
     console.error("Google OAuth exchange failed", tokenData);
-    return htmlResponse("Google token exchange failed", `<h1>Token exchange failed</h1><p>${tokenData?.error_description || tokenData?.error || "Google refused the authorization code."}</p><p>Confirm the redirect URI in Google Cloud matches this callback URL exactly.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+    const err = String(tokenData?.error || "");
+    const desc = String(tokenData?.error_description || "");
+    let hint = "Confirm the redirect URI in Google Cloud matches this callback URL exactly.";
+    if (err === "deleted_client" || /deleted_client/i.test(desc)) {
+      hint = "The OAuth client was deleted in Google Cloud. Open Google Auth Platform → Clients, create a new <strong>Web application</strong> client, save its Client ID + Secret in Incline, then click Connect Google again.";
+    } else if (err === "invalid_client" || /invalid_client/i.test(desc)) {
+      hint = "Google rejected the Client ID/Secret pair. Re-copy both from Google Auth Platform → Clients (no spaces, full string) and save them in Incline before reconnecting.";
+    } else if (err === "redirect_uri_mismatch" || /redirect_uri_mismatch/i.test(desc)) {
+      hint = `In Google Cloud, add this exact Authorized redirect URI: <code>${GOOGLE_OAUTH_REDIRECT_URI}</code>`;
+    } else if (err === "invalid_grant" || /invalid_grant/i.test(desc)) {
+      hint = "The authorization code expired or was already used. Click Connect Google again to retry.";
+    } else if (err === "access_denied") {
+      hint = "You cancelled the Google consent screen. Click Connect Google to try again and grant the requested permissions.";
+    }
+    return htmlResponse(
+      "Google token exchange failed",
+      `<h1>Token exchange failed</h1><p>${desc || err || "Google refused the authorization code."}</p><p>${hint}</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`,
+      400,
+    );
   }
   const expiresAt = new Date(Date.now() + Number(tokenData.expires_in ?? 3600) * 1000).toISOString();
   const sb = supa();
