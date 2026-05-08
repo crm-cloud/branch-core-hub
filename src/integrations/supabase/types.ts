@@ -11592,6 +11592,7 @@ export type Database = {
         }
         Returns: Json
       }
+      dr_get_or_create_token: { Args: never; Returns: string }
       dr_is_operational: { Args: never; Returns: boolean }
       enforce_branch_match: {
         Args: { p_branch_id: string }
