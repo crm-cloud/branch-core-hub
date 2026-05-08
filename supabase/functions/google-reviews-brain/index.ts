@@ -1,3 +1,4 @@
+// v1.2.0 — Adds OAuth connect/callback + updated Google Business Profile API guidance.
 // v1.1.0 — Single edge function handling all Google Reviews operations.
 // Actions: test_connection | list_accounts | list_locations | fetch_reviews | classify | reply | request_member_review
 // Reads OAuth credentials from integration_settings(provider='google_business', branch_id=…)
@@ -13,9 +14,12 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const APP_BASE = Deno.env.get("APP_BASE_URL") || "https://incline.lovable.app";
+const GOOGLE_OAUTH_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/google-reviews-brain`;
 
 type Action =
   | "test_connection"
+  | "oauth_start"
   | "list_accounts"
   | "list_locations"
   | "fetch_reviews"
@@ -42,6 +46,15 @@ const json = (payload: unknown, status = 200) =>
 
 const supa = () => createClient(SUPABASE_URL, SERVICE_ROLE);
 
+function htmlResponse(title: string, body: string, status = 200): Response {
+  return new Response(
+    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#0f172a}.card{background:#fff;border-radius:16px;padding:32px;max-width:520px;box-shadow:0 18px 45px -25px rgba(15,23,42,.35)}h1{margin:0 0 12px;font-size:22px}p{margin:8px 0;color:#475569;line-height:1.5}a{color:#4f46e5;text-decoration:none;font-weight:700}</style></head><body><div class="card">${body}</div></body></html>`,
+    { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
+  );
+}
+
+const redirect = (url: string) => new Response(null, { status: 302, headers: { Location: url } });
+
 // ─── Credential resolver ───
 async function getGoogleConfig(branch_id: string) {
   const sb = supa();
@@ -66,6 +79,78 @@ async function getGoogleConfig(branch_id: string) {
     refresh_token: cred.refresh_token,
     token_expires_at: cred.token_expires_at,
   };
+}
+
+function googleCredentialsForPersist(cfg: any, updates: Record<string, unknown>) {
+  const base: Record<string, unknown> = {};
+  for (const key of ["client_id", "client_secret", "api_key", "access_token", "refresh_token", "token_expires_at", "scope"]) {
+    if (cfg?.[key] !== undefined) base[key] = cfg[key];
+  }
+  return { ...base, ...updates };
+}
+
+async function startGoogleOAuth(branch_id: string) {
+  const cfg = await getGoogleConfig(branch_id);
+  if (!cfg) return json({ ok: false, reason: "Save and enable Google Business settings for this branch first." }, 200);
+  if (!cfg.client_id || !cfg.client_secret) {
+    return json({ ok: false, reason: "Save OAuth Client ID and Client Secret before connecting Google." }, 200);
+  }
+  const params = new URLSearchParams({
+    client_id: cfg.client_id,
+    redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
+    response_type: "code",
+    scope: "https://www.googleapis.com/auth/business.manage",
+    access_type: "offline",
+    prompt: "consent",
+    include_granted_scopes: "true",
+    state: branch_id,
+  });
+  return json({ ok: true, auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, redirect_uri: GOOGLE_OAUTH_REDIRECT_URI });
+}
+
+async function handleGoogleOAuthCallback(url: URL) {
+  const code = url.searchParams.get("code");
+  const branchId = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
+  if (error) {
+    return htmlResponse("Google authorization failed", `<h1>Authorization failed</h1><p>${error}</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  if (!code || !branchId) {
+    return htmlResponse("Invalid Google callback", `<h1>Missing callback data</h1><p>This URL must be opened by Google after authorization.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  const cfg = await getGoogleConfig(branchId);
+  if (!cfg?.client_id || !cfg?.client_secret) {
+    return htmlResponse("Google app not configured", `<h1>OAuth credentials missing</h1><p>Save the OAuth Client ID and Client Secret for this branch, then connect again.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: cfg.client_id,
+      client_secret: cfg.client_secret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
+    }),
+  });
+  const tokenData = await tokenResp.json().catch(() => ({}));
+  if (!tokenResp.ok || !tokenData?.access_token) {
+    console.error("Google OAuth exchange failed", tokenData);
+    return htmlResponse("Google token exchange failed", `<h1>Token exchange failed</h1><p>${tokenData?.error_description || tokenData?.error || "Google refused the authorization code."}</p><p>Confirm the redirect URI in Google Cloud matches this callback URL exactly.</p><p><a href="${APP_BASE}/settings?tab=integrations">Back to Integrations</a></p>`, 400);
+  }
+  const expiresAt = new Date(Date.now() + Number(tokenData.expires_in ?? 3600) * 1000).toISOString();
+  const sb = supa();
+  await sb.from("integration_settings").update({
+    credentials: googleCredentialsForPersist(cfg, {
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token ?? cfg.refresh_token,
+      token_expires_at: expiresAt,
+      scope: tokenData.scope,
+    }),
+    is_active: true,
+    updated_at: new Date().toISOString(),
+  }).eq("integration_type", "google_business").eq("provider", "google_business").eq("branch_id", branchId);
+  return redirect(`${APP_BASE}/settings?tab=integrations&google_oauth=success`);
 }
 
 async function refreshAccessToken(branch_id: string, cfg: any): Promise<string | null> {
@@ -97,11 +182,10 @@ async function refreshAccessToken(branch_id: string, cfg: any): Promise<string |
   await sb
     .from("integration_settings")
     .update({
-      credentials: {
-        ...cfg,
+      credentials: googleCredentialsForPersist(cfg, {
         access_token: newAccess,
         token_expires_at: expiresAt,
-      },
+      }),
     })
     .eq("integration_type", "google_business")
     .eq("provider", "google_business")
@@ -596,6 +680,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const requestUrl = new URL(req.url);
+    if (req.method === "GET" && (requestUrl.searchParams.has("code") || requestUrl.searchParams.has("error"))) {
+      return await handleGoogleOAuthCallback(requestUrl);
+    }
+
     const body = (await req.json()) as Body;
     const action = body.action;
     if (!action) return json({ error: "action required" }, 400);
@@ -617,6 +706,9 @@ Deno.serve(async (req) => {
       case "test_connection":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
         return await testConnection(body.branch_id);
+      case "oauth_start":
+        if (!body.branch_id) return json({ error: "branch_id required" }, 400);
+        return await startGoogleOAuth(body.branch_id);
       case "list_accounts":
         if (!body.branch_id) return json({ error: "branch_id required" }, 400);
         return await listAccounts(body.branch_id);

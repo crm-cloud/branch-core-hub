@@ -7,6 +7,7 @@ A single edge function (`google-reviews-brain`) handles every Google-Reviews-rel
 | `action` | Used by | Purpose |
 |---|---|---|
 | `test_connection` | Settings → Integrations → Google Business "Test connection" button | Verifies branch OAuth credentials by hitting Google Business v4. |
+| `oauth_start` | Configure Google Business drawer → "Connect Google" | Starts Google OAuth with `business.manage`, `access_type=offline`, and `prompt=consent` so Google returns a refresh token. |
 | `fetch_reviews` | pg_cron (`google-reviews-brain-fetch`, every 4h) + manual "Fetch now" in External Reviews tab | Pulls latest reviews for one branch (or all auto-enabled branches) and upserts into `google_reviews_inbound`. New rows get inline `classify`. |
 | `classify` | Inline after fetch, plus per-row "Re-analyse" button | Matches author against members/leads (Dice-bigram ≥0.7), then asks Lovable AI Gateway (Gemini 3 Flash) for `{classification, reasoning, draft_reply}`. Auto-creates a recovery task when classification is `unhappy_member`. |
 | `reply` | "Post reply to Google" button | PUT `accounts/{a}/locations/{l}/reviews/{id}/reply`. Stamps `replied_at` + `google_reply_text`. |
@@ -31,12 +32,14 @@ pg_cron (every 4h)
 - **No public-website surface** for testimonials in pre-opening stage. `is_approved_for_google` and `consent_for_testimonial` columns persist for a future activation but are not read by marketing pages today.
 
 ## Credentials
-Stored per-branch in `integration_settings(type='google_business', provider='google_business', branch_id=…)`:
+Stored per-branch in `integration_settings(integration_type='google_business', provider='google_business', branch_id=…)`:
 - `config.account_id`, `config.location_id`, `config.auto_fetch_reviews`
 - `credentials.client_id`, `credentials.client_secret`, `credentials.api_key`
 - `credentials.refresh_token`, `credentials.access_token`, `credentials.token_expires_at` (managed by the brain)
 
 OAuth refresh: the brain refreshes `access_token` lazily (>2 min before expiry threshold) using `refresh_token` + Google's `oauth2.googleapis.com/token` endpoint, and persists the new token back into `integration_settings.credentials`.
+
+OAuth callback URL to add in Google Cloud OAuth Client: `https://<project-ref>.supabase.co/functions/v1/google-reviews-brain`.
 
 ## RLS
 - `google_reviews_inbound` SELECT/UPDATE: owner/admin OR branch manager OR `staff_branches` member
@@ -58,5 +61,14 @@ Two new actions remove the manual paste of `account_id` / `location_id`:
 - My Business Account Management API
 - My Business Business Information API
 - My Business v4 (used by `fetch_reviews` / `reply`)
+
+## Current Google Console/API Library notes (May 2026 audit)
+
+- Google split Business Profile surfaces across multiple API Library entries. Account discovery is **not** served by the older v4 reviews host.
+- Account list endpoint remains `GET https://mybusinessaccountmanagement.googleapis.com/v1/accounts`.
+- Location list endpoint remains `GET https://mybusinessbusinessinformation.googleapis.com/v1/accounts/{account_id}/locations` and **requires** `readMask`.
+- Review list/reply endpoints still use `https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews` and require a verified location.
+- API keys alone cannot list accounts/locations. Discovery requires an OAuth refresh token for a Google user that manages the Business Profile.
+- If the app says `OAuth not connected`, the saved integration row exists but `credentials.refresh_token` is missing. Use Configure → Save OAuth Client ID/Secret → Connect Google → Auto-discover IDs.
 
 **UI:** `Settings → Integrations → Google Business Profile → Auto-discover IDs` opens a Sheet with two cascading dropdowns. Save persists `account_id` + `location_id` into `integration_settings.config`. The manual text fields in the configure drawer remain available as a fallback.

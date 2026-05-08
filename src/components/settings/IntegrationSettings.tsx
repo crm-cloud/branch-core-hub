@@ -1029,29 +1029,29 @@ export function IntegrationSettings() {
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Enable Google Business Profile API</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Go to <span className="font-mono text-primary">console.cloud.google.com</span> → APIs & Services → Enable "Google My Business API".</p>
+                        <h4 className="font-semibold text-sm">Enable Google API Library services</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">In Google Cloud Console → APIs & Services → Library, enable <strong>My Business Account Management API</strong>, <strong>My Business Business Information API</strong>, and <strong>Google My Business API</strong>.</p>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
                       <div>
                         <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">In Google Cloud Console → Credentials → Create OAuth 2.0 Client ID.</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Create a Web application OAuth Client ID. Add this callback URL as an Authorized redirect URI: <code className="font-mono text-primary break-all">{SUPABASE_FUNCTION_BASE}/google-reviews-brain</code></p>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Get Your Account & Location IDs</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Use the API Explorer to find your <strong>Account ID</strong> and <strong>Location ID</strong>.</p>
+                        <h4 className="font-semibold text-sm">Save credentials and connect OAuth</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Paste Client ID + Client Secret, save, then click <strong>Connect Google</strong>. The app requests <code className="font-mono">business.manage</code> with offline access so it can store a refresh token.</p>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
                       <div>
-                        <h4 className="font-semibold text-sm">Configure Above & Test</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">Click "Setup" above and enter your credentials.</p>
+                        <h4 className="font-semibold text-sm">Auto-discover IDs and test</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Click <strong>Auto-discover IDs</strong> to call Google's current Account Management and Business Information APIs, save the selected location, then test the connection.</p>
                       </div>
                     </div>
                   </div>
@@ -1153,6 +1153,21 @@ function IntegrationConfigSheet({
     const token = generateRandomSecret();
     setCredentials((prev) => ({ ...prev, api_key: token }));
     copyToClipboard(token, 'API key copied');
+  };
+
+  const connectGoogleBusiness = async () => {
+    if (!branchId) {
+      toast.error('Please select a branch before connecting Google.');
+      return;
+    }
+    const { data, error } = await supabase.functions.invoke('google-reviews-brain', {
+      body: { action: 'oauth_start', branch_id: branchId },
+    });
+    if (error) throw error;
+    if (!(data as any)?.ok || !(data as any)?.auth_url) {
+      throw new Error((data as any)?.reason || 'Could not start Google authorization');
+    }
+    window.location.assign((data as any).auth_url);
   };
 
   // Sync state when existing prop changes (e.g., opening sheet for different provider)
@@ -1378,22 +1393,42 @@ function IntegrationConfigSheet({
           )}
 
           {type === 'google_business' && (
-            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-2">
-              <p className="text-xs text-indigo-900">
-                <strong>Don't know your Account ID / Location ID?</strong> Use Auto-discover to fetch them from your connected Google account — no need to hunt in Google Cloud Console.
+            <div className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-2">
+              <p className="text-xs text-foreground">
+                <strong>Step 1:</strong> Save OAuth Client ID + Client Secret, then connect Google to create the refresh token required for API Explorer-style discovery.
               </p>
-              {onRequestDiscover && (
+              <p className="text-xs text-muted-foreground">
+                <strong>Step 2:</strong> Use Auto-discover to fetch Account ID and Location ID from the connected Google account.
+              </p>
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="bg-white"
-                  onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                  onClick={async () => {
+                    const t = toast.loading('Opening Google authorization…');
+                    try {
+                      await connectGoogleBusiness();
+                    } catch (e: any) {
+                      toast.error(e?.message || 'Could not connect Google', { id: t });
+                    }
+                  }}
                 >
-                  <Search className="h-3.5 w-3.5 mr-1.5" />
-                  Auto-discover IDs
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Connect Google
                 </Button>
-              )}
+                {onRequestDiscover && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                  >
+                    <Search className="h-3.5 w-3.5 mr-1.5" />
+                    Auto-discover IDs
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 

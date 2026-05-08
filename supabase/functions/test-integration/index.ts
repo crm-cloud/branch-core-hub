@@ -1,3 +1,4 @@
+// v1.4.1 — google_business reads google-reviews-brain `items` response and surfaces OAuth setup state.
 // v1.4.0 — google_business test delegates to google-reviews-brain (list_accounts).
 // v1.3.0 — Phase G: pinned to shared META_API_BASE / IG_API_BASE (v25.0) with IG fallback.
 // v1.2.0 — Instagram now auto-detects IGAA (Instagram Login) vs EAA (Facebook Login) tokens
@@ -117,10 +118,11 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ action: "list_accounts", branch_id }),
           });
           const brainData = await brainResp.json().catch(() => ({}));
-          if (!brainResp.ok || brainData?.error) {
-            result = { success: false, error: brainData?.error || `Google Business test failed (HTTP ${brainResp.status})` };
+          if (!brainResp.ok || brainData?.error || brainData?.ok === false) {
+            result = { success: false, error: brainData?.reason || brainData?.error || `Google Business test failed (HTTP ${brainResp.status})` };
           } else {
-            const count = Array.isArray(brainData?.accounts) ? brainData.accounts.length : 0;
+            const visibleAccounts = Array.isArray(brainData?.items) ? brainData.items : brainData?.accounts;
+            const count = Array.isArray(visibleAccounts) ? visibleAccounts.length : 0;
             result = count > 0
               ? { success: true, message: `Connected — ${count} Google Business account(s) visible` }
               : { success: false, error: "Connected to Google, but no Business Profile accounts are visible for this user." };

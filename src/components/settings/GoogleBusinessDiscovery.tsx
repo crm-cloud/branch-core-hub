@@ -140,7 +140,12 @@ export default function GoogleBusinessDiscovery({
           {error && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>
+                {error}
+                {error.includes('OAuth not connected') && (
+                  <span className="block mt-1 text-xs">Open Configure, save the OAuth Client ID/Secret, then click Connect Google before discovering IDs.</span>
+                )}
+              </AlertDescription>
             </Alert>
           )}
 
