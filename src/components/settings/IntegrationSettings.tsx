@@ -1393,22 +1393,42 @@ function IntegrationConfigSheet({
           )}
 
           {type === 'google_business' && (
-            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-2">
-              <p className="text-xs text-indigo-900">
-                <strong>Don't know your Account ID / Location ID?</strong> Use Auto-discover to fetch them from your connected Google account — no need to hunt in Google Cloud Console.
+            <div className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-2">
+              <p className="text-xs text-foreground">
+                <strong>Step 1:</strong> Save OAuth Client ID + Client Secret, then connect Google to create the refresh token required for API Explorer-style discovery.
               </p>
-              {onRequestDiscover && (
+              <p className="text-xs text-muted-foreground">
+                <strong>Step 2:</strong> Use Auto-discover to fetch Account ID and Location ID from the connected Google account.
+              </p>
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="bg-white"
-                  onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                  onClick={async () => {
+                    const t = toast.loading('Opening Google authorization…');
+                    try {
+                      await connectGoogleBusiness();
+                    } catch (e: any) {
+                      toast.error(e?.message || 'Could not connect Google', { id: t });
+                    }
+                  }}
                 >
-                  <Search className="h-3.5 w-3.5 mr-1.5" />
-                  Auto-discover IDs
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Connect Google
                 </Button>
-              )}
+                {onRequestDiscover && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => { onOpenChange(false); setTimeout(() => onRequestDiscover(), 150); }}
+                  >
+                    <Search className="h-3.5 w-3.5 mr-1.5" />
+                    Auto-discover IDs
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
