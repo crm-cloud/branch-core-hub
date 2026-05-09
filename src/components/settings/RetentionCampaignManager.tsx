@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
-import { Megaphone, Send, Save, Zap, Clock, Gift, Mail, MessageSquare, Phone, BarChart3, ShieldCheck } from 'lucide-react';
+import { Megaphone, Send, Save, Zap, Clock, Gift, Mail, MessageSquare, Phone, BarChart3, ShieldCheck, Sparkles } from 'lucide-react';
+import { dispatchCommunication } from '@/lib/comms/dispatch';
+import { useBranchContext } from '@/contexts/BranchContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { AIGenerateTemplatesDrawer } from '@/components/settings/AIGenerateTemplatesDrawer';
 
 const STAGE_ICONS = [Zap, Clock, Gift];
 const STAGE_COLORS = [
