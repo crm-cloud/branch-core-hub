@@ -82,23 +82,21 @@ export default function MembersCountingChart({ branchFilter }: Props) {
     <Card className="rounded-2xl border-0 shadow-lg shadow-primary/5">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-lg">Members Counting</CardTitle>
-        <ToggleGroup
-          type="single"
-          value={period}
-          onValueChange={(v) => v && setPeriod(v as Period)}
-          className="bg-muted rounded-full p-1"
-          aria-label="Select time period"
-        >
+        <div className="inline-flex bg-muted rounded-full p-1" role="group" aria-label="Select time period">
           {(['weekly', 'monthly', 'yearly'] as Period[]).map((p) => (
-            <ToggleGroupItem
+            <button
               key={p}
-              value={p}
-              className="rounded-full text-xs font-semibold uppercase px-3 py-1 data-[state=on]:bg-background data-[state=on]:shadow-sm"
+              type="button"
+              onClick={() => setPeriod(p)}
+              className={cn(
+                'rounded-full text-xs font-semibold uppercase px-3 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                period === p ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              )}
             >
               {p}
-            </ToggleGroupItem>
+            </button>
           ))}
-        </ToggleGroup>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
