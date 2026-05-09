@@ -214,21 +214,26 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   };
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[92vh]">
-        <DrawerHeader className="text-left">
-          <DrawerTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col gap-0">
+        <SheetHeader className="px-5 py-4 border-b text-left">
+          <SheetTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
             {results ? 'Assignment Confirmation' : 'Assign Plan to Members'}
-          </DrawerTitle>
+          </SheetTitle>
           {plan && !results && (
-            <DrawerDescription>
+            <SheetDescription>
               <span className="font-medium text-foreground">{plan.name}</span> — {plan.type} plan
-            </DrawerDescription>
+              {!results && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">
+                  {planWeeks} {planWeeks === 1 ? 'week' : 'weeks'}
+                </span>
+              )}
+            </SheetDescription>
           )}
-        </DrawerHeader>
+        </SheetHeader>
 
-        <div className="px-4 pb-2 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-5 py-4">
           {results ? (
             <ConfirmationView results={results} channels={channels} />
           ) : (
