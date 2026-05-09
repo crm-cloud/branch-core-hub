@@ -1,3 +1,4 @@
+// run-retention-nudges v2.0.0 — routes all sends through dispatch-communication
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
