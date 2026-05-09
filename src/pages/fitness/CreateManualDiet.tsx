@@ -11,7 +11,7 @@ import { Plus, Trash2, UtensilsCrossed, Clock, AlertTriangle, ArrowLeftRight, Li
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
-import { newDraftId, saveDraft } from '@/lib/planDraft';
+import { newDraftId, saveDraft, loadDraft } from '@/lib/planDraft';
 import { cn } from '@/lib/utils';
 import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
 import { MealSwapModal } from '@/components/fitness/MealSwapModal';
