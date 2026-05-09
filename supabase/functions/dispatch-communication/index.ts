@@ -1,4 +1,9 @@
-// dispatch-communication v1.10.0
+// dispatch-communication v1.11.0
+// v1.11.0: Document-header WhatsApp templates never inject the signed PDF URL
+//          into BODY variables (would surface as "Download: <url>" in chat).
+//          PDF flows ONLY through the HEADER component. Also writes a clean
+//          rendered body to communication_logs.content + whatsapp_messages.content
+//          so audit/inbox views never display the long signed URL.
 // v1.10.0: Never downgrade approved BODY-only WhatsApp templates with PDFs to
 //          freeform document sends (Meta later fails those outside 24h with
 //          131047). If the approved template has no document_link variable,
