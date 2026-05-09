@@ -61,10 +61,21 @@ const CHANNEL_META: { value: NotificationChannel; label: string; Icon: typeof Ma
   { value: 'in_app', label: 'In-app', Icon: Bell },
 ];
 
+function getPlanDurationWeeks(plan: AssignPlanDrawerProps['plan']): number {
+  if (!plan) return 4;
+  const c: any = plan.content || {};
+  if (typeof c.durationWeeks === 'number' && c.durationWeeks > 0) return c.durationWeeks;
+  if (Array.isArray(c.weeks) && c.weeks.length > 0) return c.weeks.length;
+  if (Array.isArray(c.schedule) && c.schedule.length > 0) return Math.max(1, Math.ceil(c.schedule.length / 7));
+  return 4;
+}
+
 export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignPlanDrawerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selected, setSelected] = useState<MemberLite[]>([]);
-  const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
+  const planWeeks = getPlanDurationWeeks(plan);
+  const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), planWeeks), 'yyyy-MM-dd'));
+  const [validityOverridden, setValidityOverridden] = useState(false);
   const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
   const [sendPdf, setSendPdf] = useState(false);
   const [isCommon, setIsCommon] = useState(false);
@@ -73,13 +84,18 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
 
   // Reset every time the drawer is reopened. Pre-fill the Common toggle from
   // the incoming template (so common templates default to common assignments).
+  // Auto-recompute validity from the plan's own duration unless the user
+  // has explicitly overridden it.
   useEffect(() => {
     if (open) {
       setResults(null);
       setSearchQuery('');
       setIsCommon(!!plan?.is_common);
+      setValidityOverridden(false);
+      setValidUntil(format(addWeeks(new Date(), planWeeks), 'yyyy-MM-dd'));
     }
-  }, [open, plan?.is_common]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, plan?.is_common, planWeeks]);
 
   const { data: searchResults = [], isLoading: isSearching } = useQuery({
     queryKey: ['member-search-multi', searchQuery, branchId],
