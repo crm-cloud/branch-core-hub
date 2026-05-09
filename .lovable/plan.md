@@ -1,54 +1,70 @@
-# AI Plan Generation — Workout Inputs & Working Edit
+## Audit Findings
 
-Two fixes for the AI plan flow at `/fitness/create/ai` and `/fitness/preview/:id`.
+1. **Current Yogita send did deliver, but only as a text template with a PDF link**
+   - Latest log for `919928910901` used template `workout_plan_ready_doc` and is marked delivered.
+   - The WhatsApp row is `message_type = text`, `media_url = null`, and the message body contains a signed PDF URL.
+   - This is why the member sees a link instead of a native PDF document attachment.
 
-## 1. Workout-relevant inputs (hide diet fields when type=Workout)
+2. **The active workout/diet templates are configured as BODY-only templates**
+   - `workout_plan_ready_doc` is active, linked to Meta, but has `header_type = none` and only `member_name` in variables.
+   - Because it is not a Meta document-header template, the dispatcher cannot attach the PDF natively for that template.
 
-**File:** `src/components/fitness/create/MemberProfileCard.tsx`
+3. **Retry queue is calling the wrong function contract**
+   - `process-comm-retry-queue` retries WhatsApp by calling `send-whatsapp` directly with `{ branch_id, recipient, content, phone, message }`.
+   - `send-whatsapp` requires `message_id`, `phone_number`, and `branch_id`.
+   - That mismatch causes: `send-whatsapp 400: Missing required fields: message_id, phone_number, branch_id`.
 
-- Add prop `planType: 'workout' | 'diet'`.
-- When `planType === 'workout'`:
-  - Hide **Dietary Preference**, **Cuisine**, and **Allergies** fields (those belong to diet).
-  - Add a new **Workout Activities** multi-select (chip toggle group) with options:
-    - Cardio, Warm Up, Functional Training, CrossFit, Dynamic Stretching, Mobility, Plyometrics, Strength, HIIT
-  - Stored on the overrides object as `workout_activities: string[]`.
-- When `planType === 'diet'`: keep existing fields, hide workout activities.
+4. **Retry rows lose the original attachment payload**
+   - The database trigger that enqueues failed communication rows only copies text fields into `communication_retry_queue`.
+   - It does not copy `delivery_metadata.attachment`, so retries cannot resend the PDF attachment even if the original log had it.
 
-**File:** `src/pages/fitness/CreateAI.tsx`
+## Fix Plan
 
-- Pass `planType={type}` to `<MemberProfileCard />`.
-- Remove the `dietRequirementsMet` gating for workout (already gated to diet — no change needed in logic, only confirm).
-- Append `workout_activities` to the AI `preferences` string when type=workout, e.g. `"include: cardio, warm up, functional training, dynamic stretching"` so the AI structures each session warm-up → main → stretch.
+1. **Make plan PDF WhatsApp use native document attachments again**
+   - Update the active workout/diet plan template rows to use document-header delivery:
+     - `header_type = document`
+     - `attachment_source = dynamic`
+     - keep `meta_template_name = workout_plan_ready_doc` / `diet_plan_ready_doc`
+   - Ensure the template body does not require `document_link`; the PDF will be passed in the Meta template `HEADER` component.
 
-## 2. "Edit before assign" actually loads the generated plan
+2. **Update template selection for document events**
+   - Adjust `findTemplate()` so workout/diet/body-scan/payment document events prefer active templates with `header_type = document` when a PDF attachment is being sent.
+   - Keep text/link fallback only if no approved document-header template exists.
 
-**Problem:** Preview's `Edit` button routes AI drafts back to `/fitness/create/ai`, which has no draft-hydration logic — the form is blank.
+3. **Harden dispatcher behavior**
+   - In `dispatch-communication`, when a WhatsApp template has `header_type = document` and an attachment URL is present, always build a native Meta `HEADER` document component.
+   - Do not append the PDF URL into body variables for document-header templates.
+   - Store `media_url` on the `whatsapp_messages` row so the audit trail clearly shows a document was sent.
 
-**Fix:** Route AI-generated drafts to the **manual builder** preloaded with the draft content, so the user can rearrange/add/remove exercises (or meals) and resave.
+4. **Fix failed retry queue processing**
+   - Change `process-comm-retry-queue` so WhatsApp retries call `dispatch-communication`, not `send-whatsapp` directly.
+   - Reconstruct the dispatcher payload from the original `communication_logs` row, including:
+     - branch, recipient, channel/category
+     - template id
+     - member id
+     - body/subject
+     - original attachment from `delivery_metadata.attachment`
+   - Generate a fresh retry dedupe key so the retry does not collide with the failed log.
 
-**File:** `src/pages/fitness/PreviewPlan.tsx`
+5. **Preserve attachments in future retry queue rows**
+   - Update the enqueue trigger to copy `communication_logs.delivery_metadata` into `communication_retry_queue.metadata`.
+   - This makes future retries attachment-safe for WhatsApp and email.
 
-- Change `editPath` for `source==='ai'`:
-  - workout → `/fitness/create/manual/workout?draft=<planId>`
-  - diet → `/fitness/create/manual/diet?draft=<planId>`
+6. **Clean up current broken Yogita retry rows**
+   - For the two pending rows currently failing with the missing-fields error, either:
+     - cancel the stale no-template row, and
+     - retry the attachment row through the corrected dispatcher path; or
+     - mark both stale rows cancelled after confirming a fresh document send succeeds.
 
-**File:** `src/pages/fitness/CreateManualWorkout.tsx`
+7. **Run curl tests for both channels**
+   - Test WhatsApp by invoking `dispatch-communication` with a PDF attachment to `919928910901` and confirm:
+     - `whatsapp_messages.message_type = document`
+     - `media_url` is present
+     - provider returns a WhatsApp message id
+   - Test Email with the same PDF and confirm the email path still sends with a PDF attachment.
 
-- Read `?draft=` searchParam. When present, call `loadDraft(planId)`, run `normalizeWorkoutPlan(draft.content)` and hydrate: `planName`, `description`, `difficulty`, `goal`, `member` (from `memberId/memberName/memberCode`), and `days` (week 1).
-- On save, if `draft` param present, **overwrite the same draft** via `saveDraft({ ...existing, content: rebuiltPlan, name, description })` and `navigate(\`/fitness/preview/${planId}\`)` instead of creating a new draft.
+## Expected Result
 
-**File:** `src/pages/fitness/CreateManualDiet.tsx`
-
-- Mirror the same `?draft=` hydration + save-back behaviour using `normalizeDietPlan`.
-
-## Acceptance
-
-- For Yogita's workout AI flow: Dietary Preference / Cuisine / Allergies fields are gone; a Workout Activities chip group appears; AI prompt receives those activities.
-- Clicking **Edit before assign** on the preview opens the manual workout builder fully populated with the generated weeks/days/exercises; user can drag/edit; **Save** returns to preview with the updated draft.
-- Diet plans behave identically (manual diet builder loads the AI draft).
-- No backend/db changes; `members.workout_activities` is plan-scoped only (not persisted to member profile in this iteration).
-
-## Out of scope
-
-- Saving workout activities permanently to `members` table (can add in a follow-up via a `workout_activities text[]` column + Save-to-profile checkbox).
-- Drag-and-drop reordering UI polish — the existing manual builder's add/remove/reorder controls are reused as-is.
+- Workout and diet plan WhatsApp messages will arrive as a native attached PDF document, not just a link.
+- Retry queue will stop showing `send-whatsapp 400` missing-field errors.
+- Future failed PDF sends will retain enough metadata to retry correctly.
