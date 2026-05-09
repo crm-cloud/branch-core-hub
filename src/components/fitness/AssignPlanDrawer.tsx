@@ -302,8 +302,17 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Valid Until</Label>
-                  <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+                  <Label className="flex items-center justify-between">
+                    <span>Valid Until</span>
+                    {!validityOverridden && (
+                      <span className="text-[10px] font-normal text-muted-foreground">Auto · {planWeeks}w</span>
+                    )}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={validUntil}
+                    onChange={(e) => { setValidUntil(e.target.value); setValidityOverridden(true); }}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Notify on</Label>
