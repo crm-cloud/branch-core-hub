@@ -65,7 +65,7 @@ export default function ExternalReviewsTab() {
       const { data } = await (supabase as any)
         .from('integration_settings')
         .select('is_active, config')
-        .eq('type', 'google_business')
+        .eq('integration_type', 'google_business')
         .eq('provider', 'google_business')
         .eq('branch_id', branchId)
         .maybeSingle();
