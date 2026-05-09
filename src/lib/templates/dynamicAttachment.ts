@@ -50,34 +50,100 @@ export async function findTemplate(opts: {
 }): Promise<CommunicationTemplate | null> {
   const { branchId, type, triggerEvent, nameContains } = opts;
 
-  // 1. Exact branch + trigger_event + active
+  // 1. Exact branch + trigger_event + active. Prefer rows with a real
+  //    document/image header (so PDFs attach via Meta header, not just a
+  //    text link), then fall back to header-less rows. Finally, fall back
+  //    to GLOBAL templates (branch_id IS NULL) — the same fallback the
+  //    dispatcher already does for WhatsApp credentials.
   if (triggerEvent) {
-    const { data } = await supabase
-      .from('templates')
-      .select('*')
-      .eq('branch_id', branchId)
-      .eq('type', type)
-      .eq('trigger_event', triggerEvent)
-      .eq('is_active', true)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (data) return data as unknown as CommunicationTemplate;
+    // 1a. Branch-scoped, with document/image/video header
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('branch_id', branchId)
+        .eq('type', type)
+        .eq('trigger_event', triggerEvent)
+        .eq('is_active', true)
+        .in('header_type', ['document', 'image', 'video'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
+    // 1b. Branch-scoped, any header
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('branch_id', branchId)
+        .eq('type', type)
+        .eq('trigger_event', triggerEvent)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
+    // 1c. GLOBAL fallback, with document/image/video header
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .is('branch_id', null)
+        .eq('type', type)
+        .eq('trigger_event', triggerEvent)
+        .eq('is_active', true)
+        .in('header_type', ['document', 'image', 'video'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
+    // 1d. GLOBAL fallback, any header
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .is('branch_id', null)
+        .eq('type', type)
+        .eq('trigger_event', triggerEvent)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
   }
 
-  // 2. Branch + name contains (e.g. "Invoice")
+  // 2. Branch + name contains (e.g. "Invoice"), then global fallback
   if (nameContains) {
-    const { data } = await supabase
-      .from('templates')
-      .select('*')
-      .eq('branch_id', branchId)
-      .eq('type', type)
-      .eq('is_active', true)
-      .ilike('name', `%${nameContains}%`)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (data) return data as unknown as CommunicationTemplate;
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('branch_id', branchId)
+        .eq('type', type)
+        .eq('is_active', true)
+        .ilike('name', `%${nameContains}%`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .is('branch_id', null)
+        .eq('type', type)
+        .eq('is_active', true)
+        .ilike('name', `%${nameContains}%`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
   }
 
   return null;
