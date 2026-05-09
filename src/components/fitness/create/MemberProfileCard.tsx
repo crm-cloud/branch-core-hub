@@ -102,7 +102,7 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
       const { data: member } = await supabase
         .from('members')
         .select(
-          'id, user_id, health_conditions, fitness_goals, fitness_level, equipment_availability, dietary_preference, cuisine_preference, allergies, profiles:user_id(gender, date_of_birth, full_name)'
+          'id, user_id, health_conditions, fitness_goals, fitness_level, equipment_availability, dietary_preference, cuisine_preference, allergies, workout_activities, profiles:user_id(gender, date_of_birth, full_name)'
         )
         .eq('id', memberId)
         .maybeSingle();
@@ -128,6 +128,7 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
         dietary_preference: (member as any)?.dietary_preference || '',
         cuisine: (member as any)?.cuisine_preference || '',
         allergies: arrToCsv((member as any)?.allergies),
+        workout_activities: ((member as any)?.workout_activities as string[] | null) || [],
       };
     },
   });
