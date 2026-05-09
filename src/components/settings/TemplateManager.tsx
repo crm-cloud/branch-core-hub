@@ -634,6 +634,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SubmitPendingDocsButton templates={templates} branchId={effectiveBranchId} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
