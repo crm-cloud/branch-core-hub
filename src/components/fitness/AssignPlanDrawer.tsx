@@ -375,7 +375,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
           )}
         </div>
 
-        <DrawerFooter className="flex-row gap-2">
+        <div className="border-t px-5 py-3 flex flex-row gap-2 bg-background">
           {results ? (
             <Button onClick={closeAndReset} className="w-full">Done</Button>
           ) : (
@@ -397,9 +397,9 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
               </Button>
             </>
           )}
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
