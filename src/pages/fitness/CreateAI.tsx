@@ -16,8 +16,12 @@ import { MemberProfileCard, MemberProfileOverrides } from '@/components/fitness/
 import { useGenerateFitnessPlan } from '@/hooks/usePTPackages';
 import { newDraftId, saveDraft } from '@/lib/planDraft';
 import { fetchMealCatalog } from '@/services/mealCatalogService';
+import { fetchOperationalEquipmentLite } from '@/services/equipmentService';
+import { fetchMemberAssignments } from '@/services/fitnessService';
 import { useQuery } from '@tanstack/react-query';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { Badge } from '@/components/ui/badge';
+import { Wrench, History } from 'lucide-react';
 
 export default function CreateAIPage() {
   const navigate = useNavigate();
