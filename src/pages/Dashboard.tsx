@@ -27,6 +27,9 @@ import { format, subDays, startOfMonth, endOfMonth, differenceInHours } from 'da
 const LazyLiveAccessLog = lazy(() => import('@/components/devices/LiveAccessLog'));
 const LazyAIInsightsWidget = lazy(() => import('@/components/dashboard/AIInsightsWidget').then(m => ({ default: m.AIInsightsWidget })));
 const LazyMemberVoiceWidget = lazy(() => import('@/components/dashboard/MemberVoiceWidget').then(m => ({ default: m.MemberVoiceWidget })));
+const LazyMembersCountingChart = lazy(() => import('@/components/dashboard/MembersCountingChart'));
+import { MemberGrowthCards } from '@/components/dashboard/MemberGrowthCards';
+import { JoinedSummaryStrip } from '@/components/dashboard/JoinedSummaryStrip';
 
 function ChartSkeleton() {
   return <Skeleton className="h-64 rounded-2xl" />;
