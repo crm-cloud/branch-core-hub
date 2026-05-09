@@ -171,6 +171,8 @@ export default function CreateAIPage() {
                 default_quantity: m.default_quantity,
               }))
             : undefined,
+          availableEquipment: type === 'workout' ? branchEquipment.slice(0, 100) : undefined,
+          previousPlanContext: buildPreviousPlanContext(),
         },
       });
 
