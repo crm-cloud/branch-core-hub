@@ -45,6 +45,37 @@ export async function fetchEquipment(branchId?: string) {
   return data as Equipment[];
 }
 
+/**
+ * Fetch a lightweight list of OPERATIONAL equipment for a branch.
+ * Used by the AI plan generator to bias workout exercises toward
+ * machines the gym actually owns.
+ */
+export interface EquipmentLite {
+  name: string;
+  category: string | null;
+  brand: string | null;
+  model: string | null;
+}
+
+export async function fetchOperationalEquipmentLite(
+  branchId?: string | null,
+): Promise<EquipmentLite[]> {
+  let query = supabase
+    .from('equipment')
+    .select('name, category, brand, model, status')
+    .eq('status', 'operational')
+    .order('name');
+  if (branchId) query = query.eq('branch_id', branchId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map((r: any) => ({
+    name: r.name,
+    category: r.category ?? null,
+    brand: r.brand ?? null,
+    model: r.model ?? null,
+  }));
+}
+
 export async function getEquipment(id: string) {
   const { data, error } = await supabase
     .from('equipment')
