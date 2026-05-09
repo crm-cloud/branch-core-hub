@@ -1,3 +1,4 @@
+// run-retention-nudges v2.0.0 — routes all sends through dispatch-communication
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -109,75 +110,65 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Personalize message
-        const personalizedMessage = matchedTemplate.message_body.replace(/{member_name}/g, member.full_name || "there");
+        // Personalize message (used as dispatcher fallback_body for SMS/Email
+        // and when no Meta-approved WhatsApp template is bound to the event).
+        const personalizedMessage = matchedTemplate.message_body.replace(
+          /{member_name}/g,
+          member.full_name || "there",
+        );
 
-        // Get channels for this template
         const channels: string[] = matchedTemplate.channels || ["whatsapp"];
+        const eventKey = `retention_stage_${matchedTemplate.stage_level}`;
+        const subject = `Stage ${matchedTemplate.stage_level}: ${matchedTemplate.stage_name}`;
+
+        let anySent = false;
+        const channelResults: Record<string, string> = {};
 
         for (const channel of channels) {
+          const recipient =
+            channel === "email"
+              ? member.email || ""
+              : member.phone || "";
+          if (!recipient) {
+            channelResults[channel] = "skipped:no_recipient";
+            continue;
+          }
+
           try {
-            if (channel === "whatsapp" && member.phone) {
-              // Create message row first, then call send-whatsapp with canonical payload.
-              const { data: outboundMsg, error: msgInsertErr } = await adminClient
-                .from("whatsapp_messages")
-                .insert({
+            const dispatchRes = await fetch(
+              `${supabaseUrl}/functions/v1/dispatch-communication`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
                   branch_id: branch.id,
+                  channel,
+                  category: "retention_nudge",
+                  recipient,
                   member_id: member.member_id,
-                  phone_number: member.phone,
-                  content: personalizedMessage,
-                  direction: "outbound",
-                  status: "pending",
-                  message_type: "text",
-                })
-                .select("id")
-                .single();
-
-              if (msgInsertErr || !outboundMsg?.id) {
-                console.error("Failed to create WhatsApp message row:", msgInsertErr);
-                throw new Error("Could not queue WhatsApp message");
-              }
-
-              try {
-                const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${supabaseServiceKey}`,
+                  payload: {
+                    subject,
+                    body: personalizedMessage,
+                    variables: { member_name: member.full_name || "there", event_key: eventKey },
+                    use_branded_template: channel === "email",
                   },
-                  body: JSON.stringify({
-                    message_id: outboundMsg.id,
-                    phone_number: member.phone,
-                    content: personalizedMessage,
-                    branch_id: branch.id,
-                  }),
-                });
+                  dedupe_key: `retention:${matchedTemplate.stage_level}:${member.member_id}:${channel}`,
+                  ttl_seconds: 7 * 24 * 60 * 60,
+                }),
+              },
+            );
 
-                if (!sendRes.ok) {
-                  const errBody = await sendRes.text();
-                  throw new Error(`send-whatsapp failed (${sendRes.status}): ${errBody}`);
-                }
-              } catch (whatsappErr) {
-                console.error("WhatsApp send error:", whatsappErr);
-                throw whatsappErr;
-              }
-            }
-
-            // send-whatsapp already writes communication_logs; avoid duplicates.
-            if (channel !== "whatsapp") {
-              await adminClient.from("communication_logs").insert({
-                branch_id: branch.id,
-                type: channel,
-                recipient: channel === "email" ? member.email || "" : member.phone || "",
-                subject: `Retention Stage ${matchedTemplate.stage_level}: ${matchedTemplate.stage_name}`,
-                content: personalizedMessage,
-                status: "sent",
-                member_id: member.member_id,
-                sent_at: new Date().toISOString(),
-              });
+            const body = await dispatchRes.json().catch(() => ({}));
+            channelResults[channel] = body?.status || (dispatchRes.ok ? "sent" : "failed");
+            if (dispatchRes.ok && (body?.status === "sent" || body?.status === "queued")) {
+              anySent = true;
             }
           } catch (channelErr) {
-            console.error(`Channel ${channel} error:`, channelErr);
+            console.error(`dispatch ${channel} error:`, channelErr);
+            channelResults[channel] = "failed";
           }
         }
 
@@ -188,9 +179,11 @@ Deno.serve(async (req) => {
           template_id: matchedTemplate.id,
           stage_level: matchedTemplate.stage_level,
           channel: channels.join(","),
-          status: "sent",
+          status: anySent ? "sent" : "failed",
           message_content: personalizedMessage,
         });
+
+        if (!anySent) continue;
 
         const stageKey = `stage_${matchedTemplate.stage_level}` as keyof typeof results;
         if (stageKey in results) {

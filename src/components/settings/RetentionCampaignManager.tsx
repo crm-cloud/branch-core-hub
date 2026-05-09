@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
-import { Megaphone, Send, Save, Zap, Clock, Gift, Mail, MessageSquare, Phone, BarChart3, ShieldCheck } from 'lucide-react';
+import { Megaphone, Send, Save, Zap, Clock, Gift, Mail, MessageSquare, Phone, BarChart3, ShieldCheck, Sparkles } from 'lucide-react';
+import { dispatchCommunication } from '@/lib/comms/dispatch';
+import { useBranchContext } from '@/contexts/BranchContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { AIGenerateTemplatesDrawer } from '@/components/settings/AIGenerateTemplatesDrawer';
 
 const STAGE_ICONS = [Zap, Clock, Gift];
 const STAGE_COLORS = [
@@ -29,6 +33,12 @@ const CHANNEL_OPTIONS = [
 
 export function RetentionCampaignManager() {
   const queryClient = useQueryClient();
+  const { selectedBranch, currentBranchId } = useBranchContext() as any;
+  const { profile } = useAuth();
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState<string>(profile?.phone || '');
+  const [testEmail, setTestEmail] = useState<string>(profile?.email || '');
+  const [testingKey, setTestingKey] = useState<string | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['retention-templates'],
@@ -106,20 +116,59 @@ export function RetentionCampaignManager() {
     });
   };
 
-  const handleTestSend = (template: any, channel: string) => {
-    const body = getEditValue(template.id, 'message_body', template.message_body) as string;
-    const text = body.replace(/{member_name}/g, 'Test User');
-    const encoded = encodeURIComponent(text);
-
-    if (channel === 'whatsapp') {
-      window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    } else if (channel === 'sms') {
-      window.open(`sms:?body=${encoded}`, '_blank');
-    } else if (channel === 'email') {
-      const subject = encodeURIComponent(`Stage ${template.stage_level}: ${template.stage_name}`);
-      window.open(`mailto:?subject=${subject}&body=${encoded}`, '_blank');
+  const handleTestSend = async (template: any, channel: string) => {
+    const branchId = currentBranchId || (selectedBranch && selectedBranch !== 'all' ? selectedBranch : null);
+    if (!branchId) {
+      toast({ title: 'Pick a branch', description: 'Select a specific branch (not "All Branches") to send a test.', variant: 'destructive' });
+      return;
     }
-    toast({ title: 'Test message opened', description: `${channel.charAt(0).toUpperCase() + channel.slice(1)} opened with preview text.` });
+    const recipient = channel === 'email' ? testEmail.trim() : testPhone.trim();
+    if (!recipient) {
+      toast({
+        title: `Missing test ${channel === 'email' ? 'email' : 'phone'}`,
+        description: `Enter a ${channel === 'email' ? 'email address' : 'phone number'} above to send the test.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    const body = (getEditValue(template.id, 'message_body', template.message_body) as string)
+      .replace(/{member_name}/g, profile?.full_name?.split(' ')[0] || 'there');
+    const eventKey = `retention_stage_${template.stage_level}`;
+    const key = `${template.id}:${channel}`;
+    setTestingKey(key);
+    try {
+      const result = await dispatchCommunication({
+        branch_id: branchId,
+        channel: channel as any,
+        category: 'retention_nudge',
+        recipient,
+        payload: {
+          subject: `Stage ${template.stage_level}: ${template.stage_name}`,
+          body,
+          variables: { member_name: profile?.full_name || 'there', event_key: eventKey },
+          use_branded_template: channel === 'email',
+        },
+        dedupe_key: `retention-test:${template.stage_level}:${channel}:${Date.now()}`,
+        force: true,
+      });
+      if (result.status === 'sent' || result.status === 'queued') {
+        toast({ title: `Test ${channel} ${result.status}`, description: `Sent to ${recipient}` });
+      } else {
+        toast({
+          title: `Test ${channel} ${result.status}`,
+          description: result.reason || 'Dispatcher did not deliver. Check Templates Hub coverage.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: `Test ${channel} failed`,
+        description: err?.message || 'Dispatcher error. Confirm a template is approved for this event.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTestingKey(null);
+    }
   };
 
   if (isLoading) {
@@ -132,17 +181,23 @@ export function RetentionCampaignManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="bg-primary/10 text-primary p-2.5 rounded-full">
-          <Megaphone className="h-5 w-5" />
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 text-primary p-2.5 rounded-full">
+            <Megaphone className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">Retention Campaign</h2>
+            <p className="text-sm text-muted-foreground">
+              Configure the 3-stage automated nudge sequence for inactive members.
+              Use <code className="bg-muted px-1 rounded text-xs">{'{member_name}'}</code> as a placeholder.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold">Retention Campaign</h2>
-          <p className="text-sm text-muted-foreground">
-            Configure the 3-stage automated nudge sequence for inactive members.
-            Use <code className="bg-muted px-1 rounded text-xs">{'{member_name}'}</code> as a placeholder.
-          </p>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => setAiDrawerOpen(true)}>
+          <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
+          Generate WhatsApp Templates with AI
+        </Button>
       </div>
 
       {/* Cooldown Indicator */}
@@ -152,6 +207,31 @@ export function RetentionCampaignManager() {
           <div>
             <p className="text-sm font-medium text-sky-800">30-Day Cooldown Active</p>
             <p className="text-xs text-sky-600">Each member can only receive each nudge stage once every 30 days. Sequence resets if the member visits the gym.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Test recipient — used by all "Test" buttons below */}
+      <Card className="rounded-2xl">
+        <CardContent className="py-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Test phone (WhatsApp / SMS)</Label>
+            <Input
+              className="mt-1.5"
+              placeholder="+91XXXXXXXXXX"
+              value={testPhone}
+              onChange={(e) => setTestPhone(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Test email</Label>
+            <Input
+              className="mt-1.5"
+              type="email"
+              placeholder="you@example.com"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
@@ -265,15 +345,17 @@ export function RetentionCampaignManager() {
                   {channels.map(ch => {
                     const chOption = CHANNEL_OPTIONS.find(o => o.id === ch);
                     const ChIcon = chOption?.icon || Send;
+                    const tk = `${template.id}:${ch}`;
                     return (
                       <Button
                         key={ch}
                         variant="outline"
                         size="sm"
+                        disabled={testingKey === tk}
                         onClick={() => handleTestSend(template, ch)}
                       >
                         <ChIcon className={`h-3.5 w-3.5 mr-1.5 ${chOption?.color || ''}`} />
-                        Test {chOption?.label || ch}
+                        {testingKey === tk ? 'Sending…' : `Test ${chOption?.label || ch}`}
                       </Button>
                     );
                   })}
@@ -300,6 +382,13 @@ export function RetentionCampaignManager() {
           </CardContent>
         </Card>
       )}
+
+      <AIGenerateTemplatesDrawer
+        open={aiDrawerOpen}
+        onOpenChange={setAiDrawerOpen}
+        channel="whatsapp"
+        prefilledEvents={['retention_stage_1', 'retention_stage_2', 'retention_stage_3']}
+      />
     </div>
   );
 }
