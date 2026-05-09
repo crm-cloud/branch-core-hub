@@ -25,13 +25,30 @@ export interface MemberProfileOverrides {
   allergies?: string;
   health_conditions?: string;
   fitness_goals?: string;
+  /** Workout-only: activities the member wants included (warm up, cardio, etc). */
+  workout_activities?: string[];
 }
 
 interface Props {
   memberId: string;
   value: MemberProfileOverrides;
   onChange: (next: MemberProfileOverrides) => void;
+  /** Controls which sport/diet specific fields are shown. Defaults to 'workout'. */
+  planType?: 'workout' | 'diet';
 }
+
+const WORKOUT_ACTIVITY_OPTIONS = [
+  'Warm Up',
+  'Dynamic Stretching',
+  'Cardio',
+  'Strength',
+  'Functional Training',
+  'CrossFit',
+  'HIIT',
+  'Plyometrics',
+  'Mobility',
+  'Cool Down',
+];
 
 function calcAge(dob?: string | null): string {
   if (!dob) return '';
