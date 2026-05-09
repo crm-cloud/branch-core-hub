@@ -1,8 +1,13 @@
-// process-comm-retry-queue
+// process-comm-retry-queue v2.0.0
+// v2.0.0: ALWAYS retry through `dispatch-communication` (was calling
+//          send-whatsapp/send-sms/send-email directly with the wrong contract,
+//          which produced `Missing required fields: message_id, phone_number,
+//          branch_id` 400s on every WhatsApp retry). Reconstructs the dispatcher
+//          payload from the original communication_logs row, including any PDF
+//          attachment carried in delivery_metadata, so PDFs are resent natively.
 // Picks up failed messages from communication_retry_queue and re-dispatches them
-// via the existing send-email / send-sms / send-whatsapp edge functions.
-// Uses exponential backoff: 5min -> 30min -> 2h, then marks as exhausted.
-// Triggered by pg_cron every 5 minutes (and can be invoked manually).
+// via the canonical dispatch-communication edge function.
+// Backoff: 5min -> 30min -> 2h, then marks as exhausted.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -21,7 +26,6 @@ Deno.serve(async (req) => {
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    // Optional manual single-row retry
     let manualId: string | null = null;
     try {
       if (req.method === "POST") {
@@ -47,7 +51,6 @@ Deno.serve(async (req) => {
 
     const { data: rows, error } = await query;
     if (error) throw error;
-
     if (!rows || rows.length === 0) {
       return json({ success: true, processed: 0, message: "No pending retries" });
     }
@@ -55,65 +58,78 @@ Deno.serve(async (req) => {
     const results: any[] = [];
 
     for (const row of rows) {
-      // Mark processing (best effort — race-safe enough for this volume)
       await supabase
         .from("communication_retry_queue")
         .update({ status: "processing" })
         .eq("id", row.id)
         .eq("status", row.status);
 
-      const fnName =
-        row.type === "whatsapp" ? "send-whatsapp" :
-        row.type === "sms"      ? "send-sms" :
-        row.type === "email"    ? "send-email" : null;
+      // Resolve original log to recover category/attachment when present
+      let category: string | null = null;
+      let attachment: any = null;
+      let payloadVariables: Record<string, unknown> | undefined;
+      let useBranded = true;
 
-      if (!fnName) {
-        await supabase
-          .from("communication_retry_queue")
-          .update({ status: "exhausted", last_error: `Unknown channel type: ${row.type}` })
-          .eq("id", row.id);
-        results.push({ id: row.id, status: "exhausted", reason: "unknown_type" });
-        continue;
+      if (row.original_log_id) {
+        const { data: log } = await supabase
+          .from("communication_logs")
+          .select("category, delivery_metadata")
+          .eq("id", row.original_log_id)
+          .maybeSingle();
+        if (log) {
+          category = (log as any).category ?? null;
+          const meta = ((log as any).delivery_metadata ?? {}) as Record<string, any>;
+          if (meta.attachment) attachment = meta.attachment;
+        }
+      }
+      // Fallback to retry-queue.metadata copy of delivery_metadata
+      const meta = (row.metadata ?? {}) as Record<string, any>;
+      if (!category && meta.category) category = meta.category;
+      if (!attachment && meta.attachment) attachment = meta.attachment;
+
+      if (!category) {
+        category = row.type === "email" ? "transactional" : "transactional";
       }
 
-      // Build payload per channel
-      const payload: Record<string, any> = {
+      const dispatchPayload: Record<string, unknown> = {
         branch_id: row.branch_id,
+        channel: row.type,                   // whatsapp | sms | email
+        category,
         recipient: row.recipient,
-        content: row.content,
-        retry: true,
-        original_log_id: row.original_log_id,
+        member_id: row.member_id ?? null,
+        template_id: row.template_id ?? null,
+        payload: {
+          subject: row.subject ?? undefined,
+          body: row.content ?? "",
+          variables: payloadVariables,
+          use_branded_template: row.type === "email" ? useBranded : undefined,
+        },
+        // Fresh dedupe key so the retry doesn't collide with the failed log row
+        dedupe_key: `retry:${row.id}:${row.retry_count + 1}`,
+        force: true,
+        attachment: attachment ?? undefined,
       };
-      if (row.type === "email") {
-        payload.to = row.recipient;
-        payload.subject = row.subject || "(no subject)";
-        payload.html = row.content;
-      } else if (row.type === "whatsapp") {
-        payload.to = row.recipient;
-        payload.message = row.content;
-        payload.phone = row.recipient;
-      } else if (row.type === "sms") {
-        payload.to = row.recipient;
-        payload.phone = row.recipient;
-        payload.message = row.content;
-      }
 
       let success = false;
       let errorMsg = "";
+      let dispatchStatus: string | undefined;
       try {
-        const resp = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/dispatch-communication`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${SERVICE_KEY}`,
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(dispatchPayload),
         });
         const text = await resp.text();
-        if (resp.ok) {
+        let parsed: any = null;
+        try { parsed = JSON.parse(text); } catch { /* keep raw */ }
+        dispatchStatus = parsed?.status;
+        if (resp.ok && (dispatchStatus === "sent" || dispatchStatus === "queued" || dispatchStatus === "deduped")) {
           success = true;
         } else {
-          errorMsg = `${fnName} ${resp.status}: ${text.slice(0, 300)}`;
+          errorMsg = `dispatch ${resp.status}: ${parsed?.reason || parsed?.error || text.slice(0, 300)}`;
         }
       } catch (e) {
         errorMsg = `dispatch error: ${e instanceof Error ? e.message : String(e)}`;
@@ -131,8 +147,6 @@ Deno.serve(async (req) => {
             last_error: null,
           })
           .eq("id", row.id);
-
-        // Mark the original log as sent if we have it
         if (row.original_log_id) {
           await supabase
             .from("communication_logs")
@@ -144,11 +158,7 @@ Deno.serve(async (req) => {
         if (newRetryCount >= (row.max_retries || 3)) {
           await supabase
             .from("communication_retry_queue")
-            .update({
-              status: "exhausted",
-              retry_count: newRetryCount,
-              last_error: errorMsg,
-            })
+            .update({ status: "exhausted", retry_count: newRetryCount, last_error: errorMsg })
             .eq("id", row.id);
           results.push({ id: row.id, status: "exhausted", error: errorMsg });
         } else {

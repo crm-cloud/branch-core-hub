@@ -56,6 +56,7 @@ export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Pr
       branchId: input.branchId,
       type: 'whatsapp',
       triggerEvent: input.triggerEvent,
+      preferAttachment: true,
     });
     if (tpl) templateId = tpl.id;
   }

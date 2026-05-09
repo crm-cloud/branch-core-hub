@@ -126,6 +126,7 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
           branchId: input.branchId,
           type: 'whatsapp',
           triggerEvent,
+          preferAttachment: true,
         });
         const fallbackCaption = `Hi ${input.member.full_name}, here is your new ${input.plan.type} plan: ${input.plan.name}\n\nDownload: ${pdfUrl}`;
         const result = await dispatchCommunication({
