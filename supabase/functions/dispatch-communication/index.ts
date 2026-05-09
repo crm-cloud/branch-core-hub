@@ -1,4 +1,10 @@
-// dispatch-communication v1.7.0
+// dispatch-communication v1.8.0
+// v1.8.0: Native template document/image/video headers — when input.template_id
+//         resolves to a template with header_type ∈ {document,image,video} AND an
+//         attachment.url is supplied, build a HEADER template_components entry so
+//         the recipient receives the file as a native WhatsApp attachment instead
+//         of a backend storage link in the body. Falls back to the freeform
+//         document path when the template has no Meta name yet.
 // v1.7.0: WhatsApp pre-flight 24h-window guard — when no approved Meta template
 //         is in play and no inbound message exists from the recipient in the last
 //         24h, fail fast with reason='no_active_session_no_template' (avoids the
