@@ -353,6 +353,39 @@ Deno.serve(async (req) => {
             }
           }
 
+          // ── 24h-window pre-flight guard ──
+          // If we won't be sending an approved Meta template, the recipient
+          // must have messaged us within the last 24 hours (Meta customer
+          // service window). Otherwise Meta rejects with error 131047
+          // ("Re-engagement message"). Fail fast with a clear reason instead.
+          if (!templateName) {
+            const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const recipientDigits = input.recipient.replace(/\D/g, '');
+            const { data: inbound } = await supabase
+              .from('whatsapp_messages')
+              .select('id')
+              .eq('direction', 'inbound')
+              .eq('phone_number', recipientDigits)
+              .gte('created_at', since)
+              .limit(1)
+              .maybeSingle();
+            if (!inbound) {
+              await supabase
+                .from('communication_logs')
+                .update({
+                  status: 'failed',
+                  delivery_status: 'failed',
+                  error_message: 'Outside 24h customer-service window — an approved WhatsApp template is required. Submit one in Settings → Communication Templates.',
+                })
+                .eq('id', log!.id);
+              return ok({
+                status: 'failed',
+                log_id: log!.id,
+                reason: 'no_active_session_no_template',
+              });
+            }
+          }
+
           // For attachments (PDF/image), pre-create the whatsapp_messages row so
           // send-whatsapp (which requires message_id) can update its delivery
           // status. The chat thread also relies on this row to render the bubble.
