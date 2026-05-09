@@ -116,20 +116,59 @@ export function RetentionCampaignManager() {
     });
   };
 
-  const handleTestSend = (template: any, channel: string) => {
-    const body = getEditValue(template.id, 'message_body', template.message_body) as string;
-    const text = body.replace(/{member_name}/g, 'Test User');
-    const encoded = encodeURIComponent(text);
-
-    if (channel === 'whatsapp') {
-      window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    } else if (channel === 'sms') {
-      window.open(`sms:?body=${encoded}`, '_blank');
-    } else if (channel === 'email') {
-      const subject = encodeURIComponent(`Stage ${template.stage_level}: ${template.stage_name}`);
-      window.open(`mailto:?subject=${subject}&body=${encoded}`, '_blank');
+  const handleTestSend = async (template: any, channel: string) => {
+    const branchId = currentBranchId || (selectedBranch && selectedBranch !== 'all' ? selectedBranch : null);
+    if (!branchId) {
+      toast({ title: 'Pick a branch', description: 'Select a specific branch (not "All Branches") to send a test.', variant: 'destructive' });
+      return;
     }
-    toast({ title: 'Test message opened', description: `${channel.charAt(0).toUpperCase() + channel.slice(1)} opened with preview text.` });
+    const recipient = channel === 'email' ? testEmail.trim() : testPhone.trim();
+    if (!recipient) {
+      toast({
+        title: `Missing test ${channel === 'email' ? 'email' : 'phone'}`,
+        description: `Enter a ${channel === 'email' ? 'email address' : 'phone number'} above to send the test.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    const body = (getEditValue(template.id, 'message_body', template.message_body) as string)
+      .replace(/{member_name}/g, profile?.full_name?.split(' ')[0] || 'there');
+    const eventKey = `retention_stage_${template.stage_level}`;
+    const key = `${template.id}:${channel}`;
+    setTestingKey(key);
+    try {
+      const result = await dispatchCommunication({
+        branch_id: branchId,
+        channel: channel as any,
+        category: 'retention_nudge',
+        recipient,
+        payload: {
+          subject: `Stage ${template.stage_level}: ${template.stage_name}`,
+          body,
+          variables: { member_name: profile?.full_name || 'there', event_key: eventKey },
+          use_branded_template: channel === 'email',
+        },
+        dedupe_key: `retention-test:${template.stage_level}:${channel}:${Date.now()}`,
+        force: true,
+      });
+      if (result.status === 'sent' || result.status === 'queued') {
+        toast({ title: `Test ${channel} ${result.status}`, description: `Sent to ${recipient}` });
+      } else {
+        toast({
+          title: `Test ${channel} ${result.status}`,
+          description: result.reason || 'Dispatcher did not deliver. Check Templates Hub coverage.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: `Test ${channel} failed`,
+        description: err?.message || 'Dispatcher error. Confirm a template is approved for this event.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTestingKey(null);
+    }
   };
 
   if (isLoading) {
