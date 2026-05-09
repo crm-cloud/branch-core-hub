@@ -200,10 +200,24 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
   return (
     <Card className="border-primary/20">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <User className="h-4 w-4 text-primary" />
-          Member Profile
-          {isLoading && <Badge variant="outline" className="text-xs">Loading…</Badge>}
+        <CardTitle className="text-base flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <User className="h-4 w-4 text-primary" />
+            Member Profile
+            {isLoading && <Badge variant="outline" className="text-xs">Loading…</Badge>}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-1.5 h-8"
+            onClick={handleSaveToProfile}
+            disabled={saving || isLoading}
+            title="Save current values to the member's permanent profile"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save
+          </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
