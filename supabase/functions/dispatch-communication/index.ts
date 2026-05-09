@@ -436,13 +436,14 @@ Deno.serve(async (req) => {
               // Build a clean rendered body for audit/inbox display so the
               // signed URL never surfaces in communication_logs / whatsapp_messages.
               if (tpl.content) {
-                const rendered = stripUnrendered(
-                  String(tpl.content).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
+                const rendered = String(tpl.content)
+                  .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
                     const idx = keys.findIndex((kk) => stripBraces(kk) === k);
                     const v = resolveVarValue(k, templateValues, idx >= 0 ? idx : 0);
                     return v || '';
                   })
-                );
+                  .replace(/[ \t]{2,}/g, ' ')
+                  .trim();
                 if (rendered) input.payload.body = rendered;
               }
 
