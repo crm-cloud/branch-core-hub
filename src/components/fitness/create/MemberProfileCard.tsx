@@ -187,8 +187,11 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
       if (error) throw error;
       toast.success('Saved to member profile');
       await queryClient.invalidateQueries({ queryKey: ['member-profile-prefill', memberId] });
+      await queryClient.invalidateQueries({ queryKey: ['member', memberId] });
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save member profile');
+      // Log full error so we can diagnose silent column-not-found / RLS failures.
+      console.error('[MemberProfileCard] save failed', err);
+      toast.error(err?.message || err?.details || 'Failed to save member profile');
     } finally {
       setSaving(false);
     }
