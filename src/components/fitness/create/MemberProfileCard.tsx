@@ -81,7 +81,13 @@ function csvToArr(csv?: string): string[] {
     .filter(Boolean);
 }
 
-export function MemberProfileCard({ memberId, value, onChange }: Props) {
+export function MemberProfileCard({ memberId, value, onChange, planType = 'workout' }: Props) {
+  const isWorkout = planType === 'workout';
+  const toggleActivity = (label: string) => {
+    const cur = value.workout_activities || [];
+    const next = cur.includes(label) ? cur.filter((a) => a !== label) : [...cur, label];
+    onChange({ ...value, workout_activities: next });
+  };
   const [open, setOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
