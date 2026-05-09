@@ -25,13 +25,30 @@ export interface MemberProfileOverrides {
   allergies?: string;
   health_conditions?: string;
   fitness_goals?: string;
+  /** Workout-only: activities the member wants included (warm up, cardio, etc). */
+  workout_activities?: string[];
 }
 
 interface Props {
   memberId: string;
   value: MemberProfileOverrides;
   onChange: (next: MemberProfileOverrides) => void;
+  /** Controls which sport/diet specific fields are shown. Defaults to 'workout'. */
+  planType?: 'workout' | 'diet';
 }
+
+const WORKOUT_ACTIVITY_OPTIONS = [
+  'Warm Up',
+  'Dynamic Stretching',
+  'Cardio',
+  'Strength',
+  'Functional Training',
+  'CrossFit',
+  'HIIT',
+  'Plyometrics',
+  'Mobility',
+  'Cool Down',
+];
 
 function calcAge(dob?: string | null): string {
   if (!dob) return '';
@@ -64,7 +81,13 @@ function csvToArr(csv?: string): string[] {
     .filter(Boolean);
 }
 
-export function MemberProfileCard({ memberId, value, onChange }: Props) {
+export function MemberProfileCard({ memberId, value, onChange, planType = 'workout' }: Props) {
+  const isWorkout = planType === 'workout';
+  const toggleActivity = (label: string) => {
+    const cur = value.workout_activities || [];
+    const next = cur.includes(label) ? cur.filter((a) => a !== label) : [...cur, label];
+    onChange({ ...value, workout_activities: next });
+  };
   const [open, setOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -184,7 +207,10 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
           <Badge variant="secondary">Height: {value.height ? `${value.height} cm` : '—'}</Badge>
           <Badge variant="secondary">BMI: {bmi || '—'}</Badge>
           {value.fitness_level && <Badge variant="outline">Level: {value.fitness_level}</Badge>}
-          {value.dietary_preference && <Badge variant="outline">Diet: {value.dietary_preference}</Badge>}
+          {!isWorkout && value.dietary_preference && <Badge variant="outline">Diet: {value.dietary_preference}</Badge>}
+          {isWorkout && value.workout_activities && value.workout_activities.length > 0 && (
+            <Badge variant="outline">Activities: {value.workout_activities.length}</Badge>
+          )}
         </div>
 
         <Collapsible open={open} onOpenChange={setOpen}>
@@ -251,38 +277,72 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Dietary Preference</Label>
-                <Select value={value.dietary_preference || ''} onValueChange={setSel('dietary_preference')}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="vegetarian">Vegetarian</SelectItem>
-                    <SelectItem value="vegan">Vegan</SelectItem>
-                    <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
-                    <SelectItem value="eggetarian">Eggetarian</SelectItem>
-                    <SelectItem value="pescatarian">Pescatarian</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Cuisine</Label>
-                <Select value={value.cuisine || ''} onValueChange={setSel('cuisine')}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="indian">Indian</SelectItem>
-                    <SelectItem value="continental">Continental</SelectItem>
-                    <SelectItem value="mediterranean">Mediterranean</SelectItem>
-                    <SelectItem value="asian">Asian</SelectItem>
-                    <SelectItem value="mixed">Mixed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {!isWorkout && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Dietary Preference</Label>
+                  <Select value={value.dietary_preference || ''} onValueChange={setSel('dietary_preference')}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="vegetarian">Vegetarian</SelectItem>
+                      <SelectItem value="vegan">Vegan</SelectItem>
+                      <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
+                      <SelectItem value="eggetarian">Eggetarian</SelectItem>
+                      <SelectItem value="pescatarian">Pescatarian</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {!isWorkout && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Cuisine</Label>
+                  <Select value={value.cuisine || ''} onValueChange={setSel('cuisine')}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="indian">Indian</SelectItem>
+                      <SelectItem value="continental">Continental</SelectItem>
+                      <SelectItem value="mediterranean">Mediterranean</SelectItem>
+                      <SelectItem value="asian">Asian</SelectItem>
+                      <SelectItem value="mixed">Mixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Allergies</Label>
-              <Input value={value.allergies || ''} onChange={set('allergies')} placeholder="e.g. nuts, dairy, gluten" />
-            </div>
+            {isWorkout && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Workout Activities (select all that apply)</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WORKOUT_ACTIVITY_OPTIONS.map((opt) => {
+                    const active = (value.workout_activities || []).includes(opt);
+                    return (
+                      <button
+                        type="button"
+                        key={opt}
+                        onClick={() => toggleActivity(opt)}
+                        className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                          active
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-foreground border-input hover:bg-muted'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  AI will structure each session as Warm Up → Main → Cool Down using these.
+                </p>
+              </div>
+            )}
+
+            {!isWorkout && (
+              <div className="space-y-1">
+                <Label className="text-xs">Allergies</Label>
+                <Input value={value.allergies || ''} onChange={set('allergies')} placeholder="e.g. nuts, dairy, gluten" />
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Health Conditions</Label>
               <Textarea

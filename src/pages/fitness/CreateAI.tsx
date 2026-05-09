@@ -112,10 +112,12 @@ export default function CreateAIPage() {
           healthConditions: profile.health_conditions || undefined,
           experience: profile.fitness_level || 'intermediate',
           preferences: [
-            profile.dietary_preference && `diet: ${profile.dietary_preference}`,
-            profile.cuisine && `cuisine: ${profile.cuisine}`,
-            profile.allergies && `allergies: ${profile.allergies}`,
+            type === 'diet' && profile.dietary_preference && `diet: ${profile.dietary_preference}`,
+            type === 'diet' && profile.cuisine && `cuisine: ${profile.cuisine}`,
+            type === 'diet' && profile.allergies && `allergies: ${profile.allergies}`,
             profile.equipment && `equipment: ${profile.equipment}`,
+            type === 'workout' && profile.workout_activities && profile.workout_activities.length > 0
+              && `include activities: ${profile.workout_activities.join(', ')} (structure each session warm-up → main → cool-down)`,
             specialNotes,
           ].filter(Boolean).join('; ') || undefined,
         },
@@ -312,7 +314,7 @@ export default function CreateAIPage() {
 
         <div className="space-y-4">
           {member ? (
-            <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} />
+            <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} planType={type} />
           ) : (
             <Card className="border-dashed">
               <CardContent className="py-10 text-center text-sm text-muted-foreground">

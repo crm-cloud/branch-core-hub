@@ -1,57 +1,54 @@
-# Fix WhatsApp Plan Send + End-to-End Test
+# AI Plan Generation — Workout Inputs & Working Edit
 
-## Root cause (audit findings)
+Two fixes for the AI plan flow at `/fitness/create/ai` and `/fitness/preview/:id`.
 
-Three bugs combined to break the workout plan send to Ryan:
+## 1. Workout-relevant inputs (hide diet fields when type=Workout)
 
-1. **Wrong template picked.** My previous fix made `findTemplate` *prefer* templates with `header_type='document'`. For the `workout_plan_ready` event the doc-header template `workout_plan_ready_doc` was picked. Its body uses `{{member_name}}` and `{{plan_title}}` — but `sendPlanToMember` only passes `plan_name`. Dispatcher's `templateComponents()` returns `null` when a `{{var}}` is missing → error **`missing_template_variables`** (the toast you saw).
+**File:** `src/components/fitness/create/MemberProfileCard.tsx`
 
-2. **The doc-header template is not Meta-approved with a HEADER component.** `whatsapp_templates.components` for `workout_plan_ready_doc` contains only a `BODY` block — no HEADER. Project memory already encodes this rule: *"Document events MUST use `header_type='none'` + `{{document_link}}` body var — Meta rejects DOCUMENT headers without an uploaded handle."* So even if vars were correct, attaching the PDF as a HEADER document would be rejected by Meta on send. The correct global template for this event is `workout_plan_ready_link` (`header_type='none'`, body `Hi {{member_name}}, your new workout plan *{{plan_name}}* from {{trainer_name}} is ready. Download it here: {{document_link}}`).
+- Add prop `planType: 'workout' | 'diet'`.
+- When `planType === 'workout'`:
+  - Hide **Dietary Preference**, **Cuisine**, and **Allergies** fields (those belong to diet).
+  - Add a new **Workout Activities** multi-select (chip toggle group) with options:
+    - Cardio, Warm Up, Functional Training, CrossFit, Dynamic Stretching, Mobility, Plyometrics, Strength, HIIT
+  - Stored on the overrides object as `workout_activities: string[]`.
+- When `planType === 'diet'`: keep existing fields, hide workout activities.
 
-3. **Email → Hostinger SMTP timeout (`421 4.4.2 timeout exceeded` on port 465).** External provider/network issue from the edge runtime. Code is fine; provider is dropping the connection.
+**File:** `src/pages/fitness/CreateAI.tsx`
 
-## What to change
+- Pass `planType={type}` to `<MemberProfileCard />`.
+- Remove the `dietRequirementsMet` gating for workout (already gated to diet — no change needed in logic, only confirm).
+- Append `workout_activities` to the AI `preferences` string when type=workout, e.g. `"include: cardio, warm up, functional training, dynamic stretching"` so the AI structures each session warm-up → main → stretch.
 
-### A. `src/lib/templates/dynamicAttachment.ts` — fix template ranking
-Re-order `findTemplate` so it follows the project standard:
+## 2. "Edit before assign" actually loads the generated plan
 
-1. Branch-scoped `header_type='none'` (text/link template) — preferred.
-2. Branch-scoped `header_type ∈ {document,image,video}` (only safe when Meta approved a HEADER, which we cannot tell from our row alone — secondary).
-3. Global `header_type='none'`.
-4. Global with header.
+**Problem:** Preview's `Edit` button routes AI drafts back to `/fitness/create/ai`, which has no draft-hydration logic — the form is blank.
 
-This makes the system pick `workout_plan_ready_link` (global, `header_type=none`, all vars satisfied by `sendPlanToMember`) and avoid the broken doc-header template.
+**Fix:** Route AI-generated drafts to the **manual builder** preloaded with the draft content, so the user can rearrange/add/remove exercises (or meals) and resave.
 
-### B. `src/utils/sendPlanToMember.ts` — broaden variable payload
-Pass both `plan_name` and `plan_title` (alias) plus already-sent `member_name`, `trainer_name`, `valid_until`, `document_link`. This makes the call resilient to either naming convention so legacy/branch-scoped templates also resolve.
+**File:** `src/pages/fitness/PreviewPlan.tsx`
 
-### C. Mark broken branch-scoped row inactive (data fix)
-Set `templates.is_active=false` for `custom_workout_plan_ready_pdf` (branch `INCLINE`, `header_type='document'` but Meta-side has no HEADER approval) so it can never be selected. Optional but recommended.
+- Change `editPath` for `source==='ai'`:
+  - workout → `/fitness/create/manual/workout?draft=<planId>`
+  - diet → `/fitness/create/manual/diet?draft=<planId>`
 
-### D. Email — give the user a working choice
-The Hostinger SMTP error is not solvable in code. Propose three options to the user (chat reply after plan approval):
-- Switch SMTP port from **465** → **587** (STARTTLS) in Settings → Integrations → Email.
-- Switch provider to **Brevo** (connector available, free tier).
-- Switch to **Lovable Emails** (built-in, no API keys needed).
+**File:** `src/pages/fitness/CreateManualWorkout.tsx`
 
-Default recommendation: **587 first** (zero-cost change). If still failing, move to Brevo/Lovable Emails.
+- Read `?draft=` searchParam. When present, call `loadDraft(planId)`, run `normalizeWorkoutPlan(draft.content)` and hydrate: `planName`, `description`, `difficulty`, `goal`, `member` (from `memberId/memberName/memberCode`), and `days` (week 1).
+- On save, if `draft` param present, **overwrite the same draft** via `saveDraft({ ...existing, content: rebuiltPlan, name, description })` and `navigate(\`/fitness/preview/${planId}\`)` instead of creating a new draft.
 
-## End-to-end test plan
+**File:** `src/pages/fitness/CreateManualDiet.tsx`
 
-After A–C are deployed:
-1. From `/fitness/member-plans`, open Ryan Lekhari → Workout *4 week Muscle Gain for Beginners* → **Share** → send to **WhatsApp + Email**.
-2. Verify **WhatsApp** to `919887601200`:
-   - Toast "Sent" appears.
-   - `communication_logs` row has `channel='whatsapp'`, `status='sent'`, `template_id` populated, no `missing_template_variables`.
-   - Recipient receives a message with PDF link rendered from `{{document_link}}`.
-3. Verify **Email** to `rajat.lekhari@hotmail.com`:
-   - If user keeps Hostinger 465 → expect timeout (external).
-   - After flipping to port 587 (or new provider) → toast "Sent", `communication_logs.status='sent'`, mail arrives with PDF attachment.
-4. Confirm dispatcher logs show no `missing_template_variables` and no `131047`.
+- Mirror the same `?draft=` hydration + save-back behaviour using `normalizeDietPlan`.
 
-## Technical notes (for the reviewer)
+## Acceptance
 
-- `dispatch-communication` v1.8 is correct; no edge change needed.
-- `orderedTemplateKeys()` derives `{{vars}}` from local `templates.content`, so the local row's content placeholders are the contract — the matching `whatsapp_templates.components[].text` on Meta's side just needs the same number of `{{n}}` slots in the same order. `workout_plan_ready_link` already matches.
-- The previous `header_type=document` preference was added to attach PDFs natively; it's incompatible with our project rule and Meta's approval state. Reverted to text+link as the canonical document delivery path.
-- No DB schema change required. The `templates.is_active=false` flip is a single `UPDATE`.
+- For Yogita's workout AI flow: Dietary Preference / Cuisine / Allergies fields are gone; a Workout Activities chip group appears; AI prompt receives those activities.
+- Clicking **Edit before assign** on the preview opens the manual workout builder fully populated with the generated weeks/days/exercises; user can drag/edit; **Save** returns to preview with the updated draft.
+- Diet plans behave identically (manual diet builder loads the AI draft).
+- No backend/db changes; `members.workout_activities` is plan-scoped only (not persisted to member profile in this iteration).
+
+## Out of scope
+
+- Saving workout activities permanently to `members` table (can add in a follow-up via a `workout_activities text[]` column + Save-to-profile checkbox).
+- Drag-and-drop reordering UI polish — the existing manual builder's add/remove/reorder controls are reused as-is.

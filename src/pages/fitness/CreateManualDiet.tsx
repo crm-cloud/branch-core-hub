@@ -11,7 +11,7 @@ import { Plus, Trash2, UtensilsCrossed, Clock, AlertTriangle, ArrowLeftRight, Li
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
-import { newDraftId, saveDraft } from '@/lib/planDraft';
+import { newDraftId, saveDraft, loadDraft } from '@/lib/planDraft';
 import { cn } from '@/lib/utils';
 import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
 import { MealSwapModal } from '@/components/fitness/MealSwapModal';
@@ -59,6 +59,7 @@ export default function CreateManualDietPage() {
   const [searchParams] = useSearchParams();
   const templateId = searchParams.get('template');
   const editMode = searchParams.get('edit') === '1' && !!templateId;
+  const draftId = searchParams.get('draft');
 
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -71,6 +72,76 @@ export default function CreateManualDietPage() {
   const [fatTarget, setFatTarget] = useState(60);
   const [slots, setSlots] = useState<MealSlot[]>(DEFAULT_SLOTS);
   const [swapSlotIdx, setSwapSlotIdx] = useState<number | null>(null);
+
+  // Hydrate from in-session draft (e.g. AI-generated, opened via "Edit before assign")
+  useEffect(() => {
+    if (!draftId) return;
+    const d = loadDraft(draftId);
+    if (!d) {
+      toast.error('Draft not found — it may have expired this session');
+      return;
+    }
+    setPlanName(d.name || '');
+    setDescription(d.description || '');
+    if (d.dietaryType) setDietaryType(d.dietaryType);
+    if (d.cuisine) setCuisine(d.cuisine);
+    if (d.caloriesTarget) setCalTarget(d.caloriesTarget);
+    if (d.memberId) {
+      setMember({ id: d.memberId, full_name: d.memberName || '', member_code: d.memberCode || '' } as PickedMember);
+    }
+    const content: any = d.content || {};
+    const macroNum = (v: any) => parseInt(String(v ?? '').replace(/\D/g, ''), 10);
+    if (content.macros?.protein) setProteinTarget(macroNum(content.macros.protein) || 120);
+    if (content.macros?.carbs) setCarbsTarget(macroNum(content.macros.carbs) || 220);
+    if (content.macros?.fat) setFatTarget(macroNum(content.macros.fat) || 60);
+
+    // Source slots from manual `slots` shape OR AI `meals[0]` shape (named keys).
+    let sourceSlots: any[] | null = null;
+    if (Array.isArray(content.slots) && content.slots.length) {
+      sourceSlots = content.slots;
+    } else if (Array.isArray(content.meals) && content.meals.length) {
+      const day0 = content.meals[0] || {};
+      const KEYS: { key: string; name: string; time?: string }[] = [
+        { key: 'breakfast', name: 'Breakfast', time: '07:30' },
+        { key: 'snack1', name: 'Mid-Morning Snack', time: '10:30' },
+        { key: 'lunch', name: 'Lunch', time: '13:00' },
+        { key: 'snack2', name: 'Evening Snack', time: '16:30' },
+        { key: 'dinner', name: 'Dinner', time: '20:00' },
+      ];
+      sourceSlots = KEYS.filter((k) => day0[k.key]).map((k) => {
+        const e = day0[k.key];
+        return {
+          name: k.name,
+          time: k.time,
+          items: [{
+            food: e?.meal || e?.name || e?.food || '',
+            quantity: e?.quantity || '',
+            calories: Number(e?.calories) || 0,
+            protein: Number(e?.protein) || 0,
+            carbs: Number(e?.carbs) || 0,
+            fats: Number(e?.fats ?? e?.fat) || 0,
+          }],
+        };
+      });
+    }
+    if (sourceSlots && sourceSlots.length) {
+      setSlots(sourceSlots.map((s: any) => ({
+        name: s.name || '',
+        time: s.time || '',
+        items: (s.items || []).map((i: any) => ({
+          food: i.food || '',
+          quantity: i.quantity || '',
+          calories: Number(i.calories) || 0,
+          protein: Number(i.protein) || 0,
+          carbs: Number(i.carbs) || 0,
+          fats: Number(i.fats) || 0,
+        })),
+        recipe_link: s.recipe_link,
+        prep_video_url: s.prep_video_url,
+        prep_video_file_path: s.prep_video_file_path,
+      })));
+    }
+  }, [draftId]);
 
   useEffect(() => {
     if (!templateId) return;
@@ -219,6 +290,30 @@ export default function CreateManualDietPage() {
     const err = validateContent();
     if (err) { toast.error(err); return; }
 
+    if (draftId) {
+      const existing = loadDraft(draftId);
+      saveDraft({
+        ...(existing || {} as any),
+        id: draftId,
+        source: existing?.source || 'manual-diet',
+        templateId: existing?.templateId || templateId || undefined,
+        type: 'diet',
+        name: planName,
+        description,
+        caloriesTarget: calTarget,
+        memberId: existing?.memberId || member?.id,
+        memberName: existing?.memberName || member?.full_name,
+        memberCode: existing?.memberCode || member?.member_code,
+        memberProfile: existing?.memberProfile,
+        dietaryType,
+        cuisine,
+        content: buildContent(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      });
+      navigate(`/fitness/preview/${draftId}`);
+      return;
+    }
+
     const id = newDraftId();
     saveDraft({
       id,
@@ -241,10 +336,10 @@ export default function CreateManualDietPage() {
 
   return (
     <CreateFlowLayout
-      title={editMode ? 'Edit Diet Template' : 'Manual Diet Plan'}
-      subtitle={editMode ? 'Update meals in this template' : 'Build daily meals with live macro tracking'}
+      title={editMode ? 'Edit Diet Template' : draftId ? 'Edit Diet Plan' : 'Manual Diet Plan'}
+      subtitle={editMode ? 'Update meals in this template' : draftId ? 'Refine the generated plan before assigning' : 'Build daily meals with live macro tracking'}
       step="build"
-      backTo={editMode ? '/fitness/templates' : '/fitness/create'}
+      backTo={editMode ? '/fitness/templates' : draftId ? `/fitness/preview/${draftId}` : '/fitness/create'}
       actions={
         editMode ? (
           <div className="flex gap-2">
@@ -252,7 +347,7 @@ export default function CreateManualDietPage() {
             <Button onClick={handleSaveTemplate}>Save Template</Button>
           </div>
         ) : (
-          <Button onClick={handlePreview}>Continue to Preview</Button>
+          <Button onClick={handlePreview}>{draftId ? 'Save & Back to Preview' : 'Continue to Preview'}</Button>
         )
       }
     >

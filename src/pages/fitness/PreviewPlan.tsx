@@ -53,10 +53,17 @@ export default function PreviewPlanPage() {
 
   const editPath = useMemo(() => {
     if (!draft) return '/fitness/create';
-    if (draft.source === 'ai') return '/fitness/create/ai';
-    if (draft.source === 'manual-workout') return '/fitness/create/manual/workout';
-    return '/fitness/create/manual/diet';
-  }, [draft]);
+    if (draft.source === 'ai') {
+      // Re-open the generated plan in the matching manual builder so the user
+      // can rearrange / add / remove items, then resave back to the same draft.
+      const base = draft.type === 'workout'
+        ? '/fitness/create/manual/workout'
+        : '/fitness/create/manual/diet';
+      return `${base}?draft=${planId}`;
+    }
+    if (draft.source === 'manual-workout') return `/fitness/create/manual/workout?draft=${planId}`;
+    return `/fitness/create/manual/diet?draft=${planId}`;
+  }, [draft, planId]);
 
   if (!planId || !draft) {
     return (

@@ -13,7 +13,7 @@ import { Plus, Trash2, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
-import { newDraftId, saveDraft } from '@/lib/planDraft';
+import { newDraftId, saveDraft, loadDraft } from '@/lib/planDraft';
 import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
 
 interface Exercise {
@@ -50,6 +50,7 @@ export default function CreateManualWorkoutPage() {
   const [searchParams] = useSearchParams();
   const templateId = searchParams.get('template');
   const editMode = searchParams.get('edit') === '1' && !!templateId;
+  const draftId = searchParams.get('draft');
 
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -58,6 +59,49 @@ export default function CreateManualWorkoutPage() {
   const [member, setMember] = useState<PickedMember | null>(null);
   const [days, setDays] = useState<Day[]>(DEFAULT_DAYS);
   const [activeIdx, setActiveIdx] = useState(0);
+
+  // Hydrate from an existing in-session draft (e.g. AI-generated, then "Edit before assign")
+  useEffect(() => {
+    if (!draftId) return;
+    const d = loadDraft(draftId);
+    if (!d) {
+      toast.error('Draft not found — it may have expired this session');
+      return;
+    }
+    setPlanName(d.name || '');
+    setDescription(d.description || '');
+    if (d.difficulty) setDifficulty(d.difficulty);
+    if (d.goal) setGoal(d.goal);
+    if (d.memberId) {
+      setMember({ id: d.memberId, full_name: d.memberName || '', member_code: d.memberCode || '' } as PickedMember);
+    }
+    const content: any = d.content || {};
+    const draftDays: any[] = content?.weeks?.[0]?.days || content?.days || [];
+    if (draftDays.length) {
+      setDays(draftDays.map((dd: any) => ({
+        day: dd.day || '',
+        focus: dd.focus || '',
+        exercises: (dd.exercises || []).map((ex: any) => {
+          const restRaw = ex.rest;
+          const restNum = typeof restRaw === 'number'
+            ? restRaw
+            : typeof restRaw === 'string'
+              ? parseInt(restRaw.replace(/\D/g, ''), 10) || 60
+              : 60;
+          return {
+            name: ex.name || '',
+            sets: ex.sets ?? 3,
+            reps: String(ex.reps ?? '12'),
+            rest_seconds: restNum,
+            weight: ex.weight || '',
+            form_tips: ex.notes || ex.form_tips || '',
+            video_url: ex.video_url,
+            video_file_path: ex.video_file_path,
+          };
+        }),
+      })));
+    }
+  }, [draftId]);
 
   useEffect(() => {
     if (!templateId) return;
@@ -177,6 +221,30 @@ export default function CreateManualWorkoutPage() {
     if (!planName.trim()) { toast.error('Plan name is required'); return; }
     if (totalExercises === 0) { toast.error('Add at least one exercise'); return; }
 
+    if (draftId) {
+      // Overwrite the existing draft so Preview re-renders the edited plan.
+      const existing = loadDraft(draftId);
+      saveDraft({
+        ...(existing || {} as any),
+        id: draftId,
+        source: existing?.source || 'manual-workout',
+        templateId: existing?.templateId || templateId || undefined,
+        type: 'workout',
+        name: planName,
+        description,
+        goal,
+        difficulty,
+        memberId: existing?.memberId || member?.id,
+        memberName: existing?.memberName || member?.full_name,
+        memberCode: existing?.memberCode || member?.member_code,
+        memberProfile: existing?.memberProfile,
+        content: buildContent(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      });
+      navigate(`/fitness/preview/${draftId}`);
+      return;
+    }
+
     const id = newDraftId();
     saveDraft({
       id,
@@ -198,10 +266,10 @@ export default function CreateManualWorkoutPage() {
 
   return (
     <CreateFlowLayout
-      title={editMode ? 'Edit Workout Template' : 'Manual Workout Plan'}
-      subtitle={editMode ? 'Update exercises in this template' : 'Build a day-by-day program'}
+      title={editMode ? 'Edit Workout Template' : draftId ? 'Edit Workout Plan' : 'Manual Workout Plan'}
+      subtitle={editMode ? 'Update exercises in this template' : draftId ? 'Rearrange or refine the generated plan' : 'Build a day-by-day program'}
       step="build"
-      backTo={editMode ? '/fitness/templates' : '/fitness/create'}
+      backTo={editMode ? '/fitness/templates' : draftId ? `/fitness/preview/${draftId}` : '/fitness/create'}
       actions={
         editMode ? (
           <div className="flex gap-2">
@@ -212,7 +280,7 @@ export default function CreateManualWorkoutPage() {
           </div>
         ) : (
           <Button onClick={handlePreview} disabled={!planName.trim() || totalExercises === 0}>
-            Continue to Preview
+            {draftId ? 'Save & Back to Preview' : 'Continue to Preview'}
           </Button>
         )
       }
