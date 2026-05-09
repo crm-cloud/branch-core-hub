@@ -1,4 +1,8 @@
-// dispatch-communication v1.6.0
+// dispatch-communication v1.7.0
+// v1.7.0: WhatsApp pre-flight 24h-window guard — when no approved Meta template
+//         is in play and no inbound message exists from the recipient in the last
+//         24h, fail fast with reason='no_active_session_no_template' (avoids the
+//         opaque Meta 131047 "Re-engagement message" error).
 // v1.6.0: accept attachment.kind='video' (mapped to WA document fallback); video forwarded as-is to email base64 path.
 // v1.5.0: send approved Meta WhatsApp templates when template_id is provided; harden IN phone normalization.
 // v1.4.0: normalize whatsapp/sms recipient to E.164 digits-only (defaults +91 for IN); reject malformed phones early.
