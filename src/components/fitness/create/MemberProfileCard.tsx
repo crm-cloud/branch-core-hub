@@ -207,7 +207,10 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
           <Badge variant="secondary">Height: {value.height ? `${value.height} cm` : '—'}</Badge>
           <Badge variant="secondary">BMI: {bmi || '—'}</Badge>
           {value.fitness_level && <Badge variant="outline">Level: {value.fitness_level}</Badge>}
-          {value.dietary_preference && <Badge variant="outline">Diet: {value.dietary_preference}</Badge>}
+          {!isWorkout && value.dietary_preference && <Badge variant="outline">Diet: {value.dietary_preference}</Badge>}
+          {isWorkout && value.workout_activities && value.workout_activities.length > 0 && (
+            <Badge variant="outline">Activities: {value.workout_activities.length}</Badge>
+          )}
         </div>
 
         <Collapsible open={open} onOpenChange={setOpen}>
