@@ -418,7 +418,12 @@ Deno.serve(async (req) => {
               const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
-              components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
+              const templateValues = appendAttachmentLinkForBodyOnlyTemplate(
+                keys,
+                { ...defaults, ...inferred, ...(input.payload.variables ?? {}) },
+                input.attachment?.url,
+              );
+              components = templateComponents(keys, templateValues);
               // components is now always an array (resolveVarValue substitutes ' ' for empty) — no throw.
 
               // Native attachment header: prepend HEADER component when the
@@ -482,7 +487,7 @@ Deno.serve(async (req) => {
             !!templateName && !!input.attachment?.url &&
             ['document', 'image', 'video'].includes(templateHeaderType ?? '');
 
-          if (input.attachment && !sendAsNativeHeaderTemplate) {
+          if (input.attachment && !templateName && !sendAsNativeHeaderTemplate) {
             // Freeform document/image fallback (no approved header template).
             const rawKind = (input.attachment.kind ?? 'document') as string;
             const kind = rawKind === 'image' ? 'image' : 'document';
