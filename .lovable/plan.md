@@ -1,78 +1,92 @@
-## Audit findings
+# Audit findings & fix plan
 
-### 1. Why error `131047` keeps appearing
+## Root causes
 
-Meta returns **131047 — "Re-engagement message"** when you send a non-template (freeform) message to a user whose 24-hour customer service window is closed. Per Meta policy:
-- Inside 24h of an inbound message → freeform allowed (text, document, image).
-- Outside 24h → **only an approved template** can be sent.
+### 1. "Save Changes" works but header type/source revert to None on reopen
+The Template Manager list reads from the **`v_template_with_meta_status`** view (line 181, `TemplateManager.tsx`). That view does **not** select `header_type`, `header_media_url`, `attachment_source`, `attachment_filename_template`, or `header_media_handle`.
 
-In the codebase, `dispatch-communication` (channel = whatsapp) only sends a Meta **template** when the caller passes `template_id` AND the row in `templates` has a non-null `meta_template_name`. Otherwise it sends raw text / a document with caption — which Meta rejects with 131047 once the session expires.
+Flow:
+1. User opens editor → `openEditor(template)` reads `template.header_type` → undefined → form defaults to `'none'` / `'Pick'`.
+2. User picks `Document` + `Dynamic`, hits Save → `UPDATE templates` succeeds (toast "Template updated").
+3. List re-fetches from the view → still no `header_type` → user reopens → form again shows `None`.
 
-Today the following call sites send freeform / document-with-caption with **no `template_id`** (so they always become "service messages"):
+So the value **is** persisted in the table; the editor just looks blank. The badge/coverage matrix in the list also can't tell document templates apart.
 
-- `src/utils/sendPlanToMember.ts` — workout / diet PDF delivery (this is the exact "Hi RYAN LEKHARI, here is your new workout plan…" message in the screenshot).
-- `src/utils/whatsappDocumentSender.ts` — generic document send (POS receipts, scan reports, etc., when used directly).
-- A few transactional helpers that pass `payload.body` only.
+### 2. Duplicate / orphan templates causing confusion
+Branch `11111111…` has duplicates seeded by older migrations (each `*_pdf` appears twice; `payment_receipt_pdf` once with `attachment_source='none'`, once with `'dynamic'`). Global `*_link` rows live alongside new `*_doc` rows. Result: dispatcher routing is non-deterministic.
 
-The DB confirms it:
-- `templates` rows for `workout_plan_ready`, `diet_plan_ready`, `plan_assigned_workout`, `plan_assigned_diet` all exist but have `meta_template_name = NULL` and `meta_template_status = 'pending'` → never registered with Meta, so dispatcher silently falls back to a freeform document message.
-- Per project memory ("Templates Hub" / `ai-generate-whatsapp-templates v2.1.0`), document events MUST use `header_type = 'none'` + `{{document_link}}` body variable. Current rows use `header_type = 'document'`, which Meta rejects on submission, which is why nothing got approved.
+### 3. Meta submission status mismatch
+- `diet_plan_ready_doc` → `meta_template_status='APPROVED'` ✓
+- `workout_plan_ready_doc` → `'PENDING'` (submitted, awaiting Meta)
+- `invoice_ready_doc`, `payment_receipt_doc`, `pos_receipt_doc`, `scan_report_doc` → still `'draft'` (never submitted to Meta).
 
-### 2. Delivery timeline UI (Queued / Sent / Delivered)
+Until Meta approves each, dispatcher v1.8.0 falls back to the `*_link` companion (storage URL in body) — which is what the user is seeing.
 
-`src/components/communications/DeliveryTimeline.tsx` currently:
-- Uses a connector with `top-3.5 left-1/2 right-0 width: calc(100% - 0px)` — the bar overshoots, sits behind the next dot, and looks misaligned (visible in the screenshot).
-- Only colorises the bar when the **next** stage is reached, which means the bar between Sent and Delivered stays grey even when Sent succeeded.
-- Does not apply any visual treatment for `failed`, so the user sees grey "Queued / Sent / Delivered" + a separate red error block (also visible in the screenshot).
-- Renders `max-w-sm mx-auto` inside a wide row, so on wide screens it floats with awkward whitespace.
+### 4. Console 400: `member_benefit_credits?branch_id=…&remaining=gt.0`
+`src/components/settings/BenefitSettingsComponent.tsx` line 258-262 queries:
+- `.eq("branch_id", branchId)` — that table has **no `branch_id` column**.
+- `.gt("remaining", 0)` — column is `credits_remaining`.
 
-## Plan
+Both filters are wrong → PostgREST 400.
 
-### A. Stop 131047 — always send via approved template outside 24h
+---
 
-1. **Add canonical document-template events** to `src/lib/templates/systemEvents.ts` and ensure `ai-generate-whatsapp-templates` (already v2.1.0 enforces this) regenerates them with:
-   - `header_type = 'none'`
-   - body contains `{{document_link}}` (and `{{member_name}}`, `{{plan_name}}` etc.)
-   - `attachment_source = 'dynamic'` so dispatcher injects the real PDF URL.
-   Events covered: `workout_plan_ready`, `diet_plan_ready`, `pos_receipt_ready`, `invoice_ready`, `scan_report_ready`.
+## Fixes
 
-2. **Migration** to:
-   - Mark existing 6 broken plan templates (`header_type='document'`, `meta_template_name IS NULL`) as `is_active = false` so they don't shadow the new ones.
-   - Insert fresh rows with the document-link pattern. Owner can then click "Submit to Meta" from the Templates Hub to get `meta_template_name` populated.
+### A. Template editor visibility (database migration)
+Recreate `v_template_with_meta_status` to also expose:
+`header_type, header_media_url, header_media_handle, attachment_source, attachment_filename_template`.
 
-3. **Refactor `sendPlanToMember.ts`** to:
-   - Look up the matching template via `trigger_event` (`workout_plan_ready` / `diet_plan_ready`) for the branch (fallback to global), and pass its `template_id` to `dispatchCommunication`.
-   - Pass variables `{ member_name, trainer_name, plan_name, valid_until, document_link: pdfUrl }`.
-   - Keep the `attachment` so the actual PDF is delivered as a Meta-uploaded document (per dispatcher v1.6.0).
+This restores the dropdowns on edit, lets the list show accurate "Native PDF / Link only" badges, and unblocks the Coverage Matrix.
 
-4. **Refactor `whatsappDocumentSender.ts`** the same way — accept a `triggerEvent` param and resolve the template on the server side; never send a freeform document caption when no template_id is available — instead surface a clear error ("No approved WhatsApp template for `<event>`. Submit one in Settings → Communication Templates").
+### B. Clean & backfill templates (database migration)
+Inside the same migration:
+1. **Deduplicate** `*_pdf` per `(branch_id, name)` keeping the newest row (use `ROW_NUMBER()` partition); delete the rest.
+2. For each canonical document event, ensure exactly one **global** `*_doc` row exists with:
+   - `header_type='document'`, `attachment_source='dynamic'`,
+   - `header_media_url` pointing to a sample PDF in the `attachments` bucket (so Meta upload has a handle to convert),
+   - body **without** `{{document_link}}` (header carries the file).
+   Events: `workout_plan_ready`, `diet_plan_ready`, `payment_received`, `scan_report_ready`, `invoice_generated`, `pos_purchase_receipt`.
+3. Mark the matching `*_link` rows `is_active=false` **only when** the corresponding `*_doc` reaches `meta_template_status='APPROVED'` (we'll do this via a tiny SQL helper that runs on every poll). For now, leave `*_link` active as fallback.
+4. Reset stuck `*_doc` rows whose status is `draft` to `pending` so the next poll triggers re-submission.
 
-5. **Dispatcher safety net (`supabase/functions/dispatch-communication`)** — when `channel = 'whatsapp'` and we don't have a `meta_template_name` AND we don't have a recent inbound message from the recipient (lookup `whatsapp_messages` direction='inbound' within 24h), fail fast with a structured `reason = 'no_active_session_no_template'` and write that into `communication_logs.error_message` (instead of letting Meta return 131047). This makes the failure obvious in the Live Feed.
+### C. Resubmit to Meta (no code change, runtime action)
+After migration, call `manage-whatsapp-templates` (`action=submit`) for each of the 4 `*_doc` rows still in `draft`. The function already uploads the sample PDF as a Meta `h:` handle (v2.4.0). Surface this as a single **"Submit pending document templates"** button in `TemplateManager.tsx` header (only visible when ≥1 row is `draft|pending`, owner/admin only). Clicking it loops through the rows and calls the edge fn.
 
-### B. Polish the Queued → Sent → Delivered visual
+### D. Fix benefit credits 400 (frontend only)
+In `BenefitSettingsComponent.tsx`:
+- Drop the invalid `.eq('branch_id', …)` and `.gt('remaining', …)`.
+- Replace with a join via members:
+  ```ts
+  supabase
+    .from('member_benefit_credits')
+    .select('id, members!inner(branch_id)', { count: 'exact', head: true })
+    .eq('members.branch_id', branchId)
+    .gt('credits_remaining', 0)
+    .gt('expires_at', new Date().toISOString())
+  ```
 
-Rewrite `src/components/communications/DeliveryTimeline.tsx`:
+### E. Optional: status badge polish (DeliveryTimeline)
+Already done in last pass — no further work unless user reports issues.
 
-- Card-style strip with proper padding, no `max-w-sm` clamp; let it span the row.
-- Connector lines: render as a single absolutely-positioned track behind all dots, then render a coloured fill from the first dot to the latest reached dot (gradient amber → sky → emerald). No more per-segment `width: 100%` overshoot.
-- Reached dots get the colour from `stageMeta`; current stage gets a soft `ring + animate-pulse`; unreached dots get `bg-muted` with subtle border.
-- When `failed` / `bounced`:
-  - Replace the trailing dots after last reached stage with a red `XCircle` "Failed" pill.
-  - Tint the whole strip background `bg-rose-50/50` and show the Meta error code (e.g. `131047 — Re-engagement message`) inline with a friendly explanation: *"Outside 24h — must use an approved template."*
-- Add accessible labels (`aria-label`) under each dot and a tabular timestamp.
-- Use design tokens (`text-emerald-600`, `bg-amber-500`, etc. — these are already approved in the project's Vuexy palette).
+---
 
-### C. Verification
+## Files to change
 
-- After migration, open Settings → Communication Templates → WhatsApp → CRM Templates: confirm new `workout_plan_ready` + `diet_plan_ready` rows with `header_type=none` + `{{document_link}}`.
-- Submit them to Meta from the UI. Once `meta_template_name` populates, send a test plan to a member who is **outside** 24h: dispatcher should call Meta as `type=template`, no 131047.
-- Live Feed: open a sent log and confirm Queued / Sent / Delivered timeline is aligned, coloured progressively, and failures show inline with the Meta error code.
+| File | Change |
+|---|---|
+| `supabase/migrations/<new>.sql` | Recreate view with header columns, dedupe `*_pdf`, ensure 6 global `*_doc` rows, reset draft status |
+| `src/components/settings/TemplateManager.tsx` | Add "Submit pending document templates" toolbar button; wire to `manage-whatsapp-templates` |
+| `src/components/settings/BenefitSettingsComponent.tsx` | Fix `member_benefit_credits` query (members join + `credits_remaining`) |
 
-## Files to touch
+## Risks
+- View recreation drops dependent objects — check for `pg_depend` before drop. We'll use `CREATE OR REPLACE VIEW` (safe; column count unchanged for existing ones, only adding tail columns).
+- Dedup deletes rows referenced by `whatsapp_triggers` / `communication_logs` (FKs are `ON DELETE SET NULL` / `CASCADE` respectively — already verified above). We'll repoint `whatsapp_triggers.template_id` to the surviving row before delete.
+- Meta resubmission: rate-limited; we loop sequentially with 500 ms delay.
 
-- `src/lib/templates/systemEvents.ts` (event metadata)
-- `src/utils/sendPlanToMember.ts` (resolve + use template)
-- `src/utils/whatsappDocumentSender.ts` (resolve + use template)
-- `supabase/functions/dispatch-communication/index.ts` (no-session/no-template guard, bump to v1.7.0)
-- `src/components/communications/DeliveryTimeline.tsx` (visual rewrite)
-- New migration: deactivate broken plan templates + seed canonical document-link templates.
+## Verification
+1. Open any document template → header dropdown shows `Document`, source shows `Dynamic` (not blank).
+2. List badges show "Native PDF" for approved, "Pending Meta" for pending.
+3. Click "Submit pending document templates" → 4 rows transition `draft → pending` then later `→ approved`.
+4. Console clean: no 400 on `member_benefit_credits`.
+5. Send a test invoice → arrives as native PDF attachment in WhatsApp (not a link in body).
