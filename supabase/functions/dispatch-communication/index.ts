@@ -422,17 +422,33 @@ Deno.serve(async (req) => {
               const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
-              const templateValues = appendAttachmentLinkForBodyOnlyTemplate(
-                keys,
-                { ...defaults, ...inferred, ...(input.payload.variables ?? {}) },
-                input.attachment?.url,
-              );
+              const baseValues = { ...defaults, ...inferred, ...(input.payload.variables ?? {}) };
+              // Only inject signed PDF URL into BODY when there is NO media header.
+              // Native document-header templates carry the PDF in the HEADER
+              // component — leaking the URL into body would show a "Download: …"
+              // line in WhatsApp even though the PDF is already attached.
+              const hasMediaHeader = ['document', 'image', 'video'].includes(templateHeaderType);
+              const templateValues = hasMediaHeader
+                ? baseValues
+                : appendAttachmentLinkForBodyOnlyTemplate(keys, baseValues, input.attachment?.url);
               components = templateComponents(keys, templateValues);
-              // components is now always an array (resolveVarValue substitutes ' ' for empty) — no throw.
+
+              // Build a clean rendered body for audit/inbox display so the
+              // signed URL never surfaces in communication_logs / whatsapp_messages.
+              if (tpl.content) {
+                const rendered = stripUnrendered(
+                  String(tpl.content).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
+                    const idx = keys.findIndex((kk) => stripBraces(kk) === k);
+                    const v = resolveVarValue(k, templateValues, idx >= 0 ? idx : 0);
+                    return v || '';
+                  })
+                );
+                if (rendered) input.payload.body = rendered;
+              }
 
               // Native attachment header: prepend HEADER component when the
               // template was approved with header_type=document/image/video.
-              if (input.attachment?.url && ['document', 'image', 'video'].includes(templateHeaderType)) {
+              if (input.attachment?.url && hasMediaHeader) {
                 const header: Record<string, unknown> = { type: 'header', parameters: [] };
                 const params: any[] = [];
                 if (templateHeaderType === 'document') {
