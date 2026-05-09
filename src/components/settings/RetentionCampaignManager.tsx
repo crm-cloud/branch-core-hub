@@ -33,6 +33,12 @@ const CHANNEL_OPTIONS = [
 
 export function RetentionCampaignManager() {
   const queryClient = useQueryClient();
+  const { selectedBranch, currentBranchId } = useBranchContext() as any;
+  const { profile } = useAuth();
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState<string>(profile?.phone || '');
+  const [testEmail, setTestEmail] = useState<string>(profile?.email || '');
+  const [testingKey, setTestingKey] = useState<string | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['retention-templates'],
