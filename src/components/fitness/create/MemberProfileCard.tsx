@@ -102,7 +102,7 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
       const { data: member } = await supabase
         .from('members')
         .select(
-          'id, user_id, health_conditions, fitness_goals, fitness_level, equipment_availability, dietary_preference, cuisine_preference, allergies, profiles:user_id(gender, date_of_birth, full_name)'
+          'id, user_id, health_conditions, fitness_goals, fitness_level, equipment_availability, dietary_preference, cuisine_preference, allergies, workout_activities, profiles:user_id(gender, date_of_birth, full_name)'
         )
         .eq('id', memberId)
         .maybeSingle();
@@ -128,6 +128,7 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
         dietary_preference: (member as any)?.dietary_preference || '',
         cuisine: (member as any)?.cuisine_preference || '',
         allergies: arrToCsv((member as any)?.allergies),
+        workout_activities: ((member as any)?.workout_activities as string[] | null) || [],
       };
     },
   });
@@ -149,6 +150,9 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
       dietary_preference: value.dietary_preference || data.dietary_preference,
       cuisine: value.cuisine || data.cuisine,
       allergies: value.allergies ?? data.allergies,
+      workout_activities: value.workout_activities && value.workout_activities.length > 0
+        ? value.workout_activities
+        : data.workout_activities,
     });
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,6 +181,7 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
         allergies: csvToArr(value.allergies),
         health_conditions: value.health_conditions || null,
         fitness_goals: value.fitness_goals || null,
+        workout_activities: value.workout_activities || [],
       } satisfies Partial<Database['public']['Tables']['members']['Update']>;
       const { error } = await supabase.from('members').update(update).eq('id', memberId);
       if (error) throw error;
