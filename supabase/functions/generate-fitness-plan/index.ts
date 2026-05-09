@@ -20,6 +20,13 @@ interface CatalogMeal {
   default_quantity?: string | null;
 }
 
+interface EquipmentLite {
+  name: string;
+  category?: string | null;
+  brand?: string | null;
+  model?: string | null;
+}
+
 interface GeneratePlanRequest {
   type: "workout" | "diet";
   memberInfo: {
@@ -39,6 +46,12 @@ interface GeneratePlanRequest {
    * prefer when composing diet plans. Items the AI proposes outside of
    * this list are flagged as `unmatched` so the trainer can review. */
   availableMeals?: CatalogMeal[];
+  /** Optional list of branch-specific operational equipment the AI
+   * should prefer when prescribing workout exercises. */
+  availableEquipment?: EquipmentLite[];
+  /** Optional brief summary of the member's previous plan + adherence,
+   * so the AI can progress (not repeat) what came before. */
+  previousPlanContext?: string;
 }
 
 serve(async (req) => {
