@@ -1,3 +1,6 @@
+// v2.3.0 — SMTP IO hardened: chunked DATA writes (16KB), proper readUntilSmtpResponse
+//           loop with 120s post-DATA timeout — fixes Hostinger 421 timeout on
+//           multipart messages with PDF attachments.
 // v2.2.0 — Branded email shell now supports optional logo image and unsubscribe footer.
 // v2.1.0 — SMTP path now sends multipart/mixed with base64 PDF attachments;
 //           communication log records attachment metadata for auditability.
