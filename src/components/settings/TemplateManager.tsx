@@ -363,6 +363,28 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
     );
   };
 
+  /** Indicates how this template will deliver to the recipient. */
+  const deliveryModeBadge = (t: Template) => {
+    if (t.type !== 'whatsapp') return null;
+    const ht = (t.header_type || 'none').toLowerCase();
+    const approved = (t.meta_template_status || '').toUpperCase() === 'APPROVED';
+    if (ht !== 'none' && approved) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200" title="Recipients receive a native WhatsApp document/image/video as the message header.">
+          Native {ht === 'document' ? 'PDF' : ht}
+        </span>
+      );
+    }
+    if (ht !== 'none' && !approved) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 text-amber-700 border-amber-200" title="Native delivery becomes active once Meta approves this template. Until then sends fall back to a link in the body.">
+          Native (pending approval)
+        </span>
+      );
+    }
+    return null;
+  };
+
   const closeEditor = () => {
     setShowEditor(false);
     setSelectedTemplate(null);
@@ -714,6 +736,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
                               )}
                               {value === 'whatsapp' && metaStatusBadge(template.meta_template_status)}
                               {mediaBadge(template)}
+                              {deliveryModeBadge(template)}
                             </div>
                             {value === 'whatsapp' && template.meta_template_name && (
                               <p className="text-xs text-muted-foreground mt-0.5 font-mono">
