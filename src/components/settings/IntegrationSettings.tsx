@@ -1424,8 +1424,12 @@ function IntegrationConfigSheet({
                     <strong>Step 1:</strong> Save OAuth Client ID + Client Secret, then click Connect Google to create the refresh token used for API discovery.
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    <strong>Step 2:</strong> Use Auto-discover to fetch Account ID and Location ID from the connected Google account.
+                    <strong>Step 2:</strong> Use Auto-discover, OR paste <strong>Account ID</strong> and <strong>Location ID</strong> manually below. Find them in the Google Business Profile URL: <code className="font-mono">business.google.com/n/&lt;ACCOUNT_ID&gt;/profile?fid=&lt;LOCATION_ID&gt;</code>.
                   </p>
+                </div>
+
+                <div className="text-[11px] p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-800 dark:text-blue-300">
+                  Seeing <code className="font-mono">Google API 403 ... has not been used in project ... or it is disabled</code>? Open Google Cloud Console → APIs &amp; Services → Library and enable <strong>Google My Business API</strong>, <strong>My Business Account Management API</strong>, and <strong>My Business Business Information API</strong> for the same project as your OAuth client. Wait ~1 minute, then click Test Connection.
                 </div>
 
                 {maskedSaved && (
