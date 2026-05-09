@@ -478,16 +478,43 @@ serve(async (req) => {
       const hasMediaHeader = header_type && ['image', 'video', 'document'].includes(header_type);
       const looksLikeMetaHandle = (s?: string) =>
         !!s && !/^https?:\/\//i.test(s) && s.length > 20;
+
+      // Resolve the App ID needed for the resumable-upload API.
+      const appId =
+        (activeIntegration.credentials as any)?.app_id ||
+        Deno.env.get("META_APP_ID") ||
+        null;
+
+      let resolvedHandle: string | null = null;
       if (hasMediaHeader && looksLikeMetaHandle(header_sample_url)) {
+        resolvedHandle = header_sample_url;
+      } else if (hasMediaHeader && header_sample_url && /^https?:\/\//i.test(header_sample_url) && appId) {
+        // Auto-upload the public URL to Meta and use the returned handle.
+        const fallbackType =
+          header_type === 'image' ? 'image/jpeg' :
+          header_type === 'video' ? 'video/mp4' : 'application/pdf';
+        resolvedHandle = await uploadSampleAsHandle({
+          accessToken,
+          appId,
+          sampleUrl: header_sample_url,
+          fallbackContentType: fallbackType,
+        });
+        if (!resolvedHandle) {
+          console.warn(
+            `[manage-whatsapp-templates] sample upload failed for ${header_sample_url}; submitting as text-only.`
+          );
+        }
+      }
+
+      if (hasMediaHeader && resolvedHandle) {
         components.push({
           type: 'HEADER',
           format: header_type.toUpperCase(),
-          example: { header_handle: [header_sample_url] },
+          example: { header_handle: [resolvedHandle] },
         });
       } else if (hasMediaHeader) {
-        // Skip the HEADER component entirely; let the body carry the link.
         console.warn(
-          `[manage-whatsapp-templates] header_type=${header_type} without Meta handle — submitting as text-only template (sample URL ignored: ${header_sample_url || 'none'})`
+          `[manage-whatsapp-templates] header_type=${header_type} without Meta handle (appId=${appId ? 'set' : 'missing'}) — submitting as text-only template (sample URL: ${header_sample_url || 'none'})`
         );
       }
       components.push(bodyComponent);
