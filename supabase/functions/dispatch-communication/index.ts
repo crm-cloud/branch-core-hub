@@ -1,4 +1,9 @@
-// dispatch-communication v1.9.0
+// dispatch-communication v1.10.0
+// v1.10.0: Never downgrade approved BODY-only WhatsApp templates with PDFs to
+//          freeform document sends (Meta later fails those outside 24h with
+//          131047). If the approved template has no document_link variable,
+//          append the PDF URL to the plan variable so the PDF is still shared
+//          through the approved template path.
 // v1.9.0: Strip {{}} wrappers from templates.variables; broaden var alias resolution
 //         (member_name/plan_title/trainer_name/etc.); never throw missing_template_variables —
 //         substitute single space for empty params (Meta accepts; avoids 132000).
@@ -167,6 +172,25 @@ function templateComponents(keys: string[], values: Record<string, unknown> | un
     return { type: 'text', text: text || ' ' };
   });
   return [{ type: 'body', parameters: params }];
+}
+
+function appendAttachmentLinkForBodyOnlyTemplate(
+  keys: string[],
+  values: Record<string, unknown>,
+  attachmentUrl?: string,
+): Record<string, unknown> {
+  if (!attachmentUrl) return values;
+  const hasLinkSlot = keys.some((key) => /document|link|url/i.test(stripBraces(key)));
+  if (hasLinkSlot) return values;
+
+  const preferredKey = keys.find((key) => /plan_(title|name)|^plan$/i.test(stripBraces(key)))
+    ?? keys.find((key) => /trainer/i.test(stripBraces(key)));
+  if (!preferredKey) return values;
+
+  const normalizedKey = stripBraces(preferredKey);
+  const current = resolveVarValue(normalizedKey, values, keys.indexOf(preferredKey)).trim();
+  if (!current || current.includes(attachmentUrl)) return values;
+  return { ...values, [normalizedKey]: `${current} — PDF: ${attachmentUrl}` };
 }
 
 function inferTemplateValues(templateContent: string, renderedBody: string, keys: string[]): Record<string, string> {
