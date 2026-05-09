@@ -9,6 +9,7 @@ import { Download, Upload, Database, ShieldAlert, Loader2, CheckCircle2 } from '
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { DisasterRecoveryCard } from '@/components/system/DisasterRecoveryCard';
 
 export function BackupRestore() {
   const { hasAnyRole } = useAuth();
@@ -103,6 +104,8 @@ export function BackupRestore() {
 
   return (
     <div className="space-y-6">
+      <DisasterRecoveryCard />
+
       {/* Hero */}
       <Card className="rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-xl overflow-hidden relative">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.15)_0%,_transparent_60%)]" />

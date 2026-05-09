@@ -2,10 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { ShieldCheck, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SyncReport {
@@ -28,13 +29,47 @@ const formatBytes = (n: number) => {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 };
 
+const PHASES: Array<{ pct: number; label: string }> = [
+  { pct: 5, label: "Connecting to fallback database…" },
+  { pct: 20, label: "Mirroring auth users…" },
+  { pct: 40, label: "Ensuring storage buckets…" },
+  { pct: 65, label: "Copying files…" },
+  { pct: 85, label: "Verifying mirror…" },
+  { pct: 95, label: "Finalising…" },
+];
+
 export function DisasterRecoveryCard() {
   const { hasAnyRole } = useAuth();
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [phaseLabel, setPhaseLabel] = useState<string>("");
+  const intervalRef = useRef<number | null>(null);
   const isOwner = hasAnyRole(["owner"]);
+
+  const stopTicker = () => {
+    if (intervalRef.current) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  const startTicker = () => {
+    stopTicker();
+    let i = 0;
+    setProgress(PHASES[0].pct);
+    setPhaseLabel(PHASES[0].label);
+    intervalRef.current = window.setInterval(() => {
+      i = Math.min(i + 1, PHASES.length - 1);
+      setProgress(PHASES[i].pct);
+      setPhaseLabel(PHASES[i].label);
+    }, 1400);
+  };
+
+  useEffect(() => () => stopTicker(), []);
 
   const sync = useMutation({
     mutationFn: async () => {
+      startTicker();
       const { data, error } = await supabase.functions.invoke("dr-replicate", {
         body: { mode: "all" },
       });
@@ -42,6 +77,9 @@ export function DisasterRecoveryCard() {
       return data as SyncReport;
     },
     onSuccess: (report) => {
+      stopTicker();
+      setProgress(100);
+      setPhaseLabel("Sync complete");
       setLastReport(report);
       if (report.ok) {
         toast.success(
@@ -50,11 +88,22 @@ export function DisasterRecoveryCard() {
       } else {
         toast.warning(`Sync finished with ${report.errors.length} error(s)`);
       }
+      window.setTimeout(() => {
+        setProgress(0);
+        setPhaseLabel("");
+      }, 2500);
     },
-    onError: (e: Error) => toast.error(`Sync failed: ${e.message}`),
+    onError: (e: Error) => {
+      stopTicker();
+      setProgress(0);
+      setPhaseLabel("");
+      toast.error(`Sync failed: ${e.message}`);
+    },
   });
 
   if (!isOwner) return null;
+
+  const isRunning = sync.isPending;
 
   return (
     <Card className="rounded-2xl border-border/50 shadow-lg">
@@ -75,12 +124,22 @@ export function DisasterRecoveryCard() {
 
         <Button
           onClick={() => sync.mutate()}
-          disabled={sync.isPending}
+          disabled={isRunning}
           className="gap-2"
         >
-          <RefreshCw className={`h-4 w-4 ${sync.isPending ? "animate-spin" : ""}`} />
-          {sync.isPending ? "Syncing…" : "Sync to fallback now"}
+          <RefreshCw className={`h-4 w-4 ${isRunning ? "animate-spin" : ""}`} />
+          {isRunning ? "Syncing…" : "Sync to fallback now"}
         </Button>
+
+        {(isRunning || progress > 0) && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">{phaseLabel || "Working…"}</span>
+              <span className="font-semibold text-foreground tabular-nums">{progress}%</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        )}
 
         {lastReport && (
           <div className="rounded-xl border bg-muted/30 p-4 space-y-2 text-sm">
