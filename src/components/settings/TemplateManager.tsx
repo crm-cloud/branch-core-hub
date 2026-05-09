@@ -634,6 +634,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SubmitPendingDocsButton templates={templates} branchId={effectiveBranchId} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
@@ -1381,5 +1382,65 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+/**
+ * Toolbar button: submits all WhatsApp document templates whose
+ * meta_template_status is draft|pending to Meta in a single click.
+ * Only shows when at least one such template exists.
+ */
+function SubmitPendingDocsButton({ templates, branchId }: { templates: any[]; branchId?: string | null }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const pending = (templates || []).filter(
+    (t) =>
+      t.type === 'whatsapp' &&
+      t.is_active &&
+      (t.header_type === 'document' || t.header_type === 'image' || t.header_type === 'video') &&
+      ['draft', 'pending'].includes(String(t.approval_status || '').toLowerCase()),
+  );
+  if (pending.length === 0) return null;
+
+  const submitAll = async () => {
+    setBusy(true);
+    let ok = 0;
+    let fail = 0;
+    for (const t of pending) {
+      try {
+        const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+          body: {
+            action: 'create',
+            branch_id: t.branch_id ?? branchId ?? null,
+            template_data: {
+              name: t.meta_template_name || t.name,
+              category: 'UTILITY',
+              language: 'en',
+              body_text: t.content,
+              local_template_id: t.id,
+              header_type: t.header_type,
+              header_sample_url: t.header_media_url || undefined,
+            },
+          },
+        });
+        if (error || data?.success === false || data?.error) fail++;
+        else ok++;
+      } catch {
+        fail++;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    setBusy(false);
+    queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
+    if (ok && !fail) toast.success(`Submitted ${ok} document template${ok > 1 ? 's' : ''} to Meta`);
+    else if (ok && fail) toast.warning(`Submitted ${ok}, failed ${fail}. Open a template to see the Meta error.`);
+    else toast.error('All submissions failed. Open a template to see the Meta error.');
+  };
+
+  return (
+    <Button variant="outline" onClick={submitAll} disabled={busy} className="gap-2">
+      <Send className="h-4 w-4" />
+      {busy ? 'Submitting…' : `Submit ${pending.length} Pending Doc${pending.length > 1 ? 's' : ''}`}
+    </Button>
   );
 }

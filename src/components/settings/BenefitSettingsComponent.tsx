@@ -255,11 +255,13 @@ export function BenefitSettingsComponent() {
     queryKey: ["benefits-kpi-credits", branchId],
     enabled: !!branchId,
     queryFn: async () => {
+      // member_benefit_credits has no branch_id; scope via members join.
       const { count, error } = await (supabase as any)
         .from("member_benefit_credits")
-        .select("id", { count: "exact", head: true })
-        .eq("branch_id", branchId)
-        .gt("remaining", 0);
+        .select("id, members!inner(branch_id)", { count: "exact", head: true })
+        .eq("members.branch_id", branchId)
+        .gt("credits_remaining", 0)
+        .gt("expires_at", new Date().toISOString());
       if (error) throw error;
       return count ?? 0;
     },

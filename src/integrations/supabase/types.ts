@@ -11291,9 +11291,14 @@ export type Database = {
       v_template_with_meta_status: {
         Row: {
           approval_status: string | null
+          attachment_filename_template: string | null
+          attachment_source: string | null
           branch_id: string | null
           content: string | null
           created_at: string | null
+          header_media_handle: string | null
+          header_media_url: string | null
+          header_type: string | null
           id: string | null
           is_active: boolean | null
           meta_rejection_reason: string | null
