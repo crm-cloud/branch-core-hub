@@ -266,10 +266,10 @@ export default function CreateManualWorkoutPage() {
 
   return (
     <CreateFlowLayout
-      title={editMode ? 'Edit Workout Template' : 'Manual Workout Plan'}
-      subtitle={editMode ? 'Update exercises in this template' : 'Build a day-by-day program'}
+      title={editMode ? 'Edit Workout Template' : draftId ? 'Edit Workout Plan' : 'Manual Workout Plan'}
+      subtitle={editMode ? 'Update exercises in this template' : draftId ? 'Rearrange or refine the generated plan' : 'Build a day-by-day program'}
       step="build"
-      backTo={editMode ? '/fitness/templates' : '/fitness/create'}
+      backTo={editMode ? '/fitness/templates' : draftId ? `/fitness/preview/${draftId}` : '/fitness/create'}
       actions={
         editMode ? (
           <div className="flex gap-2">
@@ -280,7 +280,7 @@ export default function CreateManualWorkoutPage() {
           </div>
         ) : (
           <Button onClick={handlePreview} disabled={!planName.trim() || totalExercises === 0}>
-            Continue to Preview
+            {draftId ? 'Save & Back to Preview' : 'Continue to Preview'}
           </Button>
         )
       }
