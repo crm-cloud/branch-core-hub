@@ -13,7 +13,7 @@ import { Plus, Trash2, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
-import { newDraftId, saveDraft } from '@/lib/planDraft';
+import { newDraftId, saveDraft, loadDraft } from '@/lib/planDraft';
 import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
 
 interface Exercise {
