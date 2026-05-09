@@ -323,6 +323,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Secondary Stats Row */}
+        {/* Member Growth KPI Cards */}
+        <MemberGrowthCards branchFilter={branchFilter} />
+
+        {/* Secondary Stats Row */}
         {statsLoading ? (
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
             <StatCardSkeleton />
