@@ -192,6 +192,9 @@ export function RetentionCampaignManager() {
               Configure the 3-stage automated nudge sequence for inactive members.
               Use <code className="bg-muted px-1 rounded text-xs">{'{member_name}'}</code> as a placeholder.
             </p>
+            <p className="text-xs text-blue-700 mt-1">
+              Members with a frozen membership are automatically excluded until the freeze is lifted.
+            </p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => setAiDrawerOpen(true)}>
