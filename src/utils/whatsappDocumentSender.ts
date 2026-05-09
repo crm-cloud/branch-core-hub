@@ -1,16 +1,19 @@
 // Centralized helper to send a WhatsApp document (PDF) message.
-// v2.0: routes through `dispatch-communication` so the send is funnelled
-// through the canonical communication pipeline (dedupe, preferences, quiet
-// hours, communication_logs row, Live Feed, System Health).
+// v3.0: resolve an approved Meta template via `trigger_event` and pass
+//       `template_id` + `document_link` variable to the dispatcher. This
+//       prevents Meta error 131047 (re-engagement message) when sending
+//       outside the 24-hour customer-service window — which is the only
+//       window where freeform document captions are accepted.
 
 import { dispatchCommunication } from '@/lib/comms/dispatch';
 import { uploadAttachment } from './uploadAttachment';
+import { findTemplate } from '@/lib/templates/dynamicAttachment';
 
 export interface SendWhatsAppDocumentInput {
   branchId: string;
   phone: string; // raw, will be normalised to +91XXXXXXXXXX
   memberId?: string | null;
-  caption: string; // visible text alongside the document
+  caption: string; // visible text alongside the document (fallback only)
   filename: string;
   pdf: Blob;
   folder?: string; // storage subfolder, e.g. 'invoices', 'receipts'
@@ -19,6 +22,11 @@ export interface SendWhatsAppDocumentInput {
   dedupeKey?: string;
   /** Maps to dispatcher category. Defaults to 'transactional'. */
   category?: 'payment_receipt' | 'transactional' | 'membership_reminder' | 'announcement';
+  /** Trigger event of the approved Meta template to use. e.g.
+   *  `payment_received`, `scan_report_ready`, `workout_plan_ready`. */
+  triggerEvent?: string;
+  /** Extra variables for template substitution (`{{member_name}}` etc.). */
+  variables?: Record<string, string | number | null | undefined>;
 }
 
 function normalisePhone(input: string): string {
@@ -40,6 +48,18 @@ export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Pr
     contentType: 'application/pdf',
   });
 
+  // Resolve the approved Meta template (branch-scoped, then global) so we
+  // never accidentally send a freeform message outside the 24h window.
+  let templateId: string | undefined;
+  if (input.triggerEvent) {
+    const tpl = await findTemplate({
+      branchId: input.branchId,
+      type: 'whatsapp',
+      triggerEvent: input.triggerEvent,
+    });
+    if (tpl) templateId = tpl.id;
+  }
+
   try {
     const result = await dispatchCommunication({
       branch_id: input.branchId,
@@ -47,7 +67,11 @@ export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Pr
       category: input.category ?? 'transactional',
       recipient: phone,
       member_id: input.memberId ?? null,
-      payload: { body: input.caption },
+      template_id: templateId,
+      payload: {
+        body: input.caption,
+        variables: { ...(input.variables ?? {}), document_link: url },
+      },
       dedupe_key: input.dedupeKey ?? `wa-doc:${input.filename}:${phone}:${Date.now()}`,
       // Receipts/invoices are transactional; bypass member opt-out.
       force: (input.category ?? 'transactional') === 'transactional'
@@ -60,11 +84,6 @@ export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Pr
       },
     });
 
-    if (result.status === 'sent' || result.status === 'queued' || result.status === 'deduped') {
-      return { url, fallback: false, status: result.status };
-    }
-    // Do not fall back to a signed storage link: WhatsApp rewrites/encodes these
-    // links and recipients see InvalidJWT instead of the PDF attachment.
     return { url, fallback: false, status: result.status };
   } catch (err) {
     console.error('[sendWhatsAppDocument] dispatcher failed', err);

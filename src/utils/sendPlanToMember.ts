@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { buildPlanPdf } from './pdfBlob';
 import { uploadAttachment } from './uploadAttachment';
 import { dispatchCommunication } from '@/services/preferencesService';
+import { findTemplate } from '@/lib/templates/dynamicAttachment';
 
 export type PlanSendChannel = 'download' | 'whatsapp' | 'email';
 
@@ -108,7 +109,9 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
     }
   }
 
-  // 4. WhatsApp document — routed through canonical dispatcher
+  // 4. WhatsApp document — routed through canonical dispatcher using an
+  //    approved Meta template (Meta blocks freeform messages outside the 24h
+  //    customer-service window with error 131047).
   if (input.channels.includes('whatsapp') && pdfUrl) {
     if (!input.member.phone) {
       channels.whatsapp = { sent: false, error: 'No phone on file' };
@@ -117,14 +120,31 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
     } else {
       try {
         const phone = normalisePhone(input.member.phone);
-        const caption = `Hi ${input.member.full_name}, here is your new ${input.plan.type} plan: ${input.plan.name}`;
+        const triggerEvent = input.plan.type === 'workout' ? 'workout_plan_ready' : 'diet_plan_ready';
+        // Resolve approved template (branch first, then global fallback).
+        const template = await findTemplate({
+          branchId: input.branchId,
+          type: 'whatsapp',
+          triggerEvent,
+        });
+        const fallbackCaption = `Hi ${input.member.full_name}, here is your new ${input.plan.type} plan: ${input.plan.name}\n\nDownload: ${pdfUrl}`;
         const result = await dispatchCommunication({
           branch_id: input.branchId,
           channel: 'whatsapp',
           category: 'transactional',
           recipient: phone,
           member_id: input.member.id,
-          payload: { body: caption },
+          template_id: template?.id,
+          payload: {
+            body: fallbackCaption,
+            variables: {
+              member_name: input.member.full_name,
+              plan_name: input.plan.name,
+              trainer_name: input.plan.trainer_name || 'your trainer',
+              valid_until: input.plan.valid_until || '',
+              document_link: pdfUrl,
+            },
+          },
           dedupe_key: `plan:${input.member.id}:${input.plan.type}:${input.plan.name}:${Date.now()}`,
           force: true,
           attachment: { url: pdfUrl, filename, content_type: 'application/pdf', kind: 'document' },
