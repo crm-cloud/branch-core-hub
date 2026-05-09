@@ -47,14 +47,34 @@ export async function findTemplate(opts: {
   type: TemplateChannel;
   triggerEvent?: string | null;
   nameContains?: string;
+  /** When true, prefer Meta-approved templates with a document HEADER so
+   *  the PDF is delivered as a native WhatsApp attachment instead of a link. */
+  preferAttachment?: boolean;
 }): Promise<CommunicationTemplate | null> {
-  const { branchId, type, triggerEvent, nameContains } = opts;
+  const { branchId, type, triggerEvent, nameContains, preferAttachment } = opts;
 
-  // Project standard for document events: prefer header_type='none' templates
-  // that carry a {{document_link}} body var. Meta rejects DOCUMENT/IMAGE/VIDEO
-  // headers when the on-Meta template wasn't approved with a HEADER component
-  // (most of ours are BODY-only). Doc-header rows are kept as a *last* resort.
-  // Order: branch text → global text → branch with-header → global with-header.
+  // Preferred path when sending a real attachment: use a Meta-approved template
+  // whose `header_type='document'` (so dispatcher attaches the PDF as a native
+  // HEADER document component). Falls through to text/link templates if none.
+  if (preferAttachment && triggerEvent) {
+    for (const scope of ['branch', 'global'] as const) {
+      let q = supabase
+        .from('templates')
+        .select('*')
+        .eq('type', type)
+        .eq('trigger_event', triggerEvent)
+        .eq('is_active', true)
+        .eq('header_type', 'document')
+        .not('meta_template_name', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      q = scope === 'branch' ? q.eq('branch_id', branchId) : q.is('branch_id', null);
+      const { data } = await q.maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
+  }
+
+  // Standard order: branch text → global text → branch with-header → global with-header.
   if (triggerEvent) {
     // 1a. Branch-scoped, header_type='none' (text/link template) — preferred
     {
