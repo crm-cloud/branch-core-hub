@@ -66,6 +66,9 @@ export const SYSTEM_EVENTS: SystemEvent[] = [
   { event: 'retention_nudge_t1', label: 'Retention Nudge (Tier 1)', category: 'retention', description: 'Smart nudge — gentle re-engagement', channels: ALL },
   { event: 'retention_nudge_t2', label: 'Retention Nudge (Tier 2)', category: 'retention', description: 'Smart nudge — escalated re-engagement', channels: ALL },
   { event: 'win_back_30d', label: 'Win-Back (30 days)', category: 'retention', description: 'Inactive 30+ days — recovery offer', channels: ALL },
+  { event: 'retention_stage_1', label: 'Retention — Stage 1: Value Add', category: 'retention', description: '3-stage retention sequence — first nudge after member is absent (uses {{member_name}})', channels: ALL },
+  { event: 'retention_stage_2', label: 'Retention — Stage 2: Reminder', category: 'retention', description: '3-stage retention sequence — escalated reminder (uses {{member_name}})', channels: ALL },
+  { event: 'retention_stage_3', label: 'Retention — Stage 3: Win-back Offer', category: 'retention', description: '3-stage retention sequence — final win-back with offer (uses {{member_name}})', channels: ALL },
 
   // ── Lead ─────────────────────────────────────────────────────
   { event: 'lead_created', label: 'New Lead — Internal Alert', category: 'lead', description: 'Notify staff of a fresh lead', channels: ALL },
