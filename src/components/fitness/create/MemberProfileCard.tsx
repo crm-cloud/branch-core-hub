@@ -150,6 +150,9 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
       dietary_preference: value.dietary_preference || data.dietary_preference,
       cuisine: value.cuisine || data.cuisine,
       allergies: value.allergies ?? data.allergies,
+      workout_activities: value.workout_activities && value.workout_activities.length > 0
+        ? value.workout_activities
+        : data.workout_activities,
     });
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
