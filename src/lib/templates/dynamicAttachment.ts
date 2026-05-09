@@ -50,13 +50,13 @@ export async function findTemplate(opts: {
 }): Promise<CommunicationTemplate | null> {
   const { branchId, type, triggerEvent, nameContains } = opts;
 
-  // 1. Exact branch + trigger_event + active. Prefer rows with a real
-  //    document/image header (so PDFs attach via Meta header, not just a
-  //    text link), then fall back to header-less rows. Finally, fall back
-  //    to GLOBAL templates (branch_id IS NULL) — the same fallback the
-  //    dispatcher already does for WhatsApp credentials.
+  // Project standard for document events: prefer header_type='none' templates
+  // that carry a {{document_link}} body var. Meta rejects DOCUMENT/IMAGE/VIDEO
+  // headers when the on-Meta template wasn't approved with a HEADER component
+  // (most of ours are BODY-only). Doc-header rows are kept as a *last* resort.
+  // Order: branch text → global text → branch with-header → global with-header.
   if (triggerEvent) {
-    // 1a. Branch-scoped, with document/image/video header
+    // 1a. Branch-scoped, header_type='none' (text/link template) — preferred
     {
       const { data } = await supabase
         .from('templates')
@@ -65,27 +65,13 @@ export async function findTemplate(opts: {
         .eq('type', type)
         .eq('trigger_event', triggerEvent)
         .eq('is_active', true)
-        .in('header_type', ['document', 'image', 'video'])
+        .eq('header_type', 'none')
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (data) return data as unknown as CommunicationTemplate;
     }
-    // 1b. Branch-scoped, any header
-    {
-      const { data } = await supabase
-        .from('templates')
-        .select('*')
-        .eq('branch_id', branchId)
-        .eq('type', type)
-        .eq('trigger_event', triggerEvent)
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data) return data as unknown as CommunicationTemplate;
-    }
-    // 1c. GLOBAL fallback, with document/image/video header
+    // 1b. GLOBAL header_type='none'
     {
       const { data } = await supabase
         .from('templates')
@@ -94,13 +80,27 @@ export async function findTemplate(opts: {
         .eq('type', type)
         .eq('trigger_event', triggerEvent)
         .eq('is_active', true)
-        .in('header_type', ['document', 'image', 'video'])
+        .eq('header_type', 'none')
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (data) return data as unknown as CommunicationTemplate;
     }
-    // 1d. GLOBAL fallback, any header
+    // 1c. Branch-scoped, any header (last resort)
+    {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('branch_id', branchId)
+        .eq('type', type)
+        .eq('trigger_event', triggerEvent)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return data as unknown as CommunicationTemplate;
+    }
+    // 1d. GLOBAL, any header (last resort)
     {
       const { data } = await supabase
         .from('templates')
