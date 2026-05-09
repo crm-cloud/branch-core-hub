@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { buildPlanPdf } from './pdfBlob';
 import { uploadAttachment } from './uploadAttachment';
 import { dispatchCommunication } from '@/services/preferencesService';
+import { findTemplate } from '@/lib/templates/dynamicAttachment';
 
 export type PlanSendChannel = 'download' | 'whatsapp' | 'email';
 
