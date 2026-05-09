@@ -277,38 +277,72 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Dietary Preference</Label>
-                <Select value={value.dietary_preference || ''} onValueChange={setSel('dietary_preference')}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="vegetarian">Vegetarian</SelectItem>
-                    <SelectItem value="vegan">Vegan</SelectItem>
-                    <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
-                    <SelectItem value="eggetarian">Eggetarian</SelectItem>
-                    <SelectItem value="pescatarian">Pescatarian</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Cuisine</Label>
-                <Select value={value.cuisine || ''} onValueChange={setSel('cuisine')}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="indian">Indian</SelectItem>
-                    <SelectItem value="continental">Continental</SelectItem>
-                    <SelectItem value="mediterranean">Mediterranean</SelectItem>
-                    <SelectItem value="asian">Asian</SelectItem>
-                    <SelectItem value="mixed">Mixed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {!isWorkout && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Dietary Preference</Label>
+                  <Select value={value.dietary_preference || ''} onValueChange={setSel('dietary_preference')}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="vegetarian">Vegetarian</SelectItem>
+                      <SelectItem value="vegan">Vegan</SelectItem>
+                      <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
+                      <SelectItem value="eggetarian">Eggetarian</SelectItem>
+                      <SelectItem value="pescatarian">Pescatarian</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {!isWorkout && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Cuisine</Label>
+                  <Select value={value.cuisine || ''} onValueChange={setSel('cuisine')}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="indian">Indian</SelectItem>
+                      <SelectItem value="continental">Continental</SelectItem>
+                      <SelectItem value="mediterranean">Mediterranean</SelectItem>
+                      <SelectItem value="asian">Asian</SelectItem>
+                      <SelectItem value="mixed">Mixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Allergies</Label>
-              <Input value={value.allergies || ''} onChange={set('allergies')} placeholder="e.g. nuts, dairy, gluten" />
-            </div>
+            {isWorkout && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Workout Activities (select all that apply)</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WORKOUT_ACTIVITY_OPTIONS.map((opt) => {
+                    const active = (value.workout_activities || []).includes(opt);
+                    return (
+                      <button
+                        type="button"
+                        key={opt}
+                        onClick={() => toggleActivity(opt)}
+                        className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                          active
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-foreground border-input hover:bg-muted'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  AI will structure each session as Warm Up → Main → Cool Down using these.
+                </p>
+              </div>
+            )}
+
+            {!isWorkout && (
+              <div className="space-y-1">
+                <Label className="text-xs">Allergies</Label>
+                <Input value={value.allergies || ''} onChange={set('allergies')} placeholder="e.g. nuts, dairy, gluten" />
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Health Conditions</Label>
               <Textarea
