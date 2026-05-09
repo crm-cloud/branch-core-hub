@@ -1,4 +1,9 @@
-// dispatch-communication v1.9.0
+// dispatch-communication v1.10.0
+// v1.10.0: Never downgrade approved BODY-only WhatsApp templates with PDFs to
+//          freeform document sends (Meta later fails those outside 24h with
+//          131047). If the approved template has no document_link variable,
+//          append the PDF URL to the plan variable so the PDF is still shared
+//          through the approved template path.
 // v1.9.0: Strip {{}} wrappers from templates.variables; broaden var alias resolution
 //         (member_name/plan_title/trainer_name/etc.); never throw missing_template_variables —
 //         substitute single space for empty params (Meta accepts; avoids 132000).
@@ -119,8 +124,7 @@ function orderedTemplateKeys(content: string, variables: unknown): string[] {
   const configured = Array.isArray(variables)
     ? variables.map((v) => stripBraces(String(v))).filter(Boolean)
     : [];
-  if (configured.length > 0) return configured;
-  const keys: string[] = [];
+  const keys: string[] = [...configured];
   for (const match of content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)) {
     const key = match[1].trim();
     if (!keys.includes(key)) keys.push(key);
@@ -167,6 +171,25 @@ function templateComponents(keys: string[], values: Record<string, unknown> | un
     return { type: 'text', text: text || ' ' };
   });
   return [{ type: 'body', parameters: params }];
+}
+
+function appendAttachmentLinkForBodyOnlyTemplate(
+  keys: string[],
+  values: Record<string, unknown>,
+  attachmentUrl?: string,
+): Record<string, unknown> {
+  if (!attachmentUrl) return values;
+  const hasLinkSlot = keys.some((key) => /document|link|url/i.test(stripBraces(key)));
+  if (hasLinkSlot) return values;
+
+  const preferredKey = keys.find((key) => /plan_(title|name)|^plan$/i.test(stripBraces(key)))
+    ?? keys.find((key) => /trainer/i.test(stripBraces(key)));
+  if (!preferredKey) return values;
+
+  const normalizedKey = stripBraces(preferredKey);
+  const current = resolveVarValue(normalizedKey, values, keys.indexOf(preferredKey)).trim();
+  if (!current || current.includes(attachmentUrl)) return values;
+  return { ...values, [normalizedKey]: `${current} — PDF: ${attachmentUrl}` };
 }
 
 function inferTemplateValues(templateContent: string, renderedBody: string, keys: string[]): Record<string, string> {
@@ -394,7 +417,12 @@ Deno.serve(async (req) => {
               const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
-              components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
+              const templateValues = appendAttachmentLinkForBodyOnlyTemplate(
+                keys,
+                { ...defaults, ...inferred, ...(input.payload.variables ?? {}) },
+                input.attachment?.url,
+              );
+              components = templateComponents(keys, templateValues);
               // components is now always an array (resolveVarValue substitutes ' ' for empty) — no throw.
 
               // Native attachment header: prepend HEADER component when the
@@ -458,7 +486,7 @@ Deno.serve(async (req) => {
             !!templateName && !!input.attachment?.url &&
             ['document', 'image', 'video'].includes(templateHeaderType ?? '');
 
-          if (input.attachment && !sendAsNativeHeaderTemplate) {
+          if (input.attachment && !templateName && !sendAsNativeHeaderTemplate) {
             // Freeform document/image fallback (no approved header template).
             const rawKind = (input.attachment.kind ?? 'document') as string;
             const kind = rawKind === 'image' ? 'image' : 'document';
