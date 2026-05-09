@@ -1,4 +1,4 @@
-// run-retention-nudges v2.0.0 — routes all sends through dispatch-communication
+// run-retention-nudges v2.1.0 — routes through dispatch-communication; skips members with frozen membership
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    const results = { stage_1: 0, stage_2: 0, stage_3: 0, skipped_cooldown: 0, skipped_returned: 0 };
+    const results = { stage_1: 0, stage_2: 0, stage_3: 0, skipped_cooldown: 0, skipped_returned: 0, skipped_frozen: 0 };
 
     // Get all active branches
     const { data: branches } = await adminClient.from("branches").select("id").eq("is_active", true);
@@ -54,6 +54,17 @@ Deno.serve(async (req) => {
 
       for (const member of inactiveMembers) {
         const daysAbsent = member.days_absent || 0;
+
+        // FREEZE GUARD: skip if member has any frozen membership currently
+        const { count: frozenCount } = await adminClient
+          .from("memberships")
+          .select("id", { count: "exact", head: true })
+          .eq("member_id", member.member_id)
+          .eq("status", "frozen");
+        if ((frozenCount || 0) > 0) {
+          results.skipped_frozen++;
+          continue;
+        }
 
         // Find the appropriate template based on days absent
         // Stage 1 = first threshold, Stage 2 = second, Stage 3 = third

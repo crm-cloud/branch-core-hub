@@ -1,63 +1,55 @@
-# Retention Campaign — Make Tests Real & Align with AI Template Manager
+## Audit Findings
 
-## Problems found
+### A. Cron Health (2:00 AM and others)
+Queried `automation_rules` and `cron.job` — all jobs healthy, no errors.
 
-1. **Test buttons are fake.** `RetentionCampaignManager.handleTestSend` just opens `wa.me` / `sms:` / `mailto:` links in a new tab — it never goes through our backend, so it's not a real delivery test and gives no feedback about template approval, channel coverage, or member preferences.
-2. **Live retention sender bypasses the dispatcher.** `supabase/functions/run-retention-nudges` calls `send-whatsapp` directly and writes raw rows into `communication_logs` for SMS/Email. This violates the Core rule "all outbound comms must go via `dispatchCommunication` / `dispatch-communication`" — it's why WhatsApp messages get rejected (no Meta-approved template, no language code, no `event_key`) and why SMS/Email never actually send.
-3. **No CRM template for the retention stages.** `src/lib/templates/systemEvents.ts` only has `retention_nudge_t1/t2` and `win_back_30d`. The 3 stages shown in the UI (`Stage 1: Value Add`, `Stage 2: …`, `Stage 3: …`) have no entry in the canonical event catalog, so the Templates Hub Coverage matrix and the AI generator skip them — meaning Meta has nothing approved to send.
+| Time | Job | Last Run | Status |
+|---|---|---|---|
+| 02:00 daily | Generate Renewal Invoices (`generate_renewal_invoices`) | 2026-05-09 02:00:09 | success |
+| 01:00 daily | Auto-Expire Memberships | 2026-05-09 01:00:09 | success |
+| 09:00 daily | Smart Retention Nudges (`run-retention-nudges`) | 2026-05-09 09:00:09 | success (1 stage-1 sent) |
+| every 5 min | automation-brain master tick | live | running |
+| every 5 min | comm + WhatsApp retry queues | live | success |
+| 21:00 daily | DR replicate | live | success |
 
-## Fix plan
+No `last_error` rows. The 2 AM job the user asked about (Generate Renewal Invoices) processed successfully.
 
-### 1. Register the 3 retention stages in the canonical event catalog
-File: `src/lib/templates/systemEvents.ts`
-- Add events `retention_stage_1`, `retention_stage_2`, `retention_stage_3` (category `retention`, channels `whatsapp/sms/email/in_app`) with the body variable `{{member_name}}`.
-- This automatically surfaces them in Templates Hub → Coverage matrix and in the AI Generator drawer (which auto-defaults to all missing events and upserts `whatsapp_triggers` rows on save).
+### B. Retention Campaign — Frozen Membership Bug
+Current `get_inactive_members` RPC filters `ms.status = 'active'`, but:
+- A member with BOTH an active and a frozen membership still qualifies.
+- A member whose membership is frozen mid-stretch (status flipped to `frozen`) is correctly skipped today, BUT dispatcher has no second guard — if status race-conditions or future workers query differently, nudges will fire.
+- User's explicit rule: "if member has freeze membership… do not trigger until unfreeze".
 
-### 2. Refactor `run-retention-nudges` to use the dispatcher
-File: `supabase/functions/run-retention-nudges/index.ts`
-- Remove the direct `send-whatsapp` fetch and the direct `communication_logs` insert.
-- For each `channels[]` entry, call the canonical `dispatch-communication` edge fn with:
-  - `event_key`: `retention_stage_${matchedTemplate.stage_level}`
-  - `channel`: `whatsapp` | `sms` | `email`
-  - `category`: `retention`
-  - `member_id`, `branch_id`
-  - `variables`: `{ member_name: member.full_name }`
-  - `fallback_body`: the personalized `message_body` (so SMS/Email still work even before a template is approved)
-  - `dedupe_key`: `buildDedupeKey(['retention', stage, member_id, channel])`
-- Dispatcher already handles dedupe, member channel/category preferences, quiet hours, provider routing, and `communication_logs`.
-- Keep the existing cooldown + reset guards and the `retention_nudge_logs` insert (mark log status from dispatcher result).
+### Plan
 
-### 3. Make the Test buttons send real messages
-File: `src/components/settings/RetentionCampaignManager.tsx`
-- Replace `handleTestSend` (mailto / wa.me / sms:) with a small "Send test" flow:
-  - Add a single inline "Test recipient" picker per stage card: a member-search Combobox (defaults to the logged-in user / their staff phone+email if available).
-  - On click, call `dispatchCommunication({ event_key: 'retention_stage_${stage}', channel, category:'retention', member_id|recipient_phone|recipient_email, variables:{ member_name: chosen.name }, fallback_body: messageBody, dedupe_key: 'retention-test:${stage}:${channel}:${Date.now()}' })`.
-  - Toast: success (with `dispatch_id`) or the dispatcher error verbatim (template-not-approved, opted-out, quiet-hours, etc.) so the admin sees exactly why a real send would be rejected.
-- Disable channel test buttons whose dispatcher coverage check returns "not configured" (cheap pre-check via the `event_key` / channel pair).
+**1. Tighten `get_inactive_members` RPC** (new migration)
+Exclude any member who has ANY current membership row with `status = 'frozen'` (regardless of other active memberships). Add `LEFT JOIN` + `NOT EXISTS` guard:
+```sql
+AND NOT EXISTS (
+  SELECT 1 FROM memberships f
+  WHERE f.member_id = m.id AND f.status = 'frozen'
+)
+```
 
-### 4. One-click "Generate AI templates" CTA
-File: `src/components/settings/RetentionCampaignManager.tsx`
-- Add a header button `Generate WhatsApp Templates with AI` that opens the existing `AIGenerateTemplatesDrawer` filtered to `retention_stage_1|2|3`. The drawer already calls `ai-generate-whatsapp-templates` and upserts `whatsapp_triggers`, so once the admin clicks Save, Meta-approved templates exist and the WhatsApp Test stops failing.
-- Show a small per-stage badge: "WA template: ✅ approved / ⏳ pending / ❌ missing" pulled from `whatsapp_triggers` + `meta_templates` for that `event_key`.
+**2. Belt-and-braces check in `run-retention-nudges/index.ts`**
+Before dispatching for each member, query memberships and skip if any `status='frozen'` exists. Increment new `results.skipped_frozen` counter. Logged so admins see why a member was skipped.
 
-### 5. SMS + Email coverage
-- Mirror the same event keys in the SMS and Email Coverage tabs (already automatic once step 1 lands — no extra code).
-- Email body: dispatcher will fall back to the textarea body wrapped in the standard transactional layout; subject = `Stage {n}: {stage_name}`.
-- SMS: dispatcher handles 160-char trimming and DLT mapping per existing rules.
+**3. Apply same guard to other member-targeted automations** (audit only, no code change in this plan unless user asks):
+- `send-reminders` (booking T-2h) — uses bookings, not member status; fine.
+- `birthday_wish` — should also skip frozen members. Add follow-up.
+- `lead-nurture-followup` — leads not members; N/A.
 
-## Out of scope
-- No DB schema changes (`retention_templates`, `retention_nudge_logs` stay as-is).
-- Cron schedule for `run-retention-nudges` unchanged.
-- AI Studio prompt tweaks not required — the existing AI generator already handles `category:'retention'` events.
+**4. UI confirmation in `RetentionCampaignManager.tsx`**
+Add a small info banner: "Frozen memberships are automatically excluded from all retention nudges until unfrozen."
 
-## Files to touch
-- `src/lib/templates/systemEvents.ts` — add 3 events.
-- `supabase/functions/run-retention-nudges/index.ts` — route through `dispatch-communication`.
-- `src/components/settings/RetentionCampaignManager.tsx` — real Test sends + AI Generate CTA + coverage badges.
+### Files Touched
+- `supabase/migrations/<new>.sql` — replace `get_inactive_members` with frozen-exclusion logic.
+- `supabase/functions/run-retention-nudges/index.ts` — add per-member frozen check + `skipped_frozen` counter (v2.1.0).
+- `src/components/settings/RetentionCampaignManager.tsx` — info banner.
 
-## Verification
-1. Open Settings → Marketing & Retention, click `Generate WhatsApp Templates with AI`, save — confirm 3 rows appear in `whatsapp_triggers` for the new event keys.
-2. Click **Test WhatsApp** on Stage 1 with own phone — message arrives via Meta template, log row in `communication_logs` has `event_key='retention_stage_1'` and `dedupe_key`.
-3. Click **Test SMS** and **Test Email** — both deliver, dispatcher logs success.
-4. Manually invoke `run-retention-nudges` (Run Now from Automation Brain) — `retention_nudge_logs` rows created, `communication_logs` written by dispatcher, no direct inserts.
-5. Confirm CI direct-write guard still passes (we removed the only offending insert).
+### Verification
+- Re-deploy edge fn, manually invoke `run-retention-nudges`, confirm a frozen test member is in `skipped_frozen` not `stage_1`.
+- Run `SELECT * FROM get_inactive_members('<branch>',5,200)` and confirm frozen members absent.
+- Cron audit already complete — no action needed.
+
+No schema/data migration risk; RPC replace is idempotent.
