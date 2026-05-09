@@ -6738,6 +6738,7 @@ export type Database = {
           updated_at: string
           user_id: string | null
           wiegand_code: string | null
+          workout_activities: string[]
         }
         Insert: {
           activity_level?: string | null
@@ -6779,6 +6780,7 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
           wiegand_code?: string | null
+          workout_activities?: string[]
         }
         Update: {
           activity_level?: string | null
@@ -6820,6 +6822,7 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
           wiegand_code?: string | null
+          workout_activities?: string[]
         }
         Relationships: [
           {
