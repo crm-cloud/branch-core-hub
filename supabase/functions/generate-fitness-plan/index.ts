@@ -100,7 +100,7 @@ serve(async (req) => {
       );
     }
 
-    const { type, memberInfo, durationWeeks = 4, caloriesTarget, availableMeals = [] } = await req.json() as GeneratePlanRequest;
+    const { type, memberInfo, durationWeeks = 4, caloriesTarget, availableMeals = [], availableEquipment = [], previousPlanContext } = await req.json() as GeneratePlanRequest;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
