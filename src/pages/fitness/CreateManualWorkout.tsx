@@ -186,6 +186,21 @@ export default function CreateManualWorkoutPage() {
   const removeExercise = (exIdx: number) =>
     updateDay(activeIdx, { exercises: days[activeIdx].exercises.filter((_, i) => i !== exIdx) });
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleExerciseDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const list = days[activeIdx].exercises;
+    const oldIdx = Number(active.id);
+    const newIdx = Number(over.id);
+    if (Number.isNaN(oldIdx) || Number.isNaN(newIdx)) return;
+    updateDay(activeIdx, { exercises: arrayMove(list, oldIdx, newIdx) });
+  };
+
   const totalExercises = days.reduce((s, d) => s + d.exercises.length, 0);
 
   const buildContent = (): WorkoutPlanContent => ({
