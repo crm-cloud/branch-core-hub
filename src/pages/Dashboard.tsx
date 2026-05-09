@@ -370,6 +370,16 @@ export default function DashboardPage() {
           <AttendanceChart data={attendanceData} />
         </div>
 
+        {/* Members Counting + Joined Summary */}
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <Suspense fallback={<ChartSkeleton />}>
+              <LazyMembersCountingChart branchFilter={branchFilter} />
+            </Suspense>
+          </div>
+          <JoinedSummaryStrip branchFilter={branchFilter} />
+        </div>
+
         {/* CRM Widgets Row — lazy loaded */}
         <div ref={crmRef} className="grid gap-6 md:grid-cols-4">
           {crmInView ? (
