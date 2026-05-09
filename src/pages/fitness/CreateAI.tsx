@@ -57,6 +57,37 @@ export default function CreateAIPage() {
     enabled: type === 'diet' && !!profile.dietary_preference && !!profile.cuisine,
   });
 
+  // Branch operational equipment — drives workout AI to use real machines.
+  const { data: branchEquipment = [] } = useQuery({
+    queryKey: ['branch-equipment-lite', effectiveBranchId],
+    queryFn: () => fetchOperationalEquipmentLite(effectiveBranchId ?? null),
+    enabled: type === 'workout' && !!effectiveBranchId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Last plan summary for this member (so AI can progress, not repeat).
+  const { data: lastPlans = [] } = useQuery({
+    queryKey: ['member-last-plans', member?.id, type],
+    queryFn: async () => {
+      if (!member?.id) return [];
+      const all = await fetchMemberAssignments(effectiveBranchId ?? null);
+      return all.filter((p) => p.member_id === member.id && p.plan_type === type).slice(0, 1);
+    },
+    enabled: !!member?.id,
+  });
+  const lastPlan = lastPlans[0];
+
+  function buildPreviousPlanContext(): string | undefined {
+    if (!lastPlan) return undefined;
+    const parts = [
+      `Previous ${lastPlan.plan_type} plan: "${lastPlan.plan_name}"`,
+      lastPlan.valid_from && `Started ${lastPlan.valid_from}`,
+      lastPlan.valid_until && `Valid until ${lastPlan.valid_until}`,
+      lastPlan.description && `Notes: ${lastPlan.description}`,
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
   useEffect(() => {
     if (!templateId) return;
     let cancelled = false;
