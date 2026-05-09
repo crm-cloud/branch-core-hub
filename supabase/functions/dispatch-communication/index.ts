@@ -395,7 +395,7 @@ Deno.serve(async (req) => {
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
               components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
-              if (components === null) throw new Error('missing_template_variables');
+              // components is now always an array (resolveVarValue substitutes ' ' for empty) — no throw.
 
               // Native attachment header: prepend HEADER component when the
               // template was approved with header_type=document/image/video.
