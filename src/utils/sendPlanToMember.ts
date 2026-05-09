@@ -140,6 +140,8 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
             variables: {
               member_name: input.member.full_name,
               plan_name: input.plan.name,
+              plan_title: input.plan.name, // alias for legacy templates
+              plan_type: input.plan.type,
               trainer_name: input.plan.trainer_name || 'your trainer',
               valid_until: input.plan.valid_until || '',
               document_link: pdfUrl,
