@@ -181,17 +181,23 @@ export function RetentionCampaignManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="bg-primary/10 text-primary p-2.5 rounded-full">
-          <Megaphone className="h-5 w-5" />
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 text-primary p-2.5 rounded-full">
+            <Megaphone className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">Retention Campaign</h2>
+            <p className="text-sm text-muted-foreground">
+              Configure the 3-stage automated nudge sequence for inactive members.
+              Use <code className="bg-muted px-1 rounded text-xs">{'{member_name}'}</code> as a placeholder.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold">Retention Campaign</h2>
-          <p className="text-sm text-muted-foreground">
-            Configure the 3-stage automated nudge sequence for inactive members.
-            Use <code className="bg-muted px-1 rounded text-xs">{'{member_name}'}</code> as a placeholder.
-          </p>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => setAiDrawerOpen(true)}>
+          <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
+          Generate WhatsApp Templates with AI
+        </Button>
       </div>
 
       {/* Cooldown Indicator */}
@@ -201,6 +207,31 @@ export function RetentionCampaignManager() {
           <div>
             <p className="text-sm font-medium text-sky-800">30-Day Cooldown Active</p>
             <p className="text-xs text-sky-600">Each member can only receive each nudge stage once every 30 days. Sequence resets if the member visits the gym.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Test recipient — used by all "Test" buttons below */}
+      <Card className="rounded-2xl">
+        <CardContent className="py-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Test phone (WhatsApp / SMS)</Label>
+            <Input
+              className="mt-1.5"
+              placeholder="+91XXXXXXXXXX"
+              value={testPhone}
+              onChange={(e) => setTestPhone(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Test email</Label>
+            <Input
+              className="mt-1.5"
+              type="email"
+              placeholder="you@example.com"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
