@@ -1,4 +1,9 @@
-// dispatch-communication v1.10.0
+// dispatch-communication v1.11.0
+// v1.11.0: Document-header WhatsApp templates never inject the signed PDF URL
+//          into BODY variables (would surface as "Download: <url>" in chat).
+//          PDF flows ONLY through the HEADER component. Also writes a clean
+//          rendered body to communication_logs.content + whatsapp_messages.content
+//          so audit/inbox views never display the long signed URL.
 // v1.10.0: Never downgrade approved BODY-only WhatsApp templates with PDFs to
 //          freeform document sends (Meta later fails those outside 24h with
 //          131047). If the approved template has no document_link variable,
@@ -417,17 +422,34 @@ Deno.serve(async (req) => {
               const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
-              const templateValues = appendAttachmentLinkForBodyOnlyTemplate(
-                keys,
-                { ...defaults, ...inferred, ...(input.payload.variables ?? {}) },
-                input.attachment?.url,
-              );
+              const baseValues = { ...defaults, ...inferred, ...(input.payload.variables ?? {}) };
+              // Only inject signed PDF URL into BODY when there is NO media header.
+              // Native document-header templates carry the PDF in the HEADER
+              // component — leaking the URL into body would show a "Download: …"
+              // line in WhatsApp even though the PDF is already attached.
+              const hasMediaHeader = ['document', 'image', 'video'].includes(templateHeaderType);
+              const templateValues = hasMediaHeader
+                ? baseValues
+                : appendAttachmentLinkForBodyOnlyTemplate(keys, baseValues, input.attachment?.url);
               components = templateComponents(keys, templateValues);
-              // components is now always an array (resolveVarValue substitutes ' ' for empty) — no throw.
+
+              // Build a clean rendered body for audit/inbox display so the
+              // signed URL never surfaces in communication_logs / whatsapp_messages.
+              if (tpl.content) {
+                const rendered = String(tpl.content)
+                  .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
+                    const idx = keys.findIndex((kk) => stripBraces(kk) === k);
+                    const v = resolveVarValue(k, templateValues, idx >= 0 ? idx : 0);
+                    return v || '';
+                  })
+                  .replace(/[ \t]{2,}/g, ' ')
+                  .trim();
+                if (rendered) input.payload.body = rendered;
+              }
 
               // Native attachment header: prepend HEADER component when the
               // template was approved with header_type=document/image/video.
-              if (input.attachment?.url && ['document', 'image', 'video'].includes(templateHeaderType)) {
+              if (input.attachment?.url && hasMediaHeader) {
                 const header: Record<string, unknown> = { type: 'header', parameters: [] };
                 const params: any[] = [];
                 if (templateHeaderType === 'document') {
@@ -658,6 +680,9 @@ Deno.serve(async (req) => {
         provider_message_id: providerMessageId ?? null,
         delivery_metadata: Object.keys(finalMeta).length ? finalMeta : null,
         error_message: sendError ?? null,
+        // Re-write content from the (now possibly cleaned) rendered body so the
+        // audit row matches what was actually delivered to WhatsApp.
+        content: input.payload.body,
         sent_at: new Date().toISOString(),
         attempt_count: 1,
       })

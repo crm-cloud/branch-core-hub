@@ -128,7 +128,13 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
           triggerEvent,
           preferAttachment: true,
         });
-        const fallbackCaption = `Hi ${input.member.full_name}, here is your new ${input.plan.type} plan: ${input.plan.name}\n\nDownload: ${pdfUrl}`;
+        // When an approved document-header template is available the PDF is
+        // delivered natively (HEADER document component) — caption must NOT
+        // include a download link or it will display as "Download: <url>".
+        const hasDocHeader = (template?.header_type || 'none') === 'document';
+        const fallbackCaption = hasDocHeader
+          ? `Hi ${input.member.full_name}, your ${input.plan.type} plan "${input.plan.name}" is attached as a PDF.`
+          : `Hi ${input.member.full_name}, here is your new ${input.plan.type} plan: ${input.plan.name}\n\nDownload: ${pdfUrl}`;
         const result = await dispatchCommunication({
           branch_id: input.branchId,
           channel: 'whatsapp',
@@ -145,7 +151,8 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
               plan_type: input.plan.type,
               trainer_name: input.plan.trainer_name || 'your trainer',
               valid_until: input.plan.valid_until || '',
-              document_link: pdfUrl,
+              // Only pass document_link for body-only/link templates.
+              ...(hasDocHeader ? {} : { document_link: pdfUrl }),
             },
           },
           dedupe_key: `plan:${input.member.id}:${input.plan.type}:${input.plan.name}:${Date.now()}`,
