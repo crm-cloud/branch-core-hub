@@ -181,6 +181,7 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
         allergies: csvToArr(value.allergies),
         health_conditions: value.health_conditions || null,
         fitness_goals: value.fitness_goals || null,
+        workout_activities: value.workout_activities || [],
       } satisfies Partial<Database['public']['Tables']['members']['Update']>;
       const { error } = await supabase.from('members').update(update).eq('id', memberId);
       if (error) throw error;
