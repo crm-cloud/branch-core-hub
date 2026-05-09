@@ -242,11 +242,11 @@ export function BenefitSettingsComponent() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("facilities")
-        .select("id, status")
+        .select("id, under_maintenance")
         .eq("branch_id", branchId);
       if (error) throw error;
       const total = data?.length ?? 0;
-      const maintenance = (data ?? []).filter((f: any) => f.status === "maintenance").length;
+      const maintenance = (data ?? []).filter((f: any) => f.under_maintenance === true).length;
       return { total, maintenance };
     },
   });
