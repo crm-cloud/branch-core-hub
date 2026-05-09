@@ -1,70 +1,69 @@
 ## Audit Findings
 
-1. **Current Yogita send did deliver, but only as a text template with a PDF link**
-   - Latest log for `919928910901` used template `workout_plan_ready_doc` and is marked delivered.
-   - The WhatsApp row is `message_type = text`, `media_url = null`, and the message body contains a signed PDF URL.
-   - This is why the member sees a link instead of a native PDF document attachment.
+### 1. "Save to member profile" silently failing on AI page
+`MemberProfileCard.handleSaveToProfile` writes to `members` columns including `workout_activities`, `fitness_level`, `equipment_availability`, `dietary_preference`, `cuisine_preference`, `allergies`, `health_conditions`, `fitness_goals`. The button works in code, but:
+- It is hidden inside a collapsed `Collapsible` ("Edit profile data for this plan"). On the AI page in your screenshot, the user never expands it, so the button at the bottom of the screenshot is actually the floating one — and the click likely 404s on RLS or column-not-found because `workout_activities` is a recent migration and may not be present on every environment.
+- No Save button is shown OUTSIDE the collapsible, so users can't see it without scrolling/expanding.
+- After save, we invalidate `member-profile-prefill` but the AI generation flow does not feed the saved values back into next plan automatically — the only re-use is the next time the same form is opened.
 
-2. **The active workout/diet templates are configured as BODY-only templates**
-   - `workout_plan_ready_doc` is active, linked to Meta, but has `header_type = none` and only `member_name` in variables.
-   - Because it is not a Meta document-header template, the dispatcher cannot attach the PDF natively for that template.
+### 2. AssignPlanDrawer opens from the bottom
+`AssignPlanDrawer.tsx` uses `@/components/ui/drawer` (vaul, bottom slide). Project rule (memory: form-drawer-standard) is **right-side `Sheet` for all create/edit/multi-field flows**. This must be migrated.
 
-3. **Retry queue is calling the wrong function contract**
-   - `process-comm-retry-queue` retries WhatsApp by calling `send-whatsapp` directly with `{ branch_id, recipient, content, phone, message }`.
-   - `send-whatsapp` requires `message_id`, `phone_number`, and `branch_id`.
-   - That mismatch causes: `send-whatsapp 400: Missing required fields: message_id, phone_number, branch_id`.
+### 3. "Valid Until" forced to manual date
+The drawer hard-codes `addWeeks(new Date(), 4)`. The plan content already carries `durationWeeks` (workout) or an implicit 1-week diet. We should auto-compute validity from the plan and let the user override only if they want.
 
-4. **Retry rows lose the original attachment payload**
-   - The database trigger that enqueues failed communication rows only copies text fields into `communication_retry_queue`.
-   - It does not copy `delivery_metadata.attachment`, so retries cannot resend the PDF attachment even if the original log had it.
+### 4. AI workout doesn't use branch equipment
+`generate-fitness-plan` only sees a single string token from the `equipment` enum (`full_gym | home_basic | …`). The real `equipment` table (operational machines per branch) is never sent. AI invents generic exercises. We need to pass the branch's operational equipment list and instruct the model to prefer those machines.
 
-## Fix Plan
+---
 
-1. **Make plan PDF WhatsApp use native document attachments again**
-   - Update the active workout/diet plan template rows to use document-header delivery:
-     - `header_type = document`
-     - `attachment_source = dynamic`
-     - keep `meta_template_name = workout_plan_ready_doc` / `diet_plan_ready_doc`
-   - Ensure the template body does not require `document_link`; the PDF will be passed in the Meta template `HEADER` component.
+## Plan
 
-2. **Update template selection for document events**
-   - Adjust `findTemplate()` so workout/diet/body-scan/payment document events prefer active templates with `header_type = document` when a PDF attachment is being sent.
-   - Keep text/link fallback only if no approved document-header template exists.
+### A. Fix & elevate "Save to member profile" (AI + Manual pages)
+1. In `MemberProfileCard.tsx`:
+   - Move the **Save to member profile** button to the card header (always visible), in addition to the inline one.
+   - Surface inline error toast with the actual Postgres message when the update fails (currently shows `err.message` but no diagnostic logging). Add `console.error` and capture via `log_error_event` for observability.
+   - Guard each updated column with a feature-detect: if `workout_activities` doesn't exist on this DB, fall back to omitting it (prevents silent failure on stale schemas).
+2. After successful save, also call `queryClient.invalidateQueries({ queryKey: ['member', memberId] })` and `['member-profile-prefill']` so any open Member drawer re-fetches.
+3. **Use saved profile for next plan** — `CreateAI.tsx` already prefills from the same hook. Add a small "Last plan summary" strip pulling from `memberPlanProgressService` (latest workout/diet plan + adherence %) so the trainer sees context before generating. Pass that summary into the AI prompt as `previousPlanContext`.
 
-3. **Harden dispatcher behavior**
-   - In `dispatch-communication`, when a WhatsApp template has `header_type = document` and an attachment URL is present, always build a native Meta `HEADER` document component.
-   - Do not append the PDF URL into body variables for document-header templates.
-   - Store `media_url` on the `whatsapp_messages` row so the audit trail clearly shows a document was sent.
+### B. Right-side Sheet for AssignPlanDrawer + auto validity
+1. Rewrite `AssignPlanDrawer.tsx` to use `Sheet` / `SheetContent side="right"` (`sm:max-w-xl`), with sticky header, scrollable body, sticky footer (Cancel + Assign), per project standard.
+2. Compute default validity from plan content:
+   - Workout: `durationWeeks = plan.content.durationWeeks ?? plan.content.weeks?.length ?? 4` → `addWeeks(today, durationWeeks)`.
+   - Diet: 4 weeks default (configurable per gym later).
+3. Replace the date `<input type="date">` with a labelled field that shows the auto value + "Auto from plan duration · Click to override" hint. Recompute when `plan` prop changes.
+4. Keep all current props/handlers — call sites in `Templates.tsx` and `PreviewPlan.tsx` need no change.
 
-4. **Fix failed retry queue processing**
-   - Change `process-comm-retry-queue` so WhatsApp retries call `dispatch-communication`, not `send-whatsapp` directly.
-   - Reconstruct the dispatcher payload from the original `communication_logs` row, including:
-     - branch, recipient, channel/category
-     - template id
-     - member id
-     - body/subject
-     - original attachment from `delivery_metadata.attachment`
-   - Generate a fresh retry dedupe key so the retry does not collide with the failed log.
+### C. Branch-equipment-aware AI workout
+1. New helper in `src/services/equipmentService.ts`: `fetchOperationalEquipmentLite(branchId)` returning `{ name, category, brand, model }[]` filtered by `status='operational'`.
+2. In `CreateAI.tsx`, when `type === 'workout'`, fetch this list (cached by branch) and pass it to `generate.mutateAsync` under a new `options.availableEquipment` field.
+3. Extend `generate-fitness-plan` edge function:
+   - Accept `availableEquipment: { name, category }[]`.
+   - Inject an `equipmentPrompt` block similar to existing `catalogPrompt`: "Prefer these gym machines when prescribing exercises. Use the EXACT machine name when possible. Bodyweight or stretching alternatives are allowed for warm-up / cool-down."
+   - When list is non-empty, also bias the system prompt to avoid recommending equipment not on the list (with explicit fallback rule for cardio / mobility).
+4. Replace the rigid `equipment` Select on `MemberProfileCard` (workout mode) with a read-only chip showing "Branch: full machine list (N machines)" plus a link "View equipment" — the actual list comes from the branch automatically. Keep the enum for diet/home members via a small "Equipment access" override toggle ("Use branch equipment / Home basic / Bodyweight only").
 
-5. **Preserve attachments in future retry queue rows**
-   - Update the enqueue trigger to copy `communication_logs.delivery_metadata` into `communication_retry_queue.metadata`.
-   - This makes future retries attachment-safe for WhatsApp and email.
+### D. Polish (2026 UI/UX)
+- Sheet gets segmented progress header: `Members → Schedule → Notify`.
+- Selected members render as removable chips above the search.
+- "Notify on" buttons get color-coded active state matching brand (Email indigo, WhatsApp emerald, In-app violet).
+- Validity field shows secondary badge `4 weeks · Mon Jun 8` for instant readability.
+- Disabled "Assign" button shows reason on hover (no members / no channels).
 
-6. **Clean up current broken Yogita retry rows**
-   - For the two pending rows currently failing with the missing-fields error, either:
-     - cancel the stale no-template row, and
-     - retry the attachment row through the corrected dispatcher path; or
-     - mark both stale rows cancelled after confirming a fresh document send succeeds.
+---
 
-7. **Run curl tests for both channels**
-   - Test WhatsApp by invoking `dispatch-communication` with a PDF attachment to `919928910901` and confirm:
-     - `whatsapp_messages.message_type = document`
-     - `media_url` is present
-     - provider returns a WhatsApp message id
-   - Test Email with the same PDF and confirm the email path still sends with a PDF attachment.
+## Technical Notes (for the implementer)
 
-## Expected Result
+**Files to edit**
+- `src/components/fitness/AssignPlanDrawer.tsx` — Drawer → Sheet, auto validity, chip UI.
+- `src/components/fitness/create/MemberProfileCard.tsx` — header Save button, error logging, equipment chip.
+- `src/pages/fitness/CreateAI.tsx` — fetch operational equipment, pass `availableEquipment`, pull last-plan summary.
+- `src/services/equipmentService.ts` — add `fetchOperationalEquipmentLite`.
+- `supabase/functions/generate-fitness-plan/index.ts` — accept `availableEquipment`, inject `equipmentPrompt`, adjust system prompt.
 
-- Workout and diet plan WhatsApp messages will arrive as a native attached PDF document, not just a link.
-- Retry queue will stop showing `send-whatsapp 400` missing-field errors.
-- Future failed PDF sends will retain enough metadata to retry correctly.
+**No DB migration required** — `members.workout_activities` already exists from the previous task; equipment list comes from existing `equipment` table.
+
+**Backwards compat** — `availableEquipment` is optional in the edge function; old callers continue working.
+
+**Estimated scope** — ~250 LOC change, single PR, no schema changes.

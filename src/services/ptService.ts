@@ -325,6 +325,16 @@ export async function generateFitnessPlan(
       fats?: number;
       default_quantity?: string | null;
     }>;
+    /** Operational equipment from the active branch — bias workout AI
+     * toward machines the gym actually owns. */
+    availableEquipment?: Array<{
+      name: string;
+      category?: string | null;
+      brand?: string | null;
+      model?: string | null;
+    }>;
+    /** Brief textual summary of the member's previous plan + adherence. */
+    previousPlanContext?: string;
   }
 ): Promise<any> {
   const { data, error } = await supabase.functions.invoke("generate-fitness-plan", {
@@ -334,6 +344,8 @@ export async function generateFitnessPlan(
       durationWeeks: options?.durationWeeks || 4,
       caloriesTarget: options?.caloriesTarget,
       availableMeals: options?.availableMeals,
+      availableEquipment: options?.availableEquipment,
+      previousPlanContext: options?.previousPlanContext,
     },
   });
 

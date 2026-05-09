@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerDescription } from '@/components/ui/drawer';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,10 +61,21 @@ const CHANNEL_META: { value: NotificationChannel; label: string; Icon: typeof Ma
   { value: 'in_app', label: 'In-app', Icon: Bell },
 ];
 
+function getPlanDurationWeeks(plan: AssignPlanDrawerProps['plan']): number {
+  if (!plan) return 4;
+  const c: any = plan.content || {};
+  if (typeof c.durationWeeks === 'number' && c.durationWeeks > 0) return c.durationWeeks;
+  if (Array.isArray(c.weeks) && c.weeks.length > 0) return c.weeks.length;
+  if (Array.isArray(c.schedule) && c.schedule.length > 0) return Math.max(1, Math.ceil(c.schedule.length / 7));
+  return 4;
+}
+
 export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignPlanDrawerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selected, setSelected] = useState<MemberLite[]>([]);
-  const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
+  const planWeeks = getPlanDurationWeeks(plan);
+  const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), planWeeks), 'yyyy-MM-dd'));
+  const [validityOverridden, setValidityOverridden] = useState(false);
   const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
   const [sendPdf, setSendPdf] = useState(false);
   const [isCommon, setIsCommon] = useState(false);
@@ -73,13 +84,18 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
 
   // Reset every time the drawer is reopened. Pre-fill the Common toggle from
   // the incoming template (so common templates default to common assignments).
+  // Auto-recompute validity from the plan's own duration unless the user
+  // has explicitly overridden it.
   useEffect(() => {
     if (open) {
       setResults(null);
       setSearchQuery('');
       setIsCommon(!!plan?.is_common);
+      setValidityOverridden(false);
+      setValidUntil(format(addWeeks(new Date(), planWeeks), 'yyyy-MM-dd'));
     }
-  }, [open, plan?.is_common]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, plan?.is_common, planWeeks]);
 
   const { data: searchResults = [], isLoading: isSearching } = useQuery({
     queryKey: ['member-search-multi', searchQuery, branchId],
@@ -198,21 +214,26 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   };
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[92vh]">
-        <DrawerHeader className="text-left">
-          <DrawerTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col gap-0">
+        <SheetHeader className="px-5 py-4 border-b text-left">
+          <SheetTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
             {results ? 'Assignment Confirmation' : 'Assign Plan to Members'}
-          </DrawerTitle>
+          </SheetTitle>
           {plan && !results && (
-            <DrawerDescription>
+            <SheetDescription>
               <span className="font-medium text-foreground">{plan.name}</span> — {plan.type} plan
-            </DrawerDescription>
+              {!results && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">
+                  {planWeeks} {planWeeks === 1 ? 'week' : 'weeks'}
+                </span>
+              )}
+            </SheetDescription>
           )}
-        </DrawerHeader>
+        </SheetHeader>
 
-        <div className="px-4 pb-2 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-5 py-4">
           {results ? (
             <ConfirmationView results={results} channels={channels} />
           ) : (
@@ -281,8 +302,17 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Valid Until</Label>
-                  <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+                  <Label className="flex items-center justify-between">
+                    <span>Valid Until</span>
+                    {!validityOverridden && (
+                      <span className="text-[10px] font-normal text-muted-foreground">Auto · {planWeeks}w</span>
+                    )}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={validUntil}
+                    onChange={(e) => { setValidUntil(e.target.value); setValidityOverridden(true); }}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Notify on</Label>
@@ -345,7 +375,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
           )}
         </div>
 
-        <DrawerFooter className="flex-row gap-2">
+        <div className="border-t px-5 py-3 flex flex-row gap-2 bg-background">
           {results ? (
             <Button onClick={closeAndReset} className="w-full">Done</Button>
           ) : (
@@ -367,9 +397,9 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
               </Button>
             </>
           )}
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

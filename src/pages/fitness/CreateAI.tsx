@@ -16,8 +16,12 @@ import { MemberProfileCard, MemberProfileOverrides } from '@/components/fitness/
 import { useGenerateFitnessPlan } from '@/hooks/usePTPackages';
 import { newDraftId, saveDraft } from '@/lib/planDraft';
 import { fetchMealCatalog } from '@/services/mealCatalogService';
+import { fetchOperationalEquipmentLite } from '@/services/equipmentService';
+import { fetchMemberAssignments } from '@/services/fitnessService';
 import { useQuery } from '@tanstack/react-query';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { Badge } from '@/components/ui/badge';
+import { Wrench, History } from 'lucide-react';
 
 export default function CreateAIPage() {
   const navigate = useNavigate();
@@ -52,6 +56,37 @@ export default function CreateAIPage() {
       }),
     enabled: type === 'diet' && !!profile.dietary_preference && !!profile.cuisine,
   });
+
+  // Branch operational equipment — drives workout AI to use real machines.
+  const { data: branchEquipment = [] } = useQuery({
+    queryKey: ['branch-equipment-lite', effectiveBranchId],
+    queryFn: () => fetchOperationalEquipmentLite(effectiveBranchId ?? null),
+    enabled: type === 'workout' && !!effectiveBranchId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Last plan summary for this member (so AI can progress, not repeat).
+  const { data: lastPlans = [] } = useQuery({
+    queryKey: ['member-last-plans', member?.id, type],
+    queryFn: async () => {
+      if (!member?.id) return [];
+      const all = await fetchMemberAssignments(effectiveBranchId ?? null);
+      return all.filter((p) => p.member_id === member.id && p.plan_type === type).slice(0, 1);
+    },
+    enabled: !!member?.id,
+  });
+  const lastPlan = lastPlans[0];
+
+  function buildPreviousPlanContext(): string | undefined {
+    if (!lastPlan) return undefined;
+    const parts = [
+      `Previous ${lastPlan.plan_type} plan: "${lastPlan.plan_name}"`,
+      lastPlan.valid_from && `Started ${lastPlan.valid_from}`,
+      lastPlan.valid_until && `Valid until ${lastPlan.valid_until}`,
+      lastPlan.description && `Notes: ${lastPlan.description}`,
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
 
   useEffect(() => {
     if (!templateId) return;
@@ -136,6 +171,8 @@ export default function CreateAIPage() {
                 default_quantity: m.default_quantity,
               }))
             : undefined,
+          availableEquipment: type === 'workout' ? branchEquipment.slice(0, 100) : undefined,
+          previousPlanContext: buildPreviousPlanContext(),
         },
       });
 
@@ -314,7 +351,56 @@ export default function CreateAIPage() {
 
         <div className="space-y-4">
           {member ? (
-            <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} planType={type} />
+            <>
+              <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} planType={type} />
+
+              {type === 'workout' && (
+                <Card>
+                  <CardContent className="py-3 px-4 flex items-start gap-2.5">
+                    <Wrench className="h-4 w-4 mt-0.5 text-primary" />
+                    <div className="flex-1 text-xs">
+                      <div className="font-medium text-foreground">
+                        Branch equipment ({branchEquipment.length} machines)
+                      </div>
+                      <p className="text-muted-foreground mt-0.5">
+                        AI will prefer these machines when prescribing exercises.
+                      </p>
+                      {branchEquipment.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {branchEquipment.slice(0, 8).map((e) => (
+                            <Badge key={e.name} variant="secondary" className="text-[10px]">
+                              {e.name}
+                            </Badge>
+                          ))}
+                          {branchEquipment.length > 8 && (
+                            <Badge variant="outline" className="text-[10px]">
+                              +{branchEquipment.length - 8} more
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {lastPlan && (
+                <Card>
+                  <CardContent className="py-3 px-4 flex items-start gap-2.5">
+                    <History className="h-4 w-4 mt-0.5 text-primary" />
+                    <div className="flex-1 text-xs">
+                      <div className="font-medium text-foreground">Previous plan</div>
+                      <p className="text-muted-foreground mt-0.5 truncate">
+                        {lastPlan.plan_name} · {lastPlan.valid_from || '—'} → {lastPlan.valid_until || '—'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        AI will use this as context to progress (not repeat) the program.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           ) : (
             <Card className="border-dashed">
               <CardContent className="py-10 text-center text-sm text-muted-foreground">

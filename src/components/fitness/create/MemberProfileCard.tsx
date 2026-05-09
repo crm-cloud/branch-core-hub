@@ -187,8 +187,11 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
       if (error) throw error;
       toast.success('Saved to member profile');
       await queryClient.invalidateQueries({ queryKey: ['member-profile-prefill', memberId] });
+      await queryClient.invalidateQueries({ queryKey: ['member', memberId] });
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save member profile');
+      // Log full error so we can diagnose silent column-not-found / RLS failures.
+      console.error('[MemberProfileCard] save failed', err);
+      toast.error(err?.message || err?.details || 'Failed to save member profile');
     } finally {
       setSaving(false);
     }
@@ -197,10 +200,24 @@ export function MemberProfileCard({ memberId, value, onChange, planType = 'worko
   return (
     <Card className="border-primary/20">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <User className="h-4 w-4 text-primary" />
-          Member Profile
-          {isLoading && <Badge variant="outline" className="text-xs">Loading…</Badge>}
+        <CardTitle className="text-base flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <User className="h-4 w-4 text-primary" />
+            Member Profile
+            {isLoading && <Badge variant="outline" className="text-xs">Loading…</Badge>}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-1.5 h-8"
+            onClick={handleSaveToProfile}
+            disabled={saving || isLoading}
+            title="Save current values to the member's permanent profile"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save
+          </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
