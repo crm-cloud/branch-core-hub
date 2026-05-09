@@ -314,7 +314,7 @@ export default function CreateAIPage() {
 
         <div className="space-y-4">
           {member ? (
-            <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} />
+            <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} planType={type} />
           ) : (
             <Card className="border-dashed">
               <CardContent className="py-10 text-center text-sm text-muted-foreground">
