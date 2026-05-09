@@ -342,20 +342,41 @@ Deno.serve(async (req) => {
         case 'whatsapp': {
           let templateName: string | null = null;
           let components: Array<Record<string, unknown>> | null | undefined;
+          let templateHeaderType: string | null = null;
           if (input.template_id) {
             const { data: tpl, error: tplError } = await supabase
               .from('templates')
-              .select('content, variables, meta_template_name')
+              .select('content, variables, meta_template_name, header_type, attachment_source')
               .eq('id', input.template_id)
               .maybeSingle();
             if (tplError) throw new Error(tplError.message);
             if (tpl?.meta_template_name) {
               templateName = tpl.meta_template_name;
+              templateHeaderType = (tpl.header_type ?? 'none').toLowerCase();
               const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
               components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
               if (components === null) throw new Error('missing_template_variables');
+
+              // Native attachment header: prepend HEADER component when the
+              // template was approved with header_type=document/image/video.
+              if (input.attachment?.url && ['document', 'image', 'video'].includes(templateHeaderType)) {
+                const header: Record<string, unknown> = { type: 'header', parameters: [] };
+                const params: any[] = [];
+                if (templateHeaderType === 'document') {
+                  params.push({
+                    type: 'document',
+                    document: { link: input.attachment.url, filename: input.attachment.filename || 'document.pdf' },
+                  });
+                } else if (templateHeaderType === 'image') {
+                  params.push({ type: 'image', image: { link: input.attachment.url } });
+                } else {
+                  params.push({ type: 'video', video: { link: input.attachment.url } });
+                }
+                header.parameters = params;
+                components = [header, ...(components ?? [])];
+              }
             }
           }
 
@@ -392,12 +413,15 @@ Deno.serve(async (req) => {
             }
           }
 
-          // For attachments (PDF/image), pre-create the whatsapp_messages row so
-          // send-whatsapp (which requires message_id) can update its delivery
-          // status. The chat thread also relies on this row to render the bubble.
-          if (input.attachment) {
-            // send-whatsapp v2.4.0 only supports image/document. Map video → document so
-            // members still receive a downloadable file (caption preserved).
+          // When we have an approved template with a media header, send as
+          // template (HEADER component carries the link → native PDF/image/video).
+          // Skip the freeform-document path used for non-template attachments.
+          const sendAsNativeHeaderTemplate =
+            !!templateName && !!input.attachment?.url &&
+            ['document', 'image', 'video'].includes(templateHeaderType ?? '');
+
+          if (input.attachment && !sendAsNativeHeaderTemplate) {
+            // Freeform document/image fallback (no approved header template).
             const rawKind = (input.attachment.kind ?? 'document') as string;
             const kind = rawKind === 'image' ? 'image' : 'document';
             const { data: waRow, error: waErr } = await supabase
@@ -434,18 +458,24 @@ Deno.serve(async (req) => {
             providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
             break;
           }
+
+          // Native template send (text, or template w/ header attachment).
           const messageType = 'text';
+          const waInsert: Record<string, unknown> = {
+            branch_id: input.branch_id,
+            phone_number: input.recipient,
+            member_id: input.member_id ?? null,
+            content: input.payload.body,
+            direction: 'outbound',
+            status: 'pending',
+            message_type: sendAsNativeHeaderTemplate
+              ? (templateHeaderType === 'image' ? 'image' : templateHeaderType === 'video' ? 'video' : 'document')
+              : messageType,
+          };
+          if (sendAsNativeHeaderTemplate) waInsert.media_url = input.attachment!.url;
           const { data: waRow, error: waErr } = await supabase
             .from('whatsapp_messages')
-            .insert({
-              branch_id: input.branch_id,
-              phone_number: input.recipient,
-              member_id: input.member_id ?? null,
-              content: input.payload.body,
-              direction: 'outbound',
-              status: 'pending',
-              message_type: messageType,
-            })
+            .insert(waInsert)
             .select('id')
             .single();
           if (waErr) throw new Error(waErr.message);
