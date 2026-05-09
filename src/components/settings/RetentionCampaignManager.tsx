@@ -345,15 +345,17 @@ export function RetentionCampaignManager() {
                   {channels.map(ch => {
                     const chOption = CHANNEL_OPTIONS.find(o => o.id === ch);
                     const ChIcon = chOption?.icon || Send;
+                    const tk = `${template.id}:${ch}`;
                     return (
                       <Button
                         key={ch}
                         variant="outline"
                         size="sm"
+                        disabled={testingKey === tk}
                         onClick={() => handleTestSend(template, ch)}
                       >
                         <ChIcon className={`h-3.5 w-3.5 mr-1.5 ${chOption?.color || ''}`} />
-                        Test {chOption?.label || ch}
+                        {testingKey === tk ? 'Sending…' : `Test ${chOption?.label || ch}`}
                       </Button>
                     );
                   })}
@@ -380,6 +382,13 @@ export function RetentionCampaignManager() {
           </CardContent>
         </Card>
       )}
+
+      <AIGenerateTemplatesDrawer
+        open={aiDrawerOpen}
+        onOpenChange={setAiDrawerOpen}
+        channel="whatsapp"
+        prefilledEvents={['retention_stage_1', 'retention_stage_2', 'retention_stage_3']}
+      />
     </div>
   );
 }
