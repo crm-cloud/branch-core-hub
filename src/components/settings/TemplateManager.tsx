@@ -736,6 +736,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
                               )}
                               {value === 'whatsapp' && metaStatusBadge(template.meta_template_status)}
                               {mediaBadge(template)}
+                              {deliveryModeBadge(template)}
                             </div>
                             {value === 'whatsapp' && template.meta_template_name && (
                               <p className="text-xs text-muted-foreground mt-0.5 font-mono">
