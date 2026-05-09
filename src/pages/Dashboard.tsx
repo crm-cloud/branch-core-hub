@@ -27,6 +27,9 @@ import { format, subDays, startOfMonth, endOfMonth, differenceInHours } from 'da
 const LazyLiveAccessLog = lazy(() => import('@/components/devices/LiveAccessLog'));
 const LazyAIInsightsWidget = lazy(() => import('@/components/dashboard/AIInsightsWidget').then(m => ({ default: m.AIInsightsWidget })));
 const LazyMemberVoiceWidget = lazy(() => import('@/components/dashboard/MemberVoiceWidget').then(m => ({ default: m.MemberVoiceWidget })));
+const LazyMembersCountingChart = lazy(() => import('@/components/dashboard/MembersCountingChart'));
+import { MemberGrowthCards } from '@/components/dashboard/MemberGrowthCards';
+import { JoinedSummaryStrip } from '@/components/dashboard/JoinedSummaryStrip';
 
 function ChartSkeleton() {
   return <Skeleton className="h-64 rounded-2xl" />;
@@ -320,6 +323,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Secondary Stats Row */}
+        {/* Member Growth KPI Cards */}
+        <MemberGrowthCards branchFilter={branchFilter} />
+
+        {/* Secondary Stats Row */}
         {statsLoading ? (
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
             <StatCardSkeleton />
@@ -361,6 +368,16 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2">
           <RevenueChart data={revenueData} />
           <AttendanceChart data={attendanceData} />
+        </div>
+
+        {/* Members Counting + Joined Summary */}
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <Suspense fallback={<ChartSkeleton />}>
+              <LazyMembersCountingChart branchFilter={branchFilter} />
+            </Suspense>
+          </div>
+          <JoinedSummaryStrip branchFilter={branchFilter} />
         </div>
 
         {/* CRM Widgets Row — lazy loaded */}
