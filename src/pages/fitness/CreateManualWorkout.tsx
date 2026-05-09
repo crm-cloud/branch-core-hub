@@ -221,6 +221,30 @@ export default function CreateManualWorkoutPage() {
     if (!planName.trim()) { toast.error('Plan name is required'); return; }
     if (totalExercises === 0) { toast.error('Add at least one exercise'); return; }
 
+    if (draftId) {
+      // Overwrite the existing draft so Preview re-renders the edited plan.
+      const existing = loadDraft(draftId);
+      saveDraft({
+        ...(existing || {} as any),
+        id: draftId,
+        source: existing?.source || 'manual-workout',
+        templateId: existing?.templateId || templateId || undefined,
+        type: 'workout',
+        name: planName,
+        description,
+        goal,
+        difficulty,
+        memberId: existing?.memberId || member?.id,
+        memberName: existing?.memberName || member?.full_name,
+        memberCode: existing?.memberCode || member?.member_code,
+        memberProfile: existing?.memberProfile,
+        content: buildContent(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      });
+      navigate(`/fitness/preview/${draftId}`);
+      return;
+    }
+
     const id = newDraftId();
     saveDraft({
       id,
