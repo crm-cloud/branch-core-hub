@@ -1,7 +1,11 @@
+// v2.3.0 — Document events now PREFER header_type='document' with a sample PDF URL.
+//           manage-whatsapp-templates v2.4.0 auto-uploads the sample to Meta and
+//           converts it to a real `h:...` handle, so document templates are
+//           submittable & approvable end-to-end. The dispatcher (v1.8.0)
+//           injects the real PDF as the HEADER param at send-time → recipients
+//           get a NATIVE WhatsApp document attachment (not a link in the body).
 // v2.2.0 — Multi-channel AI template generator (WhatsApp / SMS / Email)
 // v2.1.0: document-bearing events forced to header_type='none' + {{document_link}}.
-// v2.2.0: chunk events internally (batches of 20) up to 60 — no more silent 400
-//         when "Select all missing" picks 30+ events.
 // Returns proposals (NOT submitted to Meta). Frontend reviews before save.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
