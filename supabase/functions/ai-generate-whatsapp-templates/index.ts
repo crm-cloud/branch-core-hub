@@ -181,11 +181,28 @@ Deno.serve(async (req) => {
       for (const t of templates) allTemplates.push(t);
     }
 
-    // Hard-enforce the document rule regardless of what the model returned.
+    // Document events: prefer native document header. If the model returned
+    // header_type='none' (no native delivery), fall back to {{document_link}} in
+    // the body so the file still reaches the member. If header_type='document'
+    // is set, ensure a sample URL exists so manage-whatsapp-templates can
+    // upload it and obtain an approval handle.
     for (const t of allTemplates) {
-      if (DOCUMENT_EVENTS.has(t.event)) {
-        t.header_type = 'none';
-        delete t.header_sample_url;
+      if (!DOCUMENT_EVENTS.has(t.event)) continue;
+      const ht = (t.header_type ?? 'none').toLowerCase();
+      if (ht === 'document') {
+        if (!t.header_sample_url) {
+          // Plain, public sample PDF used only at template-approval time.
+          t.header_sample_url = 'https://www.africau.edu/images/default/sample.pdf';
+        }
+        // Body must NOT carry {{document_link}} — the doc is the header.
+        if (typeof t.body_text === 'string') {
+          t.body_text = t.body_text.replace(/\s*Document:\s*\{\{\s*document_link\s*\}\}\s*/gi, '').trim();
+        }
+        if (Array.isArray(t.variables)) {
+          t.variables = t.variables.filter((v: string) => v !== 'document_link');
+        }
+      } else {
+        // Legacy text/link fallback path.
         const vars: string[] = Array.isArray(t.variables) ? t.variables : [];
         if (!vars.includes('document_link')) vars.push('document_link');
         t.variables = vars;
