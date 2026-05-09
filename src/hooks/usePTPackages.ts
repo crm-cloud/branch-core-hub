@@ -176,6 +176,13 @@ export function useGenerateFitnessPlan() {
           fats?: number;
           default_quantity?: string | null;
         }>;
+        availableEquipment?: Array<{
+          name: string;
+          category?: string | null;
+          brand?: string | null;
+          model?: string | null;
+        }>;
+        previousPlanContext?: string;
       };
     }) => generateFitnessPlan(type, memberInfo, options),
   });
