@@ -290,6 +290,30 @@ export default function CreateManualDietPage() {
     const err = validateContent();
     if (err) { toast.error(err); return; }
 
+    if (draftId) {
+      const existing = loadDraft(draftId);
+      saveDraft({
+        ...(existing || {} as any),
+        id: draftId,
+        source: existing?.source || 'manual-diet',
+        templateId: existing?.templateId || templateId || undefined,
+        type: 'diet',
+        name: planName,
+        description,
+        caloriesTarget: calTarget,
+        memberId: existing?.memberId || member?.id,
+        memberName: existing?.memberName || member?.full_name,
+        memberCode: existing?.memberCode || member?.member_code,
+        memberProfile: existing?.memberProfile,
+        dietaryType,
+        cuisine,
+        content: buildContent(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      });
+      navigate(`/fitness/preview/${draftId}`);
+      return;
+    }
+
     const id = newDraftId();
     saveDraft({
       id,
@@ -312,10 +336,10 @@ export default function CreateManualDietPage() {
 
   return (
     <CreateFlowLayout
-      title={editMode ? 'Edit Diet Template' : 'Manual Diet Plan'}
-      subtitle={editMode ? 'Update meals in this template' : 'Build daily meals with live macro tracking'}
+      title={editMode ? 'Edit Diet Template' : draftId ? 'Edit Diet Plan' : 'Manual Diet Plan'}
+      subtitle={editMode ? 'Update meals in this template' : draftId ? 'Refine the generated plan before assigning' : 'Build daily meals with live macro tracking'}
       step="build"
-      backTo={editMode ? '/fitness/templates' : '/fitness/create'}
+      backTo={editMode ? '/fitness/templates' : draftId ? `/fitness/preview/${draftId}` : '/fitness/create'}
       actions={
         editMode ? (
           <div className="flex gap-2">
@@ -323,7 +347,7 @@ export default function CreateManualDietPage() {
             <Button onClick={handleSaveTemplate}>Save Template</Button>
           </div>
         ) : (
-          <Button onClick={handlePreview}>Continue to Preview</Button>
+          <Button onClick={handlePreview}>{draftId ? 'Save & Back to Preview' : 'Continue to Preview'}</Button>
         )
       }
     >
