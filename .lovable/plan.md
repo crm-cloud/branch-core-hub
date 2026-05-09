@@ -1,67 +1,57 @@
+# Fix WhatsApp Plan Send + End-to-End Test
 
-## Goal
+## Root cause (audit findings)
 
-Enhance the Dashboard with new fitness-focused growth widgets inspired by the uploaded references:
-1. A row of **delta KPI cards** ("Current Members", "New Members", "Today's Visitors") showing absolute value + period-over-period change with up/down arrows.
-2. A **"Members Counting" interactive bar chart** with a period switcher (Weekly / Monthly / Yearly) and a hover tooltip styled like the reference (dark pill with colored dot).
-3. Compact joined-summary chips: **Joined this Week / 7 days / This Month / This Year**.
+Three bugs combined to break the workout plan send to Ryan:
 
-All additions are pure presentation widgets that read existing tables (`members`, `member_attendance`) — no schema changes, no edits to existing widgets, queries, or business logic. Existing Hero card, secondary KPIs, charts, CRM widgets, and below-fold lazy sections remain untouched.
+1. **Wrong template picked.** My previous fix made `findTemplate` *prefer* templates with `header_type='document'`. For the `workout_plan_ready` event the doc-header template `workout_plan_ready_doc` was picked. Its body uses `{{member_name}}` and `{{plan_title}}` — but `sendPlanToMember` only passes `plan_name`. Dispatcher's `templateComponents()` returns `null` when a `{{var}}` is missing → error **`missing_template_variables`** (the toast you saw).
 
-## What gets built
+2. **The doc-header template is not Meta-approved with a HEADER component.** `whatsapp_templates.components` for `workout_plan_ready_doc` contains only a `BODY` block — no HEADER. Project memory already encodes this rule: *"Document events MUST use `header_type='none'` + `{{document_link}}` body var — Meta rejects DOCUMENT headers without an uploaded handle."* So even if vars were correct, attaching the PDF as a HEADER document would be rejected by Meta on send. The correct global template for this event is `workout_plan_ready_link` (`header_type='none'`, body `Hi {{member_name}}, your new workout plan *{{plan_name}}* from {{trainer_name}} is ready. Download it here: {{document_link}}`).
 
-### 1. New component: `src/components/dashboard/MemberGrowthCards.tsx`
-Three KPI cards in a `grid grid-cols-1 sm:grid-cols-3 gap-4` row, matching the dark/Vuexy tile in image-402 but using semantic tokens so they adapt to light/dark theme:
-- **Current Members** — `count(members) where status='active'` for branchFilter; delta vs 30 days ago.
-- **New Members This Month** — `count(members) where created_at >= startOfMonth`; delta vs previous month with % change.
-- **Today's Visitors** — `count(member_attendance) where check_in >= today`; delta vs same day last week.
+3. **Email → Hostinger SMTP timeout (`421 4.4.2 timeout exceeded` on port 465).** External provider/network issue from the edge runtime. Code is fine; provider is dropping the connection.
 
-Each card: large `text-4xl font-bold` value, small green/red delta line with `ArrowUp`/`ArrowDown` lucide icon and `(±x.xx%)`, top-right circular icon badge (`Users`, `UserPlus`, `Eye`). Uses `rounded-2xl shadow-lg` per project standards.
+## What to change
 
-### 2. New component: `src/components/dashboard/MembersCountingChart.tsx`
-Recharts `BarChart` with:
-- Period switcher pill (Weekly / Monthly / Yearly) using shadcn `ToggleGroup`.
-- Bars rendered as rounded pills (`radius={[12,12,12,12]}`, narrow `barSize={28}`); inactive bars use `hsl(var(--muted))`, the hovered/active bar uses `hsl(var(--primary))`.
-- Custom dark tooltip (rounded card, small colored dot + period label + "N members") matching image-401.
-- Dashed horizontal grid lines, no axis lines, muted tick labels.
-- Data source: aggregates `members.created_at` (joined per period) for the selected branch — Weekly = last 7 days by day, Monthly = last 7 months by month, Yearly = last 6 years by year.
+### A. `src/lib/templates/dynamicAttachment.ts` — fix template ranking
+Re-order `findTemplate` so it follows the project standard:
 
-### 3. New component: `src/components/dashboard/JoinedSummaryStrip.tsx`
-A 4-chip strip under the chart (Today / 7 days / This Month / This Year) using small rounded badges with icon + count. Driven by a single TanStack query that runs four parallel `count` queries.
+1. Branch-scoped `header_type='none'` (text/link template) — preferred.
+2. Branch-scoped `header_type ∈ {document,image,video}` (only safe when Meta approved a HEADER, which we cannot tell from our row alone — secondary).
+3. Global `header_type='none'`.
+4. Global with header.
 
-### 4. Wire-up in `src/pages/Dashboard.tsx`
-Insert the new section **between the Hero gradient card and the existing Secondary Stats Row**:
+This makes the system pick `workout_plan_ready_link` (global, `header_type=none`, all vars satisfied by `sendPlanToMember`) and avoid the broken doc-header template.
 
-```text
-[Hero Gradient Card]            ← unchanged
-[MemberGrowthCards]             ← NEW (3 KPI tiles with deltas)
-[Secondary Stats Row]            ← unchanged
-[Charts Row: Revenue | Attendance]   ← unchanged
-[MembersCountingChart + JoinedSummaryStrip]   ← NEW (full-width card)
-[CRM Widgets Row]                ← unchanged, still lazy
-[Bottom Row]                     ← unchanged
-[AI Insights Row]                ← unchanged
-```
+### B. `src/utils/sendPlanToMember.ts` — broaden variable payload
+Pass both `plan_name` and `plan_title` (alias) plus already-sent `member_name`, `trainer_name`, `valid_until`, `document_link`. This makes the call resilient to either naming convention so legacy/branch-scoped templates also resolve.
 
-Lazy-load `MembersCountingChart` via `React.lazy` so Recharts doesn't grow first paint. KPI cards stay eager (small + above fold).
+### C. Mark broken branch-scoped row inactive (data fix)
+Set `templates.is_active=false` for `custom_workout_plan_ready_pdf` (branch `INCLINE`, `header_type='document'` but Meta-side has no HEADER approval) so it can never be selected. Optional but recommended.
 
-## Technical Notes
+### D. Email — give the user a working choice
+The Hostinger SMTP error is not solvable in code. Propose three options to the user (chat reply after plan approval):
+- Switch SMTP port from **465** → **587** (STARTTLS) in Settings → Integrations → Email.
+- Switch provider to **Brevo** (connector available, free tier).
+- Switch to **Lovable Emails** (built-in, no API keys needed).
 
-- **Queries**: separate `useQuery` per widget, keys `['member-growth-kpis', branchFilter]` and `['members-counting', branchFilter, period]`. All filter by `branchFilter` exactly like existing widgets.
-- **Delta math**: done client-side from two `count: 'exact', head: true` calls per metric; no RPCs needed.
-- **Theming**: every color via semantic tokens (`text-emerald-600` for positive delta, `text-destructive` for negative, `bg-card`, `bg-primary`, `text-muted-foreground`). No hardcoded hex.
-- **Skeletons**: each new widget ships its own skeleton matching its layout.
-- **Accessibility**: ARIA labels on the period toggle, focus rings, ≥44px tap targets.
-- **No edits** to: existing StatCard rows, RevenueChart, AttendanceChart, OccupancyGauge, AccountsReceivableWidget, ExpiringMembersWidget, LiveAccessLog, AI Insights, MemberVoiceWidget, hero card, or the dashboard-stats query.
+Default recommendation: **587 first** (zero-cost change). If still failing, move to Brevo/Lovable Emails.
 
-## Files
+## End-to-end test plan
 
-- `src/components/dashboard/MemberGrowthCards.tsx` (new)
-- `src/components/dashboard/MembersCountingChart.tsx` (new)
-- `src/components/dashboard/JoinedSummaryStrip.tsx` (new)
-- `src/pages/Dashboard.tsx` (additive edits only — 2 new sections inserted)
+After A–C are deployed:
+1. From `/fitness/member-plans`, open Ryan Lekhari → Workout *4 week Muscle Gain for Beginners* → **Share** → send to **WhatsApp + Email**.
+2. Verify **WhatsApp** to `919887601200`:
+   - Toast "Sent" appears.
+   - `communication_logs` row has `channel='whatsapp'`, `status='sent'`, `template_id` populated, no `missing_template_variables`.
+   - Recipient receives a message with PDF link rendered from `{{document_link}}`.
+3. Verify **Email** to `rajat.lekhari@hotmail.com`:
+   - If user keeps Hostinger 465 → expect timeout (external).
+   - After flipping to port 587 (or new provider) → toast "Sent", `communication_logs.status='sent'`, mail arrives with PDF attachment.
+4. Confirm dispatcher logs show no `missing_template_variables` and no `131047`.
 
-## Out of scope
+## Technical notes (for the reviewer)
 
-- No changes to RBAC, no new tables, no migrations, no edge functions.
-- No redesign of existing widgets — purely additive.
+- `dispatch-communication` v1.8 is correct; no edge change needed.
+- `orderedTemplateKeys()` derives `{{vars}}` from local `templates.content`, so the local row's content placeholders are the contract — the matching `whatsapp_templates.components[].text` on Meta's side just needs the same number of `{{n}}` slots in the same order. `workout_plan_ready_link` already matches.
+- The previous `header_type=document` preference was added to attach PDFs natively; it's incompatible with our project rule and Meta's approval state. Reverted to text+link as the canonical document delivery path.
+- No DB schema change required. The `templates.is_active=false` flip is a single `UPDATE`.
