@@ -1,7 +1,67 @@
+// v2.4.0 — Auto-uploads sample header media (URL → Meta resumable-upload `h:...` handle)
+//           so DOCUMENT/IMAGE/VIDEO templates can be approved without manual sample handles.
+//           Falls back to text-only if upload fails (preserves v2.3.0 behavior).
 // v2.3.0 — Adds `bulk_create` (array of template_data, per-row results) and `mark_stale`
 // (flags whatsapp_templates rows whose meta_template_id is no longer present after a list sync).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { META_GRAPH_VERSION, META_API_BASE } from "../_shared/meta-config.ts";
+
+/**
+ * Upload a public sample asset to Meta via the resumable-upload API and return
+ * an `h:...` handle suitable for `example.header_handle` on a template create.
+ *
+ * Meta requires: POST /{app-id}/uploads → returns upload session id →
+ *                POST /{session-id} with file bytes + `Authorization: OAuth {token}` → returns `{ h }`.
+ *
+ * Returns null on any failure so the caller can fall back to text-only.
+ */
+async function uploadSampleAsHandle(opts: {
+  accessToken: string;
+  appId: string;
+  sampleUrl: string;
+  fallbackContentType: string;
+}): Promise<string | null> {
+  try {
+    const fileRes = await fetch(opts.sampleUrl);
+    if (!fileRes.ok) {
+      console.warn(`[uploadSampleAsHandle] fetch ${opts.sampleUrl} → ${fileRes.status}`);
+      return null;
+    }
+    const contentType = fileRes.headers.get("content-type") || opts.fallbackContentType;
+    const bytes = new Uint8Array(await fileRes.arrayBuffer());
+    if (bytes.byteLength < 256) return null;
+
+    // 1) Start upload session.
+    const startUrl = `${META_API_BASE}/${opts.appId}/uploads?file_name=sample&file_length=${bytes.byteLength}&file_type=${encodeURIComponent(contentType)}&access_token=${encodeURIComponent(opts.accessToken)}`;
+    const startRes = await fetch(startUrl, { method: "POST" });
+    const startData = await startRes.json().catch(() => ({}));
+    if (!startRes.ok || !startData?.id) {
+      console.warn("[uploadSampleAsHandle] start failed:", JSON.stringify(startData));
+      return null;
+    }
+    const sessionId: string = startData.id;
+
+    // 2) Upload file body.
+    const uploadRes = await fetch(`${META_API_BASE}/${sessionId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `OAuth ${opts.accessToken}`,
+        file_offset: "0",
+        "Content-Type": contentType,
+      },
+      body: bytes,
+    });
+    const uploadData = await uploadRes.json().catch(() => ({}));
+    if (!uploadRes.ok || !uploadData?.h) {
+      console.warn("[uploadSampleAsHandle] upload failed:", JSON.stringify(uploadData));
+      return null;
+    }
+    return uploadData.h as string;
+  } catch (e) {
+    console.warn("[uploadSampleAsHandle] exception:", (e as Error).message);
+    return null;
+  }
+}
 const serve = Deno.serve;
 
 const corsHeaders = {
