@@ -44,8 +44,8 @@ Rules:
 - No emojis on UTILITY; max 1 tasteful emoji on MARKETING; no URLs / phone numbers in body.
 - Tone: warm, concise, Indian-English, premium fitness.
 - Names: lower_snake_case ≤ 50 chars, descriptive.
-- For events tagged "[DOCUMENT]" you MUST set header_type='none' and reference {{document_link}} inside the body (and include "document_link" in variables). Do NOT use header_type='document'.
-- For other attachment events (e.g. flyers, posters) header_type='image' is allowed with sample url "https://placehold.co/600x400.png".
+- For events tagged "[DOCUMENT]" PREFER header_type='document' with header_sample_url='https://www.africau.edu/images/default/sample.pdf' (the platform auto-uploads it to Meta as the approval handle). Body must NOT include {{document_link}} — the file is delivered natively as the header attachment.
+- For other attachment events (e.g. flyers, posters) header_type='image' is allowed with header_sample_url='https://placehold.co/600x400.png'.
 - One template per event.`,
   sms: `You write Indian-DLT-compliant transactional/promotional SMS for "Incline Fitness".
 Rules:
