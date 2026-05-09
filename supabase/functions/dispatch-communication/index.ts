@@ -124,8 +124,7 @@ function orderedTemplateKeys(content: string, variables: unknown): string[] {
   const configured = Array.isArray(variables)
     ? variables.map((v) => stripBraces(String(v))).filter(Boolean)
     : [];
-  if (configured.length > 0) return configured;
-  const keys: string[] = [];
+  const keys: string[] = [...configured];
   for (const match of content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)) {
     const key = match[1].trim();
     if (!keys.includes(key)) keys.push(key);
