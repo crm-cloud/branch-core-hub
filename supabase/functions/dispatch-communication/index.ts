@@ -159,12 +159,10 @@ function resolveVarValue(
 function templateComponents(keys: string[], values: Record<string, unknown> | undefined): Array<Record<string, unknown>> | null | undefined {
   if (keys.length === 0) return undefined;
   const params = keys.map((key, index) => {
-    const value = values?.[key] ?? values?.[String(index + 1)] ?? values?.[`variable_${index + 1}`];
-    const text = value == null ? '' : String(value).trim();
-    if (!text) return null;
-    return { type: 'text', text };
+    const text = resolveVarValue(key, values, index);
+    // Meta requires non-empty text params; substitute a single space to avoid 132000 errors.
+    return { type: 'text', text: text || ' ' };
   });
-  if (params.some((p) => p === null)) return null;
   return [{ type: 'body', parameters: params }];
 }
 
