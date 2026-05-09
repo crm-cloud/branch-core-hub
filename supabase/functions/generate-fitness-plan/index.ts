@@ -189,7 +189,18 @@ serve(async (req) => {
           .join("\n")}`
       : "";
 
-    console.log(`Generating ${type} plan for member:`, memberInfo.name, `with ${availableMeals.length} catalog meals`);
+    const equipmentPrompt = type === "workout" && availableEquipment.length > 0
+      ? `\n\nIMPORTANT — this gym has the following OPERATIONAL equipment. When prescribing exercises, prefer movements that use this exact equipment. Use the EXACT machine name in the "exercise" field where possible (the trainer matches names back to inventory). Bodyweight, mobility, stretching, and basic cardio (running, jump rope) are always allowed without being on the list. Do NOT recommend machines that are not on the list (e.g. don't say "leg press" if it's not below).\n\n${availableEquipment
+          .slice(0, 100)
+          .map((e) => `- ${e.name}${e.category ? ` [${e.category}]` : ""}${e.brand ? ` — ${e.brand}${e.model ? ` ${e.model}` : ""}` : ""}`)
+          .join("\n")}`
+      : "";
+
+    const previousPlanPrompt = previousPlanContext
+      ? `\n\nPREVIOUS PLAN CONTEXT — progress (don't repeat) what the member has already done. Increase load / vary stimulus appropriately:\n${previousPlanContext}`
+      : "";
+
+    console.log(`Generating ${type} plan for member:`, memberInfo.name, `with ${availableMeals.length} catalog meals, ${availableEquipment.length} equipment items, prevPlan=${!!previousPlanContext}`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -201,7 +212,7 @@ serve(async (req) => {
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt + catalogPrompt },
+          { role: "user", content: userPrompt + catalogPrompt + equipmentPrompt + previousPlanPrompt },
         ],
         response_format: { type: "json_object" },
       }),
