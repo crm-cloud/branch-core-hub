@@ -1,4 +1,7 @@
-// dispatch-communication v1.8.0
+// dispatch-communication v1.9.0
+// v1.9.0: Strip {{}} wrappers from templates.variables; broaden var alias resolution
+//         (member_name/plan_title/trainer_name/etc.); never throw missing_template_variables —
+//         substitute single space for empty params (Meta accepts; avoids 132000).
 // v1.8.0: Native template document/image/video headers — when input.template_id
 //         resolves to a template with header_type ∈ {document,image,video} AND an
 //         attachment.url is supplied, build a HEADER template_components entry so
