@@ -112,10 +112,12 @@ export default function CreateAIPage() {
           healthConditions: profile.health_conditions || undefined,
           experience: profile.fitness_level || 'intermediate',
           preferences: [
-            profile.dietary_preference && `diet: ${profile.dietary_preference}`,
-            profile.cuisine && `cuisine: ${profile.cuisine}`,
-            profile.allergies && `allergies: ${profile.allergies}`,
+            type === 'diet' && profile.dietary_preference && `diet: ${profile.dietary_preference}`,
+            type === 'diet' && profile.cuisine && `cuisine: ${profile.cuisine}`,
+            type === 'diet' && profile.allergies && `allergies: ${profile.allergies}`,
             profile.equipment && `equipment: ${profile.equipment}`,
+            type === 'workout' && profile.workout_activities && profile.workout_activities.length > 0
+              && `include activities: ${profile.workout_activities.join(', ')} (structure each session warm-up → main → cool-down)`,
             specialNotes,
           ].filter(Boolean).join('; ') || undefined,
         },
