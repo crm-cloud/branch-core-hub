@@ -62,7 +62,27 @@ Deno.serve(async (req) => {
       const expected = await getOrCreateToken(primary);
       isSharedSecret = sharedSecret === expected;
     }
-    if (!isServiceJwt && !isSharedSecret) {
+
+    // Also accept an authenticated owner-role user JWT (for the "Sync now" button).
+    let isOwnerUser = false;
+    if (!isServiceJwt && !isSharedSecret && auth.startsWith("Bearer ")) {
+      const token = auth.replace("Bearer ", "");
+      const userClient = createClient(primaryUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false },
+      });
+      const { data: userData } = await userClient.auth.getUser(token);
+      const uid = userData?.user?.id;
+      if (uid) {
+        const { data: hasOwner } = await primary.rpc("has_role", {
+          _user_id: uid,
+          _role: "owner",
+        });
+        isOwnerUser = Boolean(hasOwner);
+      }
+    }
+
+    if (!isServiceJwt && !isSharedSecret && !isOwnerUser) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
