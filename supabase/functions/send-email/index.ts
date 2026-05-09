@@ -1,3 +1,6 @@
+// v2.3.0 — SMTP IO hardened: chunked DATA writes (16KB), proper readUntilSmtpResponse
+//           loop with 120s post-DATA timeout — fixes Hostinger 421 timeout on
+//           multipart messages with PDF attachments.
 // v2.2.0 — Branded email shell now supports optional logo image and unsubscribe footer.
 // v2.1.0 — SMTP path now sends multipart/mixed with base64 PDF attachments;
 //           communication log records attachment metadata for auditability.
@@ -354,22 +357,48 @@ async function sendViaSMTP(
   const decoder = new TextDecoder();
   const message = buildMimeMessage(fromName, fromEmail, to, subject, html, attachments);
 
-  // Larger reads for big base64 attachments.
+  // Read until we see a complete SMTP reply: a line with "NNN " (space) at the start.
+  // Loops with per-read timeout to handle servers (e.g. Hostinger) that flush
+  // the final 250 only after fully ingesting a multi-MB DATA payload.
   const makeIO = (conn: Deno.Conn | Deno.TlsConn) => {
-    const read = async () => {
-      const buf = new Uint8Array(8192);
-      const n = await conn.read(buf);
-      return n ? decoder.decode(buf.subarray(0, n)) : "";
+    const readResponse = async (overallTimeoutMs = 60_000): Promise<string> => {
+      let acc = '';
+      const deadline = Date.now() + overallTimeoutMs;
+      while (Date.now() < deadline) {
+        const buf = new Uint8Array(16384);
+        const readPromise = conn.read(buf);
+        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 5000));
+        const n = await Promise.race([readPromise, timeoutPromise]);
+        if (n === null) {
+          // 5s of silence — only break if we already have a parsable reply
+          if (/(^|\n)\d{3} [^\n]*\r?\n?$/.test(acc)) return acc;
+          continue;
+        }
+        if (!n) {
+          // EOF
+          return acc;
+        }
+        acc += decoder.decode(buf.subarray(0, n));
+        // SMTP final line is "NNN <text>" (space, not dash). Multiline uses "NNN-".
+        if (/(^|\n)\d{3} [^\n]*\r?\n?$/.test(acc)) return acc;
+      }
+      return acc;
     };
+    const read = () => readResponse(15_000);
     const write = async (cmd: string) => {
       await conn.write(encoder.encode(cmd + "\r\n"));
-      return await read();
+      return await readResponse(15_000);
     };
+    // Stream large messages in chunks, then read the final response with extended timeout.
     const writeRaw = async (raw: string) => {
-      await conn.write(encoder.encode(raw + "\r\n"));
-      return await read();
+      const data = encoder.encode(raw + "\r\n");
+      const CHUNK = 16 * 1024;
+      for (let i = 0; i < data.length; i += CHUNK) {
+        await conn.write(data.subarray(i, i + CHUNK));
+      }
+      return await readResponse(120_000);
     };
-    return { read, write, writeRaw };
+    return { read, write, writeRaw, readResponse };
   };
 
   try {

@@ -1,4 +1,7 @@
-// dispatch-communication v1.8.0
+// dispatch-communication v1.9.0
+// v1.9.0: Strip {{}} wrappers from templates.variables; broaden var alias resolution
+//         (member_name/plan_title/trainer_name/etc.); never throw missing_template_variables —
+//         substitute single space for empty params (Meta accepts; avoids 132000).
 // v1.8.0: Native template document/image/video headers — when input.template_id
 //         resolves to a template with header_type ∈ {document,image,video} AND an
 //         attachment.url is supplied, build a HEADER template_components entry so
@@ -108,8 +111,14 @@ function normalizePhoneDigits(value: unknown): string | null {
   return digits;
 }
 
+function stripBraces(raw: string): string {
+  return raw.replace(/^\{\{\s*/, '').replace(/\s*\}\}$/, '').trim();
+}
+
 function orderedTemplateKeys(content: string, variables: unknown): string[] {
-  const configured = Array.isArray(variables) ? variables.map((v) => String(v).trim()).filter(Boolean) : [];
+  const configured = Array.isArray(variables)
+    ? variables.map((v) => stripBraces(String(v))).filter(Boolean)
+    : [];
   if (configured.length > 0) return configured;
   const keys: string[] = [];
   for (const match of content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)) {
@@ -119,15 +128,44 @@ function orderedTemplateKeys(content: string, variables: unknown): string[] {
   return keys;
 }
 
+/** Resolve a value for a template variable key with broad alias support. */
+function resolveVarValue(
+  key: string,
+  values: Record<string, unknown> | undefined,
+  index: number,
+): string {
+  if (!values) return '';
+  const tryKeys = [
+    key,
+    key.toLowerCase(),
+    stripBraces(key),
+    String(index + 1),
+    `variable_${index + 1}`,
+  ];
+  // Common aliases
+  const k = key.toLowerCase();
+  if (k.includes('member') || k === 'name') tryKeys.push('member_name', 'name', 'full_name');
+  if (k.includes('plan_title') || k.includes('plan_name') || k === 'plan') tryKeys.push('plan_title', 'plan_name');
+  if (k.includes('trainer')) tryKeys.push('trainer_name');
+  if (k.includes('amount') || k.includes('price')) tryKeys.push('amount', 'price');
+  if (k.includes('invoice')) tryKeys.push('invoice_number', 'invoice_id');
+  if (k.includes('branch')) tryKeys.push('branch_name');
+  if (k.includes('date')) tryKeys.push('date');
+  if (k.includes('document') || k.includes('link') || k.includes('url')) tryKeys.push('document_link', 'url', 'link');
+  for (const tk of tryKeys) {
+    const v = values[tk];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+
 function templateComponents(keys: string[], values: Record<string, unknown> | undefined): Array<Record<string, unknown>> | null | undefined {
   if (keys.length === 0) return undefined;
   const params = keys.map((key, index) => {
-    const value = values?.[key] ?? values?.[String(index + 1)] ?? values?.[`variable_${index + 1}`];
-    const text = value == null ? '' : String(value).trim();
-    if (!text) return null;
-    return { type: 'text', text };
+    const text = resolveVarValue(key, values, index);
+    // Meta requires non-empty text params; substitute a single space to avoid 132000 errors.
+    return { type: 'text', text: text || ' ' };
   });
-  if (params.some((p) => p === null)) return null;
   return [{ type: 'body', parameters: params }];
 }
 
@@ -357,7 +395,7 @@ Deno.serve(async (req) => {
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
               const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
               components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
-              if (components === null) throw new Error('missing_template_variables');
+              // components is now always an array (resolveVarValue substitutes ' ' for empty) — no throw.
 
               // Native attachment header: prepend HEADER component when the
               // template was approved with header_type=document/image/video.
