@@ -679,6 +679,9 @@ Deno.serve(async (req) => {
         provider_message_id: providerMessageId ?? null,
         delivery_metadata: Object.keys(finalMeta).length ? finalMeta : null,
         error_message: sendError ?? null,
+        // Re-write content from the (now possibly cleaned) rendered body so the
+        // audit row matches what was actually delivered to WhatsApp.
+        content: input.payload.body,
         sent_at: new Date().toISOString(),
         attempt_count: 1,
       })
