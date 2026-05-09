@@ -396,57 +396,33 @@ export default function CreateManualWorkoutPage() {
                   />
                 </div>
 
-                {days[activeIdx].exercises.map((ex, exIdx) => (
-                  <div key={exIdx} className="rounded-md border bg-background p-3 space-y-2">
-                    <div className="grid gap-2 grid-cols-12">
-                      <div className="col-span-12 sm:col-span-4">
-                        <Label className="text-xs">Exercise *</Label>
-                        <Input value={ex.name} onChange={(e) => updateExercise(exIdx, 'name', e.target.value)} placeholder="Bench Press" />
-                      </div>
-                      <div className="col-span-3 sm:col-span-1">
-                        <Label className="text-xs">Sets</Label>
-                        <Input type="number" min={1} value={ex.sets} onChange={(e) => updateExercise(exIdx, 'sets', parseInt(e.target.value) || 1)} />
-                      </div>
-                      <div className="col-span-3 sm:col-span-2">
-                        <Label className="text-xs">Reps</Label>
-                        <Input value={ex.reps} onChange={(e) => updateExercise(exIdx, 'reps', e.target.value)} placeholder="8-10" />
-                      </div>
-                      <div className="col-span-3 sm:col-span-2">
-                        <Label className="text-xs">Rest (s)</Label>
-                        <Input type="number" min={0} value={ex.rest_seconds} onChange={(e) => updateExercise(exIdx, 'rest_seconds', parseInt(e.target.value) || 0)} />
-                      </div>
-                      <div className="col-span-3 sm:col-span-2">
-                        <Label className="text-xs">Weight</Label>
-                        <Input value={ex.weight} onChange={(e) => updateExercise(exIdx, 'weight', e.target.value)} placeholder="60kg" />
-                      </div>
-                      <div className="col-span-12 sm:col-span-1 flex sm:items-end">
-                        <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive ml-auto" onClick={() => removeExercise(exIdx)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Form Tips</Label>
-                      <Textarea
-                        rows={2}
-                        value={ex.form_tips}
-                        onChange={(e) => updateExercise(exIdx, 'form_tips', e.target.value)}
-                        placeholder="Cues for proper form, breathing, tempo…"
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleExerciseDragEnd}
+                >
+                  <SortableContext
+                    items={days[activeIdx].exercises.map((_, i) => String(i))}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {days[activeIdx].exercises.map((ex, exIdx) => (
+                      <SortableExerciseRow
+                        key={exIdx}
+                        id={String(exIdx)}
+                        ex={ex}
+                        exIdx={exIdx}
+                        onUpdate={updateExercise}
+                        onRemove={removeExercise}
+                        onVideoChange={(next) => {
+                          const updated = days[activeIdx].exercises.map((e, i) =>
+                            i === exIdx ? { ...e, video_url: next.video_url, video_file_path: next.video_file_path } : e
+                          );
+                          updateDay(activeIdx, { exercises: updated });
+                        }}
                       />
-                    </div>
-                    <VideoAttachmentControl
-                      folder="exercises"
-                      label="Demo video (URL or upload)"
-                      value={{ video_url: ex.video_url, video_file_path: ex.video_file_path }}
-                      onChange={(next) => {
-                        const updated = days[activeIdx].exercises.map((e, i) =>
-                          i === exIdx ? { ...e, video_url: next.video_url, video_file_path: next.video_file_path } : e
-                        );
-                        updateDay(activeIdx, { exercises: updated });
-                      }}
-                    />
-                  </div>
-                ))}
+                    ))}
+                  </SortableContext>
+                </DndContext>
 
                 <Button variant="outline" size="sm" className="w-full border-dashed" onClick={addExercise}>
                   <Plus className="h-4 w-4 mr-1" /> Add Exercise
