@@ -221,6 +221,94 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
             />
           </div>
 
+          {/* Personal Details */}
+          <div className="space-y-3 p-4 border rounded-lg">
+            <h4 className="font-medium text-sm">Personal Details</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2 col-span-2">
+                <Label>Full Name</Label>
+                <Input
+                  value={profileData.full_name}
+                  onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  value={profileData.phone}
+                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                  placeholder="+91…"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Gender</Label>
+                <Select
+                  value={profileData.gender || 'unspecified'}
+                  onValueChange={(v) => setProfileData({ ...profileData, gender: v === 'unspecified' ? '' : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unspecified">—</SelectItem>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Date of Birth</Label>
+                <Input
+                  type="date"
+                  value={profileData.date_of_birth}
+                  onChange={(e) => setProfileData({ ...profileData, date_of_birth: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Postal Code</Label>
+                <Input
+                  value={profileData.postal_code}
+                  onChange={(e) => setProfileData({ ...profileData, postal_code: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label>Address</Label>
+                <Textarea
+                  rows={2}
+                  value={profileData.address}
+                  onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input
+                  value={profileData.city}
+                  onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>State</Label>
+                <Input
+                  value={profileData.state}
+                  onChange={(e) => setProfileData({ ...profileData, state: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Emergency Contact Name</Label>
+                <Input
+                  value={profileData.emergency_contact_name}
+                  onChange={(e) => setProfileData({ ...profileData, emergency_contact_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Emergency Contact Phone</Label>
+                <Input
+                  value={profileData.emergency_contact_phone}
+                  onChange={(e) => setProfileData({ ...profileData, emergency_contact_phone: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Bio */}
           <div className="space-y-2">
             <Label>Bio</Label>
