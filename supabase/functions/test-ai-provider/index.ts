@@ -98,16 +98,22 @@ serve(async (req: Request) => {
     let errorMsg = "";
     let sampleReply = "";
 
+    // GPT-5 / o-series on OpenAI reject `max_tokens` and require `max_completion_tokens`.
+    const usesCompletionTokens =
+      provider === "openai" && /^(gpt-5|gpt-5\.|o\d)/i.test(default_model);
+    const reqBody: Record<string, any> = {
+      model: default_model,
+      messages: [{ role: "user", content: "Reply with the single word: pong" }],
+      stream: false,
+    };
+    if (usesCompletionTokens) reqBody.max_completion_tokens = 10;
+    else reqBody.max_tokens = 10;
+
     try {
       const resp = await fetch(endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          model: default_model,
-          messages: [{ role: "user", content: "Reply with the single word: pong" }],
-          max_tokens: 10,
-          stream: false,
-        }),
+        body: JSON.stringify(reqBody),
         signal: ac.signal,
       });
 
