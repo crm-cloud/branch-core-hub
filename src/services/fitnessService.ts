@@ -33,7 +33,7 @@ export interface FitnessPlanTemplate {
   is_common?: boolean | null;
   system_template?: boolean | null;
   // PDF-template support
-  source_kind?: 'structured' | 'pdf' | null;
+  source_kind?: string | null;
   pdf_url?: string | null;
   pdf_filename?: string | null;
   pdf_size_bytes?: number | null;
