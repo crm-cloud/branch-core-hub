@@ -32,6 +32,8 @@ interface UnifiedStaff {
   is_active: boolean;
   hire_date: string;
   specialization?: string | null;
+  raw: any;
+  profile: any;
 }
 
 export default function EmployeesPage() {
@@ -78,41 +80,51 @@ export default function EmployeesPage() {
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
 
       // Transform employees
-      const employeeStaff: UnifiedStaff[] = (employees || []).map(emp => ({
-        id: emp.id,
-        user_id: emp.user_id,
-        staff_type: 'employee' as const,
-        name: profileMap.get(emp.user_id)?.full_name || 'Unknown',
-        email: profileMap.get(emp.user_id)?.email || null,
-        phone: profileMap.get(emp.user_id)?.phone || null,
-        avatar_url: profileMap.get(emp.user_id)?.avatar_url || null,
-        code: emp.employee_code,
-        department: emp.department,
-        position: emp.position,
-        branch_id: emp.branch_id,
-        branch_name: (emp.branches as any)?.name || null,
-        is_active: emp.is_active,
-        hire_date: emp.hire_date,
-      }));
+      const employeeStaff: UnifiedStaff[] = (employees || []).map(emp => {
+        const p = profileMap.get(emp.user_id) as any;
+        return {
+          id: emp.id,
+          user_id: emp.user_id,
+          staff_type: 'employee' as const,
+          name: p?.full_name || 'Unknown',
+          email: p?.email || null,
+          phone: p?.phone || null,
+          avatar_url: p?.avatar_url || null,
+          code: emp.employee_code,
+          department: emp.department,
+          position: emp.position,
+          branch_id: emp.branch_id,
+          branch_name: (emp.branches as any)?.name || null,
+          is_active: emp.is_active,
+          hire_date: emp.hire_date,
+          raw: emp,
+          profile: p || null,
+        };
+      });
 
       // Transform trainers
-      const trainerStaff: UnifiedStaff[] = (trainers || []).map(trainer => ({
-        id: trainer.id,
-        user_id: trainer.user_id,
-        staff_type: 'trainer' as const,
-        name: profileMap.get(trainer.user_id)?.full_name || 'Unknown',
-        email: profileMap.get(trainer.user_id)?.email || null,
-        phone: profileMap.get(trainer.user_id)?.phone || null,
-        avatar_url: profileMap.get(trainer.user_id)?.avatar_url || null,
-        code: null,
-        department: 'Training',
-        position: 'Trainer',
-        branch_id: trainer.branch_id,
-        branch_name: (trainer.branches as any)?.name || null,
-        is_active: trainer.is_active,
-        hire_date: trainer.created_at,
-        specialization: trainer.specializations?.join(', ') || null,
-      }));
+      const trainerStaff: UnifiedStaff[] = (trainers || []).map(trainer => {
+        const p = profileMap.get(trainer.user_id) as any;
+        return {
+          id: trainer.id,
+          user_id: trainer.user_id,
+          staff_type: 'trainer' as const,
+          name: p?.full_name || 'Unknown',
+          email: p?.email || null,
+          phone: p?.phone || null,
+          avatar_url: p?.avatar_url || null,
+          code: null,
+          department: 'Training',
+          position: 'Trainer',
+          branch_id: trainer.branch_id,
+          branch_name: (trainer.branches as any)?.name || null,
+          is_active: trainer.is_active,
+          hire_date: trainer.created_at,
+          specialization: trainer.specializations?.join(', ') || null,
+          raw: trainer,
+          profile: p || null,
+        };
+      });
 
       return [...employeeStaff, ...trainerStaff];
     },
