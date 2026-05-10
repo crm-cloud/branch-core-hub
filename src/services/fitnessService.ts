@@ -32,6 +32,11 @@ export interface FitnessPlanTemplate {
   is_active: boolean | null;
   is_common?: boolean | null;
   system_template?: boolean | null;
+  // PDF-template support
+  source_kind?: 'structured' | 'pdf' | null;
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
   // Audience targeting (applies when is_common = true)
   target_age_min?: number | null;
   target_age_max?: number | null;
