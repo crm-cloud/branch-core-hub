@@ -22,7 +22,7 @@ import {
   EQUIPMENT_OPTIONS,
 } from '@/types/fitnessPlan';
 import { Checkbox } from '@/components/ui/checkbox';
-import { TempPasswordField } from '@/components/auth/TempPasswordField';
+import { DefaultPasswordCard, DEFAULT_TEMP_PASSWORD } from '@/components/auth/TempPasswordField';
 
 interface AddMemberDrawerProps {
   open: boolean;
