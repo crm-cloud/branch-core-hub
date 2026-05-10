@@ -184,10 +184,21 @@ export default function HRMPage() {
     },
   });
 
-  // Fetch unified payroll staff (employees + trainers)
+  // Fetch unified payroll staff (employees + trainers, deduped by user_id)
   const { data: payrollStaff = [], isLoading: isLoadingStaff } = useQuery({
     queryKey: ['hrm-payroll-staff'],
     queryFn: () => fetchAllPayrollStaff(),
+  });
+
+  // Quick lookup of user_ids that ALSO hold a trainer record — used to render a
+  // "Trainer" role chip on dual-role employees (the trainer row is hidden by the
+  // payroll dedupe to prevent double-counting salary).
+  const { data: trainerUserIds = new Set<string>() } = useQuery<Set<string>>({
+    queryKey: ['hrm-trainer-user-ids'],
+    queryFn: async () => {
+      const { data } = await supabase.from('trainers').select('user_id').eq('is_active', true);
+      return new Set((data || []).map((t: any) => t.user_id).filter(Boolean));
+    },
   });
 
   // Payroll calculations per unified staff
@@ -216,7 +227,9 @@ export default function HRMPage() {
       (s.department || '').toLowerCase().includes(term);
   });
 
-  // Stats from unified staff list
+  // Stats from unified staff list (already deduped by user_id in fetchAllPayrollStaff:
+  // a person who is both employee + trainer counts as 1 person; their PT commissions
+  // are added on top of their single base salary, never doubled).
   const stats = {
     total: payrollStaff.length,
     active: payrollStaff.length, // fetchAllPayrollStaff already filters active
@@ -243,13 +256,23 @@ export default function HRMPage() {
   };
 
   const getStaffTypeBadge = (staff: PayrollStaffItem) => {
+    const alsoTrainer = staff.staff_type === 'employee' && staff.user_id && trainerUserIds.has(staff.user_id);
     if (staff.staff_type === 'trainer') {
       return <Badge className="border bg-info/10 text-info border-info/20"><Dumbbell className="mr-1 h-3 w-3 inline" />Trainer</Badge>;
     }
-    if (staff.department === 'Management') {
-      return <Badge className="border bg-accent/10 text-accent border-accent/20">Manager</Badge>;
-    }
-    return <Badge className="border bg-muted text-muted-foreground border-border">Staff</Badge>;
+    const primary = staff.department === 'Management'
+      ? <Badge className="border bg-accent/10 text-accent border-accent/20">Manager</Badge>
+      : <Badge className="border bg-muted text-muted-foreground border-border">Staff</Badge>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {primary}
+        {alsoTrainer && (
+          <Badge className="border bg-purple-500/10 text-purple-600 border-purple-500/30" title="Also holds a trainer record — PT commissions added on top of base salary">
+            <Dumbbell className="mr-1 h-3 w-3 inline" />Trainer
+          </Badge>
+        )}
+      </div>
+    );
   };
 
   const openContractPdf = (contract: any) => {
@@ -357,7 +380,13 @@ export default function HRMPage() {
                 <div>
                   <p className="text-sm opacity-80">Total Staff</p>
                   <h3 className="text-3xl font-bold mt-1">{stats.total}</h3>
-                  <p className="text-xs opacity-70 mt-1">{stats.employees} Staff · {stats.trainers} Trainers</p>
+                  <p className="text-xs opacity-70 mt-1">
+                    {stats.employees} Managers/Staff · {stats.trainers} Trainer-only
+                    {(() => {
+                      const dual = (payrollStaff as PayrollStaffItem[]).filter(s => s.staff_type === 'employee' && s.user_id && trainerUserIds.has(s.user_id)).length;
+                      return dual > 0 ? ` · ${dual} dual-role` : '';
+                    })()}
+                  </p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
                   <Users className="h-6 w-6" />

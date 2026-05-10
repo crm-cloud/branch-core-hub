@@ -323,13 +323,15 @@ interface CreateContractDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee: any;
+  /** When set, locks the Agreement Role selector to this value (used by dual-role flows). */
+  defaultRole?: AgreementRole;
 }
 
-export function CreateContractDrawer({ open, onOpenChange, employee }: CreateContractDrawerProps) {
+export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole: defaultRoleProp }: CreateContractDrawerProps) {
   const queryClient = useQueryClient();
   const { hasAnyRole, user, profile } = useAuth();
   const canEditLegalClauses = hasAnyRole(['owner', 'admin', 'manager']);
-  const defaultRole = detectAgreementRole(employee);
+  const defaultRole = defaultRoleProp || detectAgreementRole(employee);
   const defaultEmployeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
   const defaultStartDate = new Date().toISOString().split('T')[0];
   const defaultSalary = Number(employee?.salary || 0);
@@ -400,7 +402,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
   useEffect(() => {
     if (!open || !employee) return;
 
-    const role = detectAgreementRole(employee);
+    const role = defaultRoleProp || detectAgreementRole(employee);
     const employeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
     const startDate = new Date().toISOString().split('T')[0];
     const salary = Number(employee?.salary || 0);
@@ -423,7 +425,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     });
     setLegalTermsUnlocked(false);
     setLegalTermsUnlockedAt(null);
-  }, [open, employee]);
+  }, [open, employee, defaultRoleProp]);
 
   const createContractMutation = useMutation({
     mutationFn: createContract,
@@ -480,9 +482,10 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     e.preventDefault();
     if (!employee?.id) return;
 
-    // Check if this is a trainer (has staff_type = 'trainer') or regular employee
-    const isTrainer = employee.staff_type === 'trainer';
-    
+    // Trainer contract goes to trainers table; manager/staff to employees table.
+    // When dual-role, the caller passes defaultRole + the matching role record id as employee.id.
+    const isTrainer = formData.agreementRole === 'trainer';
+
     createContractMutation.mutate({
       employeeId: isTrainer ? undefined : employee.id,
       trainerId: isTrainer ? employee.id : undefined,
@@ -543,9 +546,18 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
           )}
 
           <div className="space-y-2">
-            <Label>Agreement Role *</Label>
+            <div className="flex items-center justify-between">
+              <Label>Agreement Role *</Label>
+              {defaultRoleProp && (
+                <Badge variant="outline" className="text-[10px] gap-1">
+                  <Lock className="h-3 w-3" />
+                  Contract for: {defaultRoleProp.charAt(0).toUpperCase() + defaultRoleProp.slice(1)}
+                </Badge>
+              )}
+            </div>
             <Select
               value={formData.agreementRole}
+              disabled={!!defaultRoleProp}
               onValueChange={async (value: AgreementRole) => {
                 const employeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
                 // Try fetching template from DB first
@@ -582,7 +594,11 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
                 <SelectItem value="manager">Manager</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Selecting role auto-fills the contract template for trainer/staff/manager.</p>
+            <p className="text-xs text-muted-foreground">
+              {defaultRoleProp
+                ? 'Role is locked because this contract is for a specific role of a dual-role person.'
+                : 'Selecting role auto-fills the contract template for trainer/staff/manager.'}
+            </p>
           </div>
 
           <div className="space-y-2">
