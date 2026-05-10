@@ -186,7 +186,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     });
     setEquipmentAvailability([]);
     setReferrerInfo(null);
-    setTempPassword('');
+    
   };
 
   const toggleEquipment = (value: string) => {
