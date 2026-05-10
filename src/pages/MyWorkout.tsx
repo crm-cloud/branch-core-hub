@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   Loader2,
   Sparkles,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
