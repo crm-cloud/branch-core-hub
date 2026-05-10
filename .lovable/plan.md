@@ -1,57 +1,106 @@
-# Unified Staff Profile — fix blank Edit Employee drawer
+# Unified People-Centric Staff Model
 
-## Root cause (audited)
+## The problem (audited)
 
-Bhagirath's data is **already saved correctly** in `profiles` (gender=male, dob=1992-06-20, city=UDAIPUR, state=Rajasthan, postal=313001, phone=+917014492634). Verified with a direct DB query.
+Same person, two records, two different counts:
 
-The fields are blank in the **Edit Employee** drawer because the queries that feed it only `SELECT` a tiny subset of profile columns:
+| Page | "Total Staff" for Bhagirath | Why |
+|---|---|---|
+| **HRM → Employees** | 1 (`1 Staff · 0 Trainers`) | `fetchAllPayrollStaff()` dedupes by `user_id`, drops trainer row when employee row exists. Counts only the employee side → `0 Trainers`. |
+| **All Staff (`/employees`)** | 2 (`Trainers 1 · Employees 1 · Active 2`) | `all-staff` query simply concatenates `employees + trainers` rows. No dedupe. |
 
-- `src/services/hrmService.ts → fetchEmployees()` (line 57): selects only `id, full_name, email, phone, avatar_url, date_of_birth` — missing gender, address, city, state, postal_code, emergency_*, government_id_*.
-- `src/services/hrmService.ts → getEmployee()` (line 81): same — missing postal_code, emergency_*, government_id_*.
-- `src/pages/Employees.tsx → all-staff query` (line 75): selects only `id, full_name, email, phone, avatar_url`.
+Both are "correct" under different mental models, but the UI presents them as the same metric, so the numbers fight each other. Bhagirath also appears as **two rows with a "Linked" badge**, which is itself a workaround for the duplication.
 
-`EditEmployeeDrawer` then reads `employee.profile?.gender`, `…?.city`, etc. → `undefined` → blank inputs. (`EditTrainerDrawer` was already fixed in the previous round, which is why **trainer** edit shows the data but **employee** edit does not.)
+There are also **two separate Edit drawers** (Edit Employee, Edit Trainer) for one human, and contracts must be opened from the right row — easy to mis-attribute.
 
-## How "sync across app" already works (and where to make it visible)
+## Senior-dev fix — one canonical "Person", many "Roles"
 
-Personal details (name, phone, gender, dob, address, gov ID, emergency contact, avatar) live in **one row per user** in `profiles`. Both `employees.user_id` and `trainers.user_id` point to the same `profiles.id`. So a dual-role person like Bhagirath has **one** personal record — there is no duplication in the DB. The duplication exists only in the UI because each drawer queries profile fields independently.
+Treat the human as the primary entity. `employees` and `trainers` rows become **role records** attached to the same person (keyed by `user_id`). The UI, stats, contracts, payroll and edit flows all pivot on the person.
 
-Once the SELECT lists are widened, editing in either Edit Employee or Edit Trainer writes to the same `profiles` row → instantly visible in the other drawer, in HRM, in Trainers, in Contracts, and in the Member directory.
+### 1. Single unified list (frontend reshape, no schema change)
 
-No database migration, no backfill needed — Bhagirath's data already exists; we just have to read it.
+Build a `StaffPerson` aggregator (one per `user_id`, fallback to record id when `user_id` is null):
 
-## Plan
+```ts
+type StaffPerson = {
+  user_id: string | null;
+  profile: Profile;                 // shared personal data
+  roles: Array<'manager' | 'staff' | 'trainer'>;
+  employee?: EmployeeRow;           // base salary + position + branch
+  trainer?: TrainerRow;             // commission % + specializations
+  branches: Set<string>;            // a person can hold roles in >1 branch
+  is_active: boolean;               // OR of underlying rows
+};
+```
 
-### 1. Widen profile SELECTs (fixes the blank fields)
-- `src/services/hrmService.ts`
-  - `fetchEmployees()` profiles select → add `gender, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone, government_id_type, government_id_number`.
-  - `getEmployee()` profiles select → same additions.
-- `src/pages/Employees.tsx`
-  - `all-staff` query profiles select → same additions.
-  - Map all fields onto `UnifiedStaff.profile` so `openContractDrawer` and edit handoffs carry the full profile, not just `{ full_name, email, phone }`.
+Use this aggregator on **both** `/employees` (All Staff) and `/hrm` (Employees tab). Single source of truth, identical numbers everywhere.
 
-### 2. Make the "shared profile" obvious in the UI
-- In **EditEmployeeDrawer** and **EditTrainerDrawer**, add a single info strip at the top of the Personal tab:  
-  *"Personal details are shared across Employee, Trainer, HRM and Contracts. Editing here updates the master profile."*  
-  When the user has both roles (detected by checking `employees` + `trainers` for the same `user_id`), show a second line: *"Linked: also a Trainer (or Employee). Changes apply to both."*
-- Keep the existing green **Linked** badge in the All Staff table; mirror it in the HRM Employees and Trainers tabs so dual-role staff are immediately recognizable.
+### 2. Stats become unambiguous
 
-### 3. Edit handoff parity
-- In **HRM.tsx**, when opening Edit Employee/Trainer, pass the row that already includes the wide `profile` from `fetchEmployees()` / `fetchTrainers()` (already wide for trainers).
-- In **Employees.tsx**, wire an Edit action on the row (currently only Contract + toggle exist) so the user has the same edit entry from both pages. Open `EditEmployeeDrawer` for employee rows and `EditTrainerDrawer` for trainer rows, using the now-complete `profile` payload.
+Replace the current 4 ambiguous tiles with role-disaggregated tiles:
 
-### 4. No DB changes
-- No migration. No backfill (data is intact).
-- No payroll math change (dual-role dedupe already correct from prior round).
+```
+People        Managers   Trainers   Other Staff   Active Contracts   Monthly Payroll
+   1             1          1            0               0                ₹25,000
+```
+
+- **People** = `distinct user_id` (Bhagirath = 1).
+- **Managers / Trainers / Other Staff** = role counts (Bhagirath contributes to two: 1 Manager + 1 Trainer). Sum of role counts may exceed People — that's expected and labeled as such (`1 person, 2 roles`).
+- **Monthly Payroll** = single base salary per person (employee row wins) + PT commissions on top. Already implemented in `fetchAllPayrollStaff`'s dedupe; we just expose the math in a tooltip.
+
+### 3. One row per person, with Role chips
+
+```
+Staff Member          Roles                       Code           Branch    Status   Actions
+Bhagirath Gurjar      [Manager] [Trainer]         EMP-MOZWZUNA   INCLINE   Active   Edit · Contracts ▾ · Payroll
+bhagirathbhau@…       Strength Training, …
+```
+
+- "Roles" cell shows colored chips per role (Manager indigo, Trainer purple, Staff blue). No more "Linked" badge — duplication is gone.
+- Specialization moves under the Trainer chip on hover/expanded.
+- Code shows employee_code; trainer-only people show `TR-…`.
+
+### 4. Actions split by role (clean handoff to the right drawer)
+
+- **Edit ▾** — if the person has 2 roles, dropdown:
+  - Edit Personal & Manager Role → `EditEmployeeDrawer`
+  - Edit Trainer Role → `EditTrainerDrawer`  
+  Single role → button opens the relevant drawer directly.
+- **Contracts ▾** — list existing contracts grouped by role, plus `+ New contract for Manager` and `+ New contract for Trainer` items. The new-contract action pre-selects the role in `CreateContractDrawer`, removing the current FK-violation footgun and the manual "is this for trainer or employee?" guess.
+- **Payroll** — opens person's payslip preview for the active month (already exists, just unified entry point).
+
+### 5. Contracts page mirrors the same model
+
+`HRM → Contracts` tab gets a "Role" column (Manager · Trainer) so the dual-role person's two contracts are visually distinct. No schema change — `contracts.employee_id` vs `contracts.trainer_id` already encodes role.
+
+### 6. Personal data already shared (just confirmed)
+
+`profiles` is the single source of truth for name/phone/dob/address/gov-ID/emergency. Editing in either drawer updates the same row → reflected everywhere instantly. The previous round wired Edit drawers correctly; this plan only changes how the list/stats present them.
+
+### 7. Optional DB convenience (non-blocking)
+
+Add a SQL view `public.staff_unified` that pre-joins `profiles`, `employees`, `trainers` and emits `roles[]`. Useful for reports & later RLS, but not required for this UI change. Skip in this round unless the user asks.
 
 ## Files to touch
-- `src/services/hrmService.ts` — widen 2 SELECT lists
-- `src/pages/Employees.tsx` — widen 1 SELECT, extend `UnifiedStaff.profile`, add Edit action, Linked badges
-- `src/pages/HRM.tsx` — Linked badges in Employees/Trainers tabs
-- `src/components/employees/EditEmployeeDrawer.tsx` — info strip + dual-role line
-- `src/components/trainers/EditTrainerDrawer.tsx` — info strip + dual-role line
+
+- `src/services/hrmService.ts` — new `fetchUnifiedPeople(branchId?)` returning `StaffPerson[]`. Refactor `fetchAllPayrollStaff` to derive from it (keeps payroll math intact).
+- `src/pages/Employees.tsx` — switch `all-staff` to `fetchUnifiedPeople`, render one row per person with Role chips, split Edit & Contracts dropdowns, drop `Linked` badge, recompute stats from people.
+- `src/pages/HRM.tsx` — replace stats block + Employees tab table with the same component used on `/employees`. Removes the divergence.
+- `src/components/hrm/CreateContractDrawer.tsx` — accept an optional `defaultRole: 'manager' | 'trainer'` prop and lock the role when set; show a small badge "Contract for: Trainer".
+- `src/components/employees/EditEmployeeDrawer.tsx` & `src/components/trainers/EditTrainerDrawer.tsx` — both already show the "shared profile" notice; add a quick-link button "Open Trainer role" / "Open Manager role" when the person has both roles.
+- New: `src/components/staff/UnifiedStaffTable.tsx` — extracted shared component used by both pages.
 
 ## Verification
-- Open Edit Employee on Bhagirath → Phone `+917014492634`, Gender `Male`, DOB `1992-06-20`, City `UDAIPUR`, State `Rajasthan`, Postal `313001` all pre-filled.
-- Change DOB in Edit Trainer → reopen Edit Employee → new DOB visible (single profile row).
-- All Staff list shows Linked badge on both Bhagirath rows.
+
+1. `/employees` shows **1 row** for Bhagirath with `[Manager]` `[Trainer]` chips. Stat tiles: `People 1 · Managers 1 · Trainers 1 · Active 1`.
+2. HRM stat tiles read identically.
+3. `Edit ▾` shows two items; each opens the correct drawer with profile pre-filled.
+4. `Contracts ▾ → + New for Trainer` opens contract drawer locked to trainer; saving inserts with `trainer_id` only (no FK error). Same for Manager.
+5. Adding a second person with only a trainer role → list shows 2 People · 1 Manager · 2 Trainers.
+6. Payroll math unchanged (single base salary + commissions); a tooltip on Monthly Payroll explains the dedupe rule.
+
+## Out of scope
+
+- No DB migration in this round.
+- No payroll formula change.
+- Existing biometrics & MIPS sync paths unchanged.
