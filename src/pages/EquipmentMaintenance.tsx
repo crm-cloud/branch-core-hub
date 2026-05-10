@@ -328,7 +328,23 @@ export default function EquipmentMaintenancePage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>{item.category || '-'}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm">{primaryCategoryLabel(item.primary_category) !== '—' ? primaryCategoryLabel(item.primary_category) : (item.category || '-')}</span>
+                              {Array.isArray(item.muscle_groups) && item.muscle_groups.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {item.muscle_groups.slice(0, 3).map((mg: string) => (
+                                    <Badge key={mg} variant="outline" className="text-[10px] px-1.5 py-0">
+                                      {muscleGroupLabel(mg)}
+                                    </Badge>
+                                  ))}
+                                  {item.muscle_groups.length > 3 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{item.muscle_groups.length - 3}</Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>{item.location || '-'}</TableCell>
                           <TableCell>₹{(item.purchase_price || 0).toLocaleString()}</TableCell>
                           <TableCell>
