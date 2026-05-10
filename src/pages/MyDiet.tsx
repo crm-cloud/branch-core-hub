@@ -22,6 +22,8 @@ import {
   ChefHat,
   Loader2,
   BookmarkCheck,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -68,6 +70,9 @@ interface UnifiedDietPlan {
   trainer_name: string | null;
   template_id: string | null;
   template_name: string | null;
+  source_kind: 'structured' | 'pdf';
+  pdf_url: string | null;
+  pdf_filename: string | null;
 }
 
 export default function MyDiet() {
@@ -115,6 +120,9 @@ export default function MyDiet() {
           trainer_name: trainerName,
           template_id: (unified as any).template_id ?? null,
           template_name: templateName,
+          source_kind: ((unified as any).source_kind as 'pdf' | 'structured') || 'structured',
+          pdf_url: (unified as any).pdf_url ?? null,
+          pdf_filename: (unified as any).pdf_filename ?? null,
         };
       }
 
@@ -145,6 +153,9 @@ export default function MyDiet() {
         trainer_name: trainerName,
         template_id: null,
         template_name: null,
+        source_kind: 'structured',
+        pdf_url: null,
+        pdf_filename: null,
       };
     },
   });
@@ -294,6 +305,35 @@ export default function MyDiet() {
               )}
             </Card>
 
+            {dietPlan.source_kind === 'pdf' && dietPlan.pdf_url ? (
+              <Card className="rounded-2xl border-border/60 shadow-sm overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10 text-success">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{dietPlan.pdf_filename || 'Diet Plan PDF'}</CardTitle>
+                      <CardDescription className="text-xs">Tap download if the preview doesn't load</CardDescription>
+                    </div>
+                  </div>
+                  <Button asChild size="sm" variant="outline">
+                    <a href={dietPlan.pdf_url} target="_blank" rel="noopener noreferrer" download>
+                      <Download className="h-4 w-4 mr-1.5" /> Download
+                    </a>
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <iframe
+                    src={dietPlan.pdf_url}
+                    title={dietPlan.pdf_filename || 'Diet Plan'}
+                    className="w-full h-[80vh] border-0"
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+            <>
+
             {/* ===== Meal Timeline ===== */}
             {planData?.meals && planData.meals.length > 0 ? (
               <section className="space-y-4">
@@ -408,6 +448,8 @@ export default function MyDiet() {
                   <p className="text-sm text-muted-foreground whitespace-pre-line">{planData.notes}</p>
                 </CardContent>
               </Card>
+            )}
+            </>
             )}
           </>
         ) : (

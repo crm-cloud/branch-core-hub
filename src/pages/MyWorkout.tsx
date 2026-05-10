@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   Loader2,
   Sparkles,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -159,7 +161,33 @@ export default function MyWorkout() {
               </CardContent>
             </Card>
 
-            {planData?.days && planData.days.length > 0 ? (
+            {(workoutPlan as any).source_kind === 'pdf' && (workoutPlan as any).pdf_url ? (
+              <Card className="rounded-2xl border-border/60 shadow-sm overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{(workoutPlan as any).pdf_filename || 'Workout Plan PDF'}</CardTitle>
+                      <CardDescription className="text-xs">Tap download if the preview doesn't load</CardDescription>
+                    </div>
+                  </div>
+                  <Button asChild size="sm" variant="outline">
+                    <a href={(workoutPlan as any).pdf_url} target="_blank" rel="noopener noreferrer" download>
+                      <Download className="h-4 w-4 mr-1.5" /> Download
+                    </a>
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <iframe
+                    src={(workoutPlan as any).pdf_url}
+                    title={(workoutPlan as any).pdf_filename || 'Workout Plan'}
+                    className="w-full h-[80vh] border-0"
+                  />
+                </CardContent>
+              </Card>
+            ) : planData?.days && planData.days.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {planData.days.map((day, dayIndex) => (
                   <Card key={dayIndex} className="rounded-2xl border-border/60 shadow-sm">
