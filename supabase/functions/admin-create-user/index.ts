@@ -110,6 +110,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         userId: authData.user.id,
+        tempPassword,
         message: `User created. They will set their password on first login.`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
