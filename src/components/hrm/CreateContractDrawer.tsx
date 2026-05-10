@@ -353,6 +353,32 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
   });
   const [legalTermsUnlocked, setLegalTermsUnlocked] = useState(false);
   const [legalTermsUnlockedAt, setLegalTermsUnlockedAt] = useState<string | null>(null);
+  const [linkedRecord, setLinkedRecord] = useState<{ kind: 'employee' | 'trainer'; code?: string | null; salary?: number | null } | null>(null);
+
+  // Detect dual-role: when creating a trainer contract, check if same user has an employee record (and vice-versa)
+  useEffect(() => {
+    if (!open || !employee?.user_id) { setLinkedRecord(null); return; }
+    const isTrainer = employee.staff_type === 'trainer';
+    (async () => {
+      if (isTrainer) {
+        const { data } = await supabase
+          .from('employees')
+          .select('employee_code, salary')
+          .eq('user_id', employee.user_id)
+          .maybeSingle();
+        if (data) setLinkedRecord({ kind: 'employee', code: data.employee_code, salary: data.salary });
+        else setLinkedRecord(null);
+      } else {
+        const { data } = await supabase
+          .from('trainers')
+          .select('id, fixed_salary')
+          .eq('user_id', employee.user_id)
+          .maybeSingle();
+        if (data) setLinkedRecord({ kind: 'trainer', salary: (data as any).fixed_salary });
+        else setLinkedRecord(null);
+      }
+    })();
+  }, [open, employee?.user_id, employee?.staff_type]);
 
   const logContractAudit = async (action: string, actionDescription: string, newData?: any) => {
     try {
@@ -500,10 +526,21 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           {/* Employee Info */}
           <div className="p-4 rounded-lg bg-muted/50">
-            <p className="font-medium">{employee.profile?.full_name}</p>
-            <p className="text-sm text-muted-foreground">{employee.employee_code}</p>
+            <p className="font-medium">{employee.profile?.full_name || employee.full_name}</p>
+            <p className="text-sm text-muted-foreground">{employee.employee_code || (employee.staff_type === 'trainer' ? 'Trainer' : '')}</p>
             <p className="text-sm text-muted-foreground">{employee.position || 'No position'}</p>
           </div>
+
+          {linkedRecord && (
+            <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-xs space-y-1">
+              <p className="font-semibold">Dual role detected</p>
+              {linkedRecord.kind === 'employee' ? (
+                <p>This person also has an employee record ({linkedRecord.code}, base ₹{Number(linkedRecord.salary || 0).toLocaleString('en-IN')}/mo). Payroll uses the employee salary as the single base — this trainer contract should only define the PT commission %. Setting Base Salary here will not be paid twice.</p>
+              ) : (
+                <p>This person also has a trainer record. PT commissions will be added on top of this employee salary automatically — no need to create a second contract for commission unless you want a separate document.</p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Agreement Role *</Label>

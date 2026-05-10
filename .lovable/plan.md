@@ -1,74 +1,58 @@
-## Audit findings
+# Trainer Edit + Dual-Role Contract Audit
 
-### Bug 1 — `column trainers_1.commission_percentage does not exist`
-Recorded in `error_logs` (route `/hrm`, last seen 2026-05-10 16:00, count 3).
+## Findings (root causes)
 
-Root cause: `src/pages/HRM.tsx` line 116 selects `commission_percentage` from the **trainers** table, but that column lives on the **contracts** table.
+### 1. Edit Trainer "Personal Details" all blank
+`fetchTrainers()` in `src/services/trainerService.ts` only selects `full_name, email, phone, avatar_url` from `profiles` — it never fetches `gender, date_of_birth, address, city, state, postal_code, emergency_contact_name/phone`. So `EditTrainerDrawer` reads `trainer.profile?.date_of_birth` etc. and gets `undefined` → blank fields, even though Bhagirath already has these saved on his profile (entered via Employee record).
 
-Verified DB schema:
-- `trainers` columns: salary_type, fixed_salary, **pt_share_percentage**, hourly_rate (no `commission_percentage`)
-- `contracts` columns: salary, base_salary, **commission_percentage** ✓
+### 2. `Failed to create contract: violates foreign key constraint "contracts_employee_id_fkey"`
+In `src/pages/Employees.tsx → openContractDrawer()` (line 134), the object passed to `CreateContractDrawer` does **not** include `staff_type`. So inside the drawer:
+- `detectAgreementRole(employee)` → falls back to `'staff'`
+- `const isTrainer = employee.staff_type === 'trainer'` → **false**
+- `employeeId: employee.id` is sent — but `employee.id` is the **trainers.id UUID** (not an `employees.id`), and there is no row in `employees` with that id → FK violation.
 
-The `_1` alias in the error is PostgREST's way of disambiguating the embedded join.
+DB confirms FK: `contracts_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES employees(id)` and a CHECK that at least one of `employee_id`/`trainer_id` is set.
 
-### Bug 2 — Bhagirath Gurjar (`bhagirathbhau@gmail.com`)
-Current state in DB:
-- `profiles`: full record OK
-- `user_roles`: only `manager`
-- `employees`: row exists (EMP-MOZWZUNA, Branch Manager, Management dept, ₹25,000)
-- `trainers`: **no row** — that's why no commission can be tracked
+### 3. Dual-role payroll (Manager + Trainer) — already deduped, needs UI clarity
+`fetchAllPayrollStaff()` in `hrmService.ts` already does:
+```ts
+const empUserIds = new Set(emps.map(e => e.user_id));
+...trainers.filter(t => !empUserIds.has(t.user_id))   // skip trainer row if same user has employee row
+```
+So Bhagirath's salary is **not** double-counted — payroll uses his employee row (₹25,000 manager salary), and PT commissions are joined in via `trainers` lookup by `user_id` (lines 388–403). This is correct.
 
-You do **NOT** need a second email. One auth user can hold multiple roles and exist in both `employees` and `trainers` tables simultaneously. The schema supports it.
-
-### Dashboard routing for dual-role users
-`src/lib/roleRedirect.ts` rule today:
-- Has `member` → `/member-dashboard`
-- Has `trainer` AND no admin role → `/trainer-dashboard`
-- Has `staff` AND no admin role → `/staff-dashboard`
-- Has `owner|admin|manager` → `/dashboard`
-
-So once Bhagirath has both `manager` + `trainer`, he lands on the main `/dashboard` (correct — manager wins). His trainer commissions are still tracked because:
-- `trainer_commissions` rows are created per PT session against his `trainers.id`
-- He can view them from **Trainers → his profile** and **HRM → Payroll** (PT Commission column)
-- A "Trainer Earnings" link can be exposed in the sidebar for managers who are also trainers
+What's missing:
+- HRM payroll list silently hides the trainer row → users don't realize commissions are still being applied.
+- Two separate contracts (one on employee row, one on trainer row) can be created and both shown — confusing.
+- Employees page shows two rows (Employee + Trainer) for the same person without any "linked" indicator.
 
 ## Plan
 
-### Step 1 — Fix the SQL error (frontend only)
-File: `src/pages/HRM.tsx` (line 116)
-- Remove `commission_percentage` from the embedded `trainers!...` select.
-- The contract row already returns `commission_percentage` from its own columns (used at line 583), so display is unaffected.
+### A. Auto-fetch trainer profile (fix blank Edit Trainer)
+- `src/services/trainerService.ts` → expand `profiles` select in both `fetchTrainers()` and `getTrainer()` to include: `gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone`.
+- Map them onto the returned trainer object as `profile: { ... }` (matching what `EditTrainerDrawer` already reads).
 
-```diff
-- trainers!contracts_trainer_id_fkey(id, user_id, specializations, commission_percentage)
-+ trainers!contracts_trainer_id_fkey(id, user_id, specializations, pt_share_percentage)
-```
+### B. Fix contract creation for trainer rows
+- `src/pages/Employees.tsx → openContractDrawer()` — include `staff_type: staff.staff_type` and `branch_id: staff.branch_id` in the `setSelectedEmployee` payload.
+- Add a defensive check in `CreateContractDrawer.handleSubmit`: if `employee.staff_type === 'trainer'` send only `trainerId`; if `'employee'` send only `employeeId` (current logic is correct, just needs the flag passed in).
 
-(Keep `pt_share_percentage` in case any UI wants the trainer-level default; HRM table reads `contract.commission_percentage` directly.)
+### C. Dual-role guardrail + UI clarity
+- In `CreateContractDrawer`, before submitting a trainer contract, look up `employees` by `user_id`; if an active employee contract already exists, show an inline warning: *"This person also has an employee record (EMP-XXXX) with an active contract. Payroll will use the employee salary; this trainer contract should only define commission %."* — non-blocking, lets owner proceed.
+- In `Employees.tsx` table, when a `user_id` appears in both `employees` and `trainers`, render a small `Linked` badge on both rows with a tooltip: *"Same user — single payroll, commission added on top."*
+- In `HRM.tsx` payroll list, on a row whose user also has a trainer record, show a `+ PT Commission` chip so the dedupe is visible (no math change).
 
-### Step 2 — Promote Bhagirath to trainer (data-only)
-Run via the insert tool (no migration, no schema change):
+### D. Self-contained answers for the user
+- **No new email needed.** Same `bhagirathbhau@gmail.com` keeps both roles.
+- **One payroll only.** Manager salary (employee row) + PT commissions (trainer row) — never double base salary.
+- **Where to enter trainer commission %:** HRM → Create Contract on the Trainer row → Commission %; salary fields can be left as 0 since base comes from the employee contract.
 
-1. Insert a row into `public.trainers` with `user_id = 57173ed8-6ee7-46b3-a6bc-da4fc4278fb0`, branch `11111111-1111-1111-1111-111111111111`, `salary_type='hybrid'`, `fixed_salary=25000`, `pt_share_percentage=10`, `is_active=true`, default `max_clients=10`.
-2. Insert into `public.user_roles` `(user_id, role) = (57173ed8…, 'trainer')` (manager role stays).
+## Technical changes
+| File | Change |
+|------|--------|
+| `src/services/trainerService.ts` | Expand `profiles` select, return nested `profile` object |
+| `src/pages/Employees.tsx` | Pass `staff_type` + `branch_id` in `openContractDrawer` |
+| `src/components/hrm/CreateContractDrawer.tsx` | Add dual-role inline warning |
+| `src/pages/Employees.tsx` (table) | "Linked" badge for users with both records |
+| `src/pages/HRM.tsx` (payroll table) | "+ PT Commission" chip when applicable |
 
-After that:
-- He logs in with the same email/password and lands on `/dashboard` (manager view).
-- He appears in **Trainers** list and can be assigned to PT packages → commissions accrue in `trainer_commissions`.
-- Run **HRM → Create Contract → Trainer** for him to set the commission % per contract (e.g. 10%) so payroll picks it up.
-
-### Step 3 — Optional UX improvement (only if approved)
-Add a "Switch to Trainer view" item in the sidebar/profile menu when the current user has both an admin role and a `trainers` row, deep-linking to `/trainer-dashboard` and `/trainer-earnings`. Not required to fix the bug; mention only.
-
-### Files touched
-- `src/pages/HRM.tsx` — one-line select fix.
-- DB data inserts for Bhagirath (no schema changes).
-
-### Out of scope
-- No migration needed. The `trainers` table stays as-is.
-- `EditTrainerDrawer` / `Edit contract` already handle `commission_percentage` correctly (it's read from `contracts`, not `trainers`).
-
-## Answers to your questions
-1. **Shall I create a new email as trainer?** No. Same email, add `trainer` role + `trainers` row.
-2. **Which dashboard opens?** `/dashboard` (manager wins over trainer in the redirect rules). Trainer commissions are still calculated against his `trainers.id` and visible in Trainers and HRM Payroll. Optionally add a "Trainer view" shortcut in the sidebar.
-3. **Commission setup:** After Step 2, open **HRM → Create Contract**, pick "Trainer", select Bhagirath, set base + commission %.
+No DB migrations. No payroll math changes (existing dedupe already correct).

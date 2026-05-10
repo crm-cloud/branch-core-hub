@@ -40,21 +40,25 @@ export async function fetchTrainers(
 
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, full_name, email, phone, avatar_url")
+    .select("id, full_name, email, phone, avatar_url, gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone")
     .in("id", userIds);
 
-  const profilesMap = (profiles || []).reduce((acc, p) => {
+  const profilesMap = (profiles || []).reduce((acc, p: any) => {
     acc[p.id] = p;
     return acc;
-  }, {} as Record<string, { full_name: string | null; email: string; phone: string | null; avatar_url: string | null }>);
+  }, {} as Record<string, any>);
 
-  return trainers.map((t) => ({
-    ...t,
-    profile_name: profilesMap[t.user_id]?.full_name,
-    profile_email: profilesMap[t.user_id]?.email,
-    profile_phone: profilesMap[t.user_id]?.phone,
-    profile_avatar: profilesMap[t.user_id]?.avatar_url,
-  }));
+  return trainers.map((t) => {
+    const p = profilesMap[t.user_id];
+    return {
+      ...t,
+      profile_name: p?.full_name,
+      profile_email: p?.email,
+      profile_phone: p?.phone,
+      profile_avatar: p?.avatar_url,
+      profile: p || null,
+    };
+  });
 }
 
 // Get trainer by ID
@@ -72,7 +76,7 @@ export async function getTrainer(trainerId: string): Promise<TrainerWithProfile 
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, email, phone, avatar_url")
+    .select("id, full_name, email, phone, avatar_url, gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone")
     .eq("id", data.user_id)
     .single();
 
@@ -82,7 +86,8 @@ export async function getTrainer(trainerId: string): Promise<TrainerWithProfile 
     profile_email: profile?.email,
     profile_phone: profile?.phone,
     profile_avatar: profile?.avatar_url,
-  };
+    profile: profile || null,
+  } as any;
 }
 
 // Create a trainer profile (link existing user as trainer)

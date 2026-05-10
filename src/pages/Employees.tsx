@@ -27,6 +27,7 @@ interface UnifiedStaff {
   code: string | null;
   department: string | null;
   position: string | null;
+  branch_id: string | null;
   branch_name: string | null;
   is_active: boolean;
   hire_date: string;
@@ -88,6 +89,7 @@ export default function EmployeesPage() {
         code: emp.employee_code,
         department: emp.department,
         position: emp.position,
+        branch_id: emp.branch_id,
         branch_name: (emp.branches as any)?.name || null,
         is_active: emp.is_active,
         hire_date: emp.hire_date,
@@ -105,6 +107,7 @@ export default function EmployeesPage() {
         code: null,
         department: 'Training',
         position: 'Trainer',
+        branch_id: trainer.branch_id,
         branch_name: (trainer.branches as any)?.name || null,
         is_active: trainer.is_active,
         hire_date: trainer.created_at,
@@ -135,10 +138,14 @@ export default function EmployeesPage() {
     setSelectedEmployee({
       id: staff.id,
       user_id: staff.user_id,
+      staff_type: staff.staff_type,
+      branch_id: (staff as any).branch_id,
       employee_code: staff.code,
       department: staff.department,
       position: staff.position,
+      profile: { full_name: staff.name, email: staff.email, phone: staff.phone },
       profiles: { full_name: staff.name, email: staff.email },
+      full_name: staff.name,
     });
     setContractOpen(true);
   };
@@ -304,7 +311,14 @@ export default function EmployeesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredStaff.map((staff) => (
+                  {(() => {
+                    const userIdCounts = filteredStaff.reduce((acc, s) => {
+                      if (s.user_id) acc[s.user_id] = (acc[s.user_id] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+                    return filteredStaff.map((staff) => {
+                      const isLinked = !!(staff.user_id && userIdCounts[staff.user_id] > 1);
+                      return (
                     <TableRow key={`${staff.staff_type}-${staff.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -315,7 +329,18 @@ export default function EmployeesPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{staff.name || 'N/A'}</div>
+                            <div className="font-medium flex items-center gap-2">
+                              {staff.name || 'N/A'}
+                              {isLinked && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50"
+                                  title="Same user — single payroll, commissions added on top"
+                                >
+                                  Linked
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-sm text-muted-foreground">{staff.email}</div>
                           </div>
                         </div>
@@ -371,7 +396,9 @@ export default function EmployeesPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                      );
+                    });
+                  })()}
                   {filteredStaff.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
