@@ -22,6 +22,8 @@ import {
   ChefHat,
   Loader2,
   BookmarkCheck,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
