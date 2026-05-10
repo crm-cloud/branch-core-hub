@@ -153,12 +153,16 @@ async function executeCall(
   if (opts.tool_choice) body.tool_choice = opts.tool_choice;
   if (opts.response_format) body.response_format = opts.response_format;
   if (opts.reasoning) body.reasoning = opts.reasoning;
-  // GPT-5 / o-series on OpenAI: only default temperature, and require `max_completion_tokens`.
-  const isOpenAIReasoning =
-    cfg.provider === "openai" && /^(gpt-5|gpt-5\.|o\d)/i.test(model);
-  if (opts.temperature !== undefined && !isOpenAIReasoning) body.temperature = opts.temperature;
+  // OpenAI's newer models reject `max_tokens` and ignore non-default temperature.
+  // Always use `max_completion_tokens` for OpenAI; gate temperature behind a
+  // best-effort check on legacy chat models only.
+  const isOpenAI = cfg.provider === "openai";
+  const isLegacyOpenAIChat = isOpenAI && /^(gpt-3|gpt-4(?!\.))/i.test(model);
+  if (opts.temperature !== undefined && (!isOpenAI || isLegacyOpenAIChat)) {
+    body.temperature = opts.temperature;
+  }
   if (opts.max_tokens !== undefined) {
-    if (isOpenAIReasoning) body.max_completion_tokens = opts.max_tokens;
+    if (isOpenAI) body.max_completion_tokens = opts.max_tokens;
     else body.max_tokens = opts.max_tokens;
   }
 
