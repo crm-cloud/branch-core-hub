@@ -396,7 +396,9 @@ export default function EmployeesPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                      );
+                    });
+                  })()}
                   {filteredStaff.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
