@@ -7,10 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Users, UserMinus, UserCheck, FileText, Filter, Dumbbell } from 'lucide-react';
+import { Plus, Search, Users, UserMinus, UserCheck, FileText, Filter, Dumbbell, Pencil } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
+import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
+import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
 import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { toast } from 'sonner';
 
