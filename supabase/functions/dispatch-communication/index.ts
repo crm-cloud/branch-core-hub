@@ -1,4 +1,9 @@
-// dispatch-communication v1.11.0
+// dispatch-communication v1.12.0
+// v1.12.0: Channel-level kill switch — if Settings → Integrations has the
+//          target channel (whatsapp/sms/email) toggled OFF for the branch
+//          (with global fallback), suppress the send cleanly. Logs a single
+//          `delivery_status='suppressed'` row with reason
+//          `channel_disabled_in_settings` and never enqueues a retry.
 // v1.11.0: Document-header WhatsApp templates never inject the signed PDF URL
 //          into BODY variables (would surface as "Download: <url>" in chat).
 //          PDF flows ONLY through the HEADER component. Also writes a clean
