@@ -216,7 +216,9 @@ export default function HRMPage() {
       (s.department || '').toLowerCase().includes(term);
   });
 
-  // Stats from unified staff list
+  // Stats from unified staff list (already deduped by user_id in fetchAllPayrollStaff:
+  // a person who is both employee + trainer counts as 1 person; their PT commissions
+  // are added on top of their single base salary, never doubled).
   const stats = {
     total: payrollStaff.length,
     active: payrollStaff.length, // fetchAllPayrollStaff already filters active
@@ -224,6 +226,12 @@ export default function HRMPage() {
     activeContracts: allContracts.filter((c: any) => c.status === 'active').length,
     trainers: payrollStaff.filter((s: PayrollStaffItem) => s.staff_type === 'trainer').length,
     employees: payrollStaff.filter((s: PayrollStaffItem) => s.staff_type === 'employee').length,
+    // Dual-role people: employees in payroll who also have a trainer record
+    dualRole: payrollStaff.filter((s: PayrollStaffItem) =>
+      s.staff_type === 'employee' && (s as any).employeeRecord?.user_id &&
+      // any contract or trainer record exists for the same user_id
+      false // placeholder — exact computation lives in /employees page
+    ).length,
   };
 
   const getStatusColor = (status: string) => {
