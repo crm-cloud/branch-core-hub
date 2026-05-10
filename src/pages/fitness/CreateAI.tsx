@@ -61,15 +61,18 @@ export default function CreateAIPage() {
   // Pull catalog meals matching the selected diet/cuisine so we can pass them
   // to the AI as the gym's preferred food list. Cached because the catalog
   // doesn't change often within a session.
+  const dietaryPrefForAI = mode === 'audience' ? audDietaryType : profile.dietary_preference;
+  const cuisineForAI = mode === 'audience' ? audCuisine : profile.cuisine;
+
   const { data: catalogMeals = [] } = useQuery({
-    queryKey: ['meal-catalog-ai', profile.dietary_preference, profile.cuisine, effectiveBranchId],
+    queryKey: ['meal-catalog-ai', dietaryPrefForAI, cuisineForAI, effectiveBranchId],
     queryFn: () =>
       fetchMealCatalog({
-        dietaryType: profile.dietary_preference || null,
-        cuisine: profile.cuisine || null,
+        dietaryType: dietaryPrefForAI || null,
+        cuisine: cuisineForAI || null,
         branchId: effectiveBranchId ?? null,
       }),
-    enabled: type === 'diet' && !!profile.dietary_preference && !!profile.cuisine,
+    enabled: type === 'diet' && !!dietaryPrefForAI && !!cuisineForAI,
   });
 
   // Branch operational equipment — drives workout AI to use real machines.
