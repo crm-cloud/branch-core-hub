@@ -278,6 +278,7 @@ Deno.serve(async (req) => {
         userId: userId,
         memberId: result.member_id,
         memberCode: result.member_code,
+        tempPassword: createdTempPassword,
         message: 'Member created successfully. They will set their password on first login.',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
