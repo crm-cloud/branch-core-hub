@@ -139,23 +139,41 @@ export default function CreateAIPage() {
     return () => { cancelled = true; };
   }, [templateId]);
 
-  const dietRequirementsMet = type !== 'diet' || (!!profile.dietary_preference && !!profile.cuisine);
+  const dietRequirementsMet = type !== 'diet'
+    || (mode === 'member' ? (!!profile.dietary_preference && !!profile.cuisine) : (!!audDietaryType && !!audCuisine));
+
+  const audienceRequirementsMet = mode !== 'audience' || (
+    !!audAgeMin && !!audAgeMax && !!audGender && audExperience.length > 0
+  );
+
+  const ageBandMid = (() => {
+    const lo = parseInt(audAgeMin) || 0;
+    const hi = parseInt(audAgeMax) || 0;
+    if (!lo && !hi) return undefined;
+    return Math.round((lo + hi) / 2) || undefined;
+  })();
 
   const handleGenerate = async () => {
-    if (!member) { toast.error('Please select a member'); return; }
     if (!planName.trim()) { toast.error('Please enter a plan name'); return; }
+    if (mode === 'member' && !member) { toast.error('Please select a member'); return; }
+    if (mode === 'audience' && !audienceRequirementsMet) {
+      toast.error('Please complete the audience: age range, gender, experience');
+      return;
+    }
     if (type === 'diet' && !dietRequirementsMet) {
-      toast.error('Please select dietary type and cuisine in the member profile');
+      toast.error(mode === 'member'
+        ? 'Please select dietary type and cuisine in the member profile'
+        : 'Please select dietary type and cuisine for the audience');
       return;
     }
 
-    setProgressMsg('Sending member context to the AI…');
+    setProgressMsg(mode === 'audience'
+      ? 'Generating a Common (no-PT) plan for the audience…'
+      : 'Sending member context to the AI…');
     const slow = setTimeout(() => setProgressMsg('Still generating — building a personalized program 🤔'), 12000);
 
     try {
-      const plan = await generate.mutateAsync({
-        type,
-        memberInfo: {
+      const memberInfo = mode === 'member' ? {
           name: planName,
           age: profile.age ? parseInt(profile.age) : undefined,
           gender: profile.gender,
@@ -173,7 +191,30 @@ export default function CreateAIPage() {
               && `include activities: ${profile.workout_activities.join(', ')} (structure each session warm-up → main → cool-down)`,
             specialNotes,
           ].filter(Boolean).join('; ') || undefined,
-        },
+        } : {
+          // Synthetic "audience profile" — no real member, just band metadata.
+          name: planName,
+          age: ageBandMid,
+          gender: audGender === 'any' ? undefined : audGender,
+          weight: audWeightMin && audWeightMax
+            ? Math.round((parseFloat(audWeightMin) + parseFloat(audWeightMax)) / 2)
+            : undefined,
+          fitnessGoals: goal || undefined,
+          experience: audExperience[0] || 'beginner',
+          preferences: [
+            `Common (no-PT) plan targeting ${audAgeMin}-${audAgeMax}y, gender: ${audGender}, experience: ${audExperience.join('/')}`,
+            audDaysPerWeek && type === 'workout' && `${audDaysPerWeek} days/week`,
+            audWeightMin && audWeightMax && `weight band ${audWeightMin}-${audWeightMax}kg`,
+            type === 'diet' && audDietaryType && `diet: ${audDietaryType}`,
+            type === 'diet' && audCuisine && `cuisine: ${audCuisine}`,
+            type === 'workout' && audEquipmentHint && `equipment: ${audEquipmentHint}`,
+            specialNotes,
+          ].filter(Boolean).join('; ') || undefined,
+        };
+
+      const plan = await generate.mutateAsync({
+        type,
+        memberInfo,
         options: {
           durationWeeks,
           caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined,
@@ -190,7 +231,7 @@ export default function CreateAIPage() {
               }))
             : undefined,
           availableEquipment: type === 'workout' ? branchEquipment.slice(0, 100) : undefined,
-          previousPlanContext: buildPreviousPlanContext(),
+          previousPlanContext: mode === 'member' ? buildPreviousPlanContext() : undefined,
         },
       });
 
@@ -214,14 +255,26 @@ export default function CreateAIPage() {
         name: plan.name || planName,
         description: plan.description,
         goal: plan.goal || goal,
-        difficulty: plan.difficulty || profile.fitness_level,
+        difficulty: plan.difficulty || (mode === 'member' ? profile.fitness_level : audExperience[0]),
         caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : plan.dailyCalories,
-        memberId: member.id,
-        memberName: member.full_name,
-        memberCode: member.member_code,
-        memberProfile: profile,
-        dietaryType: profile.dietary_preference,
-        cuisine: profile.cuisine,
+        memberId: mode === 'member' ? member!.id : undefined,
+        memberName: mode === 'member' ? member!.full_name : undefined,
+        memberCode: mode === 'member' ? member!.member_code : undefined,
+        memberProfile: mode === 'member' ? profile : undefined,
+        dietaryType: mode === 'member' ? profile.dietary_preference : audDietaryType,
+        cuisine: mode === 'member' ? profile.cuisine : audCuisine,
+        isCommon: mode === 'audience',
+        audience: mode === 'audience' ? {
+          target_age_min: parseInt(audAgeMin) || null,
+          target_age_max: parseInt(audAgeMax) || null,
+          target_gender: audGender,
+          target_experience: audExperience,
+          target_weight_min_kg: audWeightMin ? parseFloat(audWeightMin) : null,
+          target_weight_max_kg: audWeightMax ? parseFloat(audWeightMax) : null,
+          target_goal: goal || null,
+          duration_weeks: durationWeeks,
+          days_per_week: audDaysPerWeek ? parseInt(audDaysPerWeek) : null,
+        } : undefined,
         content: plan,
         createdAt: new Date().toISOString(),
       });
