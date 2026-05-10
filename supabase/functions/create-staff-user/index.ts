@@ -235,8 +235,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Generate a temporary password
-    const tempPassword = crypto.randomUUID().slice(0, 12)
+    // Use admin-supplied password if provided (min 8 chars), else auto-generate
+    const suppliedPassword = typeof body.password === 'string' ? body.password.trim() : '';
+    if (suppliedPassword && suppliedPassword.length < 8) {
+      return new Response(
+        JSON.stringify({ error: 'Password must be at least 8 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
     console.log('Creating user with email:', email)
 
     // Create the user with email confirmed (they'll set password on first login)
