@@ -58,6 +58,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
   });
   const [equipmentAvailability, setEquipmentAvailability] = useState<string[]>([]);
   const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
+  const [tempPassword, setTempPassword] = useState('');
   const queryClient = useQueryClient();
 
   // Validate referral code
