@@ -50,6 +50,18 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
     government_id: '',
     is_active: true,
   });
+  const [profileData, setProfileData] = useState({
+    full_name: '',
+    phone: '',
+    gender: '',
+    date_of_birth: '',
+    address: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+  });
   
   const [newCertification, setNewCertification] = useState('');
 
