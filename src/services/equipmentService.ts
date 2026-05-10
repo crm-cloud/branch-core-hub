@@ -8,6 +8,9 @@ export interface Equipment {
   model: string | null;
   serial_number: string | null;
   category: string | null;
+  primary_category: string | null;
+  muscle_groups: string[];
+  movement_pattern: string | null;
   location: string | null;
   purchase_date: string | null;
   purchase_price: number | null;
