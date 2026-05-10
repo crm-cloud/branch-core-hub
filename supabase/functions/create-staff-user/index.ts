@@ -243,7 +243,8 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
+    // Fixed default password for all staff/trainer/manager users — they must change it on first login.
+    const tempPassword = suppliedPassword || 'Incline@123'
     console.log('Creating user with email:', email)
 
     // Create the user with email confirmed (they'll set password on first login)

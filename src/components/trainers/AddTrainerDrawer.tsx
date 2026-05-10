@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useCreateTrainer } from '@/hooks/useTrainers';
 import { UserPlus, Link } from 'lucide-react';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
+import { DefaultPasswordCard, DEFAULT_TEMP_PASSWORD } from '@/components/auth/TempPasswordField';
 
 const SALARY_TYPES = [
   { value: 'hourly', label: 'Hourly Rate' },
@@ -192,7 +193,10 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
       if (createError) throw createError;
       if (userData?.error) throw new Error(userData.error);
 
-      toast.success('Trainer created successfully. They will set their password on first login.');
+      toast.success(`Trainer created. Default password: ${DEFAULT_TEMP_PASSWORD}`, {
+        duration: 12000,
+        action: { label: 'Copy', onClick: () => navigator.clipboard.writeText(DEFAULT_TEMP_PASSWORD) },
+      });
       onOpenChange(false);
       resetForms();
     } catch (error: any) {
@@ -387,8 +391,10 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                   placeholder="trainer@gym.com"
                   required
                 />
-                <p className="text-xs text-muted-foreground">Trainer will set their password on first login</p>
+                <p className="text-xs text-muted-foreground">Trainer will sign in with the default password and change it on first login</p>
               </div>
+
+              <DefaultPasswordCard />
 
 
               {renderGovernmentIdFields(newUserFormData, setNewUserFormData)}

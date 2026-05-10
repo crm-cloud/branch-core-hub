@@ -69,7 +69,9 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
+    // Fixed default password for all admin-created users — they must change it
+    // on first login (must_set_password=true). Admin can override per-call.
+    const tempPassword = suppliedPassword || 'Incline@123'
 
     // Create the user with email confirmed (they'll set password on first login)
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({

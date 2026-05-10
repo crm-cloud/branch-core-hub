@@ -13,6 +13,7 @@ import { useBranches } from '@/hooks/useBranches';
 import { UserPlus, Link, Info } from 'lucide-react';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 import { DEPARTMENTS, POSITIONS, SALARY_TYPES } from '@/constants/employeeConstants';
+import { DefaultPasswordCard, DEFAULT_TEMP_PASSWORD } from '@/components/auth/TempPasswordField';
 
 interface AddEmployeeDrawerProps {
   open: boolean;
@@ -186,7 +187,10 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
       if (createError) throw createError;
       if (result?.error) throw new Error(result.error);
 
-      toast.success('Employee created! They will receive a password setup prompt on first login.');
+      toast.success(`Employee created. Default password: ${DEFAULT_TEMP_PASSWORD}`, {
+        duration: 12000,
+        action: { label: 'Copy', onClick: () => navigator.clipboard.writeText(DEFAULT_TEMP_PASSWORD) },
+      });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['all-staff'] });
       queryClient.invalidateQueries({ queryKey: ['branches'] });
@@ -457,6 +461,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
               {renderEmploymentFields(newUserFormData, setNewUserFormData)}
 
+              <DefaultPasswordCard />
               <SheetFooter className="pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Cancel

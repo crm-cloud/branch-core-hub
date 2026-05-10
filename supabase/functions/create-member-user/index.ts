@@ -156,7 +156,8 @@ Deno.serve(async (req) => {
 
     } else {
       // Create new auth user
-      const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
+      // Fixed default password for all new members — must_set_password forces a change on first login.
+      const tempPassword = suppliedPassword || 'Incline@123'
       createdTempPassword = tempPassword
 
       const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({

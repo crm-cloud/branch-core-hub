@@ -22,7 +22,7 @@ import {
   EQUIPMENT_OPTIONS,
 } from '@/types/fitnessPlan';
 import { Checkbox } from '@/components/ui/checkbox';
-import { TempPasswordField } from '@/components/auth/TempPasswordField';
+import { DefaultPasswordCard, DEFAULT_TEMP_PASSWORD } from '@/components/auth/TempPasswordField';
 
 interface AddMemberDrawerProps {
   open: boolean;
@@ -58,7 +58,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
   });
   const [equipmentAvailability, setEquipmentAvailability] = useState<string[]>([]);
   const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
-  const [tempPassword, setTempPassword] = useState('');
+  
   const queryClient = useQueryClient();
 
   // Validate referral code
@@ -119,7 +119,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           activityLevel: data.activityLevel || null,
           equipmentAvailability,
           injuriesLimitations: data.injuriesLimitations || null,
-          password: tempPassword || undefined,
+          password: undefined,
         },
       });
 
@@ -139,17 +139,13 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
       return { id: memberId, member_code: result.memberCode, tempPassword: result.tempPassword as string | null };
     },
     onSuccess: (res) => {
-      if (res.tempPassword) {
-        toast.success(`Member added. Temp password: ${res.tempPassword}`, {
-          duration: 15000,
-          action: {
-            label: 'Copy',
-            onClick: () => navigator.clipboard.writeText(res.tempPassword!),
-          },
-        });
-      } else {
-        toast.success('Member added successfully');
-      }
+      toast.success(`Member added. Default password: ${DEFAULT_TEMP_PASSWORD}`, {
+        duration: 12000,
+        action: {
+          label: 'Copy',
+          onClick: () => navigator.clipboard.writeText(DEFAULT_TEMP_PASSWORD),
+        },
+      });
       invalidateMembersData(queryClient);
       if (branchFilter && branchFilter !== branchId) {
         const targetBranch = branches.find((b) => b.id === branchId);
@@ -190,7 +186,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     });
     setEquipmentAvailability([]);
     setReferrerInfo(null);
-    setTempPassword('');
+    
   };
 
   const toggleEquipment = (value: string) => {
@@ -417,9 +413,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
             />
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-            <TempPasswordField value={tempPassword} onChange={setTempPassword} />
-          </div>
+          <DefaultPasswordCard />
 
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
