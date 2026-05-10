@@ -94,8 +94,20 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
         pt_share_percentage: trainer.pt_share_percentage || 50,
         specializations: trainer.specializations || [],
         certifications: trainer.certifications || [],
-        government_id: trainer.government_id || '',
+        government_id: trainer.government_id || trainer.government_id_number || '',
         is_active: trainer.is_active ?? true,
+      });
+      setProfileData({
+        full_name: trainer.profile_name || trainer.profile?.full_name || '',
+        phone: trainer.profile_phone || trainer.profile?.phone || '',
+        gender: trainer.profile?.gender || '',
+        date_of_birth: trainer.profile?.date_of_birth || '',
+        address: trainer.profile?.address || '',
+        city: trainer.profile?.city || '',
+        state: trainer.profile?.state || '',
+        postal_code: trainer.profile?.postal_code || '',
+        emergency_contact_name: trainer.profile?.emergency_contact_name || '',
+        emergency_contact_phone: trainer.profile?.emergency_contact_phone || '',
       });
     }
   }, [trainer]);
