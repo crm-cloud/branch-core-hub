@@ -98,9 +98,10 @@ serve(async (req: Request) => {
     let errorMsg = "";
     let sampleReply = "";
 
-    // GPT-5 / o-series on OpenAI reject `max_tokens` and require `max_completion_tokens`.
-    const usesCompletionTokens =
-      provider === "openai" && /^(gpt-5|gpt-5\.|o\d)/i.test(default_model);
+    // OpenAI's newer chat models (gpt-5, o-series, gpt-4.1+) reject `max_tokens`
+    // and require `max_completion_tokens`. Safest: always use the new param for
+    // OpenAI; both old & new chat completion endpoints accept it.
+    const usesCompletionTokens = provider === "openai";
     const reqBody: Record<string, any> = {
       model: default_model,
       messages: [{ role: "user", content: "Reply with the single word: pong" }],
