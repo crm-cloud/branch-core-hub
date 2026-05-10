@@ -392,6 +392,12 @@ export default function FitnessTemplatesPage() {
         }
       />
 
+      <EditTemplateTargetingDrawer
+        open={!!targetingTemplate}
+        onOpenChange={(o) => !o && setTargetingTemplate(null)}
+        template={targetingTemplate}
+      />
+
       <PlanViewerSheet
         open={!!viewing}
         onOpenChange={(o) => !o && setViewing(null)}
