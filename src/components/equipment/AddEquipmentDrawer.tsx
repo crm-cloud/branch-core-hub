@@ -25,22 +25,15 @@ const getInitialFormData = (equipment?: Equipment | null) => ({
   model: equipment?.model || '',
   serialNumber: equipment?.serial_number || '',
   category: equipment?.category || '',
+  primaryCategory: equipment?.primary_category || '',
+  muscleGroups: (equipment?.muscle_groups ?? []) as string[],
+  movementPattern: equipment?.movement_pattern || '',
   location: equipment?.location || '',
   purchaseDate: equipment?.purchase_date || '',
   purchasePrice: equipment?.purchase_price ? String(equipment.purchase_price) : '',
   warrantyExpiry: equipment?.warranty_expiry || '',
   notes: equipment?.notes || '',
 });
-
-const CATEGORIES = [
-  'Cardio',
-  'Strength',
-  'Free Weights',
-  'Machines',
-  'Functional',
-  'Recovery',
-  'Other',
-];
 
 export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEdit }: AddEquipmentDrawerProps) {
   const queryClient = useQueryClient();
