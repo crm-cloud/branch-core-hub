@@ -70,6 +70,9 @@ interface UnifiedDietPlan {
   trainer_name: string | null;
   template_id: string | null;
   template_name: string | null;
+  source_kind: 'structured' | 'pdf';
+  pdf_url: string | null;
+  pdf_filename: string | null;
 }
 
 export default function MyDiet() {
