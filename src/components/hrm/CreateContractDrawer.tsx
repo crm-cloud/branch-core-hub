@@ -323,13 +323,15 @@ interface CreateContractDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee: any;
+  /** When set, locks the Agreement Role selector to this value (used by dual-role flows). */
+  defaultRole?: AgreementRole;
 }
 
-export function CreateContractDrawer({ open, onOpenChange, employee }: CreateContractDrawerProps) {
+export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole: defaultRoleProp }: CreateContractDrawerProps) {
   const queryClient = useQueryClient();
   const { hasAnyRole, user, profile } = useAuth();
   const canEditLegalClauses = hasAnyRole(['owner', 'admin', 'manager']);
-  const defaultRole = detectAgreementRole(employee);
+  const defaultRole = defaultRoleProp || detectAgreementRole(employee);
   const defaultEmployeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
   const defaultStartDate = new Date().toISOString().split('T')[0];
   const defaultSalary = Number(employee?.salary || 0);
