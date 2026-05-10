@@ -146,6 +146,10 @@ export default function EmployeesPage() {
     }
   };
 
+  const [editEmpOpen, setEditEmpOpen] = useState(false);
+  const [editTrainerOpen, setEditTrainerOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<any>(null);
+
   const openContractDrawer = (staff: UnifiedStaff) => {
     setSelectedEmployee({
       id: staff.id,
@@ -155,11 +159,25 @@ export default function EmployeesPage() {
       employee_code: staff.code,
       department: staff.department,
       position: staff.position,
-      profile: { full_name: staff.name, email: staff.email, phone: staff.phone },
+      profile: staff.profile || { full_name: staff.name, email: staff.email, phone: staff.phone },
       profiles: { full_name: staff.name, email: staff.email },
       full_name: staff.name,
     });
     setContractOpen(true);
+  };
+
+  const openEditDrawer = (staff: UnifiedStaff) => {
+    if (staff.staff_type === 'trainer') {
+      setEditingRow({ ...staff.raw, profile: staff.profile, profile_name: staff.name });
+      setEditTrainerOpen(true);
+    } else {
+      setEditingRow({
+        ...staff.raw,
+        profile: staff.profile,
+        branch: { name: staff.branch_name },
+      });
+      setEditEmpOpen(true);
+    }
   };
 
   // Get unique departments for filter
