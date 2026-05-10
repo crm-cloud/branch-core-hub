@@ -153,6 +153,9 @@ export default function MyDiet() {
         trainer_name: trainerName,
         template_id: null,
         template_name: null,
+        source_kind: 'structured',
+        pdf_url: null,
+        pdf_filename: null,
       };
     },
   });
