@@ -3835,6 +3835,10 @@ export type Database = {
           is_common: boolean
           is_public: boolean | null
           name: string
+          pdf_filename: string | null
+          pdf_size_bytes: number | null
+          pdf_url: string | null
+          source_kind: string
           system_template: boolean
           target_age_max: number | null
           target_age_min: number | null
@@ -3863,6 +3867,10 @@ export type Database = {
           is_common?: boolean
           is_public?: boolean | null
           name: string
+          pdf_filename?: string | null
+          pdf_size_bytes?: number | null
+          pdf_url?: string | null
+          source_kind?: string
           system_template?: boolean
           target_age_max?: number | null
           target_age_min?: number | null
@@ -3891,6 +3899,10 @@ export type Database = {
           is_common?: boolean
           is_public?: boolean | null
           name?: string
+          pdf_filename?: string | null
+          pdf_size_bytes?: number | null
+          pdf_url?: string | null
+          source_kind?: string
           system_template?: boolean
           target_age_max?: number | null
           target_age_min?: number | null
@@ -5954,9 +5966,13 @@ export type Database = {
           is_custom: boolean | null
           is_public: boolean | null
           member_id: string | null
+          pdf_filename: string | null
+          pdf_size_bytes: number | null
+          pdf_url: string | null
           plan_data: Json
           plan_name: string
           plan_type: string
+          source_kind: string
           template_id: string | null
           updated_at: string | null
           valid_from: string | null
@@ -5972,9 +5988,13 @@ export type Database = {
           is_custom?: boolean | null
           is_public?: boolean | null
           member_id?: string | null
+          pdf_filename?: string | null
+          pdf_size_bytes?: number | null
+          pdf_url?: string | null
           plan_data?: Json
           plan_name: string
           plan_type: string
+          source_kind?: string
           template_id?: string | null
           updated_at?: string | null
           valid_from?: string | null
@@ -5990,9 +6010,13 @@ export type Database = {
           is_custom?: boolean | null
           is_public?: boolean | null
           member_id?: string | null
+          pdf_filename?: string | null
+          pdf_size_bytes?: number | null
+          pdf_url?: string | null
           plan_data?: Json
           plan_name?: string
           plan_type?: string
+          source_kind?: string
           template_id?: string | null
           updated_at?: string | null
           valid_from?: string | null
