@@ -402,9 +402,19 @@ export default function FitnessTemplatesPage() {
                 content: selectedTemplate.content,
                 template_id: selectedTemplate.id,
                 is_common: !!selectedTemplate.is_common,
+                source_kind: (selectedTemplate.source_kind as 'structured' | 'pdf') || 'structured',
+                pdf_url: selectedTemplate.pdf_url ?? null,
+                pdf_filename: selectedTemplate.pdf_filename ?? null,
+                pdf_size_bytes: selectedTemplate.pdf_size_bytes ?? null,
               }
             : null
         }
+      />
+
+      <UploadPdfTemplateDrawer
+        open={uploadPdfOpen}
+        onOpenChange={setUploadPdfOpen}
+        defaultType={planType}
       />
 
       <EditTemplateTargetingDrawer
@@ -424,15 +434,22 @@ export default function FitnessTemplatesPage() {
                 type: viewing.type,
                 description: viewing.description,
                 data: viewing.content,
+                source_kind: (viewing.source_kind as 'structured' | 'pdf') || 'structured',
+                pdf_url: viewing.pdf_url ?? null,
+                pdf_filename: viewing.pdf_filename ?? null,
               }
             : null
         }
         onDownload={() =>
           viewing &&
-          generatePlanPDF({
-            name: viewing.name,
-            type: viewing.type,
-            data: viewing.content,
+          (viewing.source_kind === 'pdf' && viewing.pdf_url
+            ? window.open(viewing.pdf_url, '_blank', 'noopener')
+            : generatePlanPDF({
+                name: viewing.name,
+                type: viewing.type,
+                data: viewing.content,
+              }))
+        }
           })
         }
       />
