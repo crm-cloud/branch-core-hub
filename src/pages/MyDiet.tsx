@@ -449,6 +449,8 @@ export default function MyDiet() {
                 </CardContent>
               </Card>
             )}
+            </>
+            )}
           </>
         ) : (
           <Card className="rounded-2xl border-dashed">
