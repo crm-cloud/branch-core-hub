@@ -381,6 +381,11 @@ export interface BulkAssignParams {
   template_id?: string | null;
   /** When true, marks the assignment as a "Common Plan" (no PT required). */
   is_common?: boolean;
+  /** PDF-template support — when set, the member plan carries a direct PDF instead of structured data. */
+  source_kind?: 'structured' | 'pdf';
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
 }
 
 interface MemberContact {
