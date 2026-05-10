@@ -121,6 +121,7 @@ export default function FitnessTemplatesPage() {
   const renderTemplateCard = (template: FitnessPlanTemplate) => {
     const usage = usageCounts[template.id] || 0;
     const isSystem = !!template.system_template;
+    const isPdf = template.source_kind === 'pdf';
     return (
       <Card
         key={template.id}
