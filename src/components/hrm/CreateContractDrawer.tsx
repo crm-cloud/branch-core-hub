@@ -460,6 +460,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     createContractMutation.mutate({
       employeeId: isTrainer ? undefined : employee.id,
       trainerId: isTrainer ? employee.id : undefined,
+      branchId: employee.branch_id || undefined,
       contractType: formData.contractType,
       startDate: formData.startDate,
       endDate: formData.endDate || undefined,
