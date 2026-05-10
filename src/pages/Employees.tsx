@@ -72,7 +72,7 @@ export default function EmployeesPage() {
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, email, phone, avatar_url')
+        .select('id, full_name, email, phone, avatar_url, gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone, government_id_type, government_id_number')
         .in('id', allUserIds);
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
