@@ -103,6 +103,9 @@ export async function createEquipment(equipment: {
   model?: string;
   serialNumber?: string;
   category?: string;
+  primaryCategory?: string;
+  muscleGroups?: string[];
+  movementPattern?: string;
   location?: string;
   purchaseDate?: string;
   purchasePrice?: number;
@@ -117,6 +120,9 @@ export async function createEquipment(equipment: {
       model: equipment.model,
       serial_number: equipment.serialNumber,
       category: equipment.category,
+      primary_category: equipment.primaryCategory ?? null,
+      muscle_groups: equipment.muscleGroups ?? [],
+      movement_pattern: equipment.movementPattern ?? null,
       location: equipment.location,
       purchase_date: equipment.purchaseDate,
       purchase_price: equipment.purchasePrice,
