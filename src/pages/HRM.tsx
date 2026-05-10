@@ -184,10 +184,21 @@ export default function HRMPage() {
     },
   });
 
-  // Fetch unified payroll staff (employees + trainers)
+  // Fetch unified payroll staff (employees + trainers, deduped by user_id)
   const { data: payrollStaff = [], isLoading: isLoadingStaff } = useQuery({
     queryKey: ['hrm-payroll-staff'],
     queryFn: () => fetchAllPayrollStaff(),
+  });
+
+  // Quick lookup of user_ids that ALSO hold a trainer record — used to render a
+  // "Trainer" role chip on dual-role employees (the trainer row is hidden by the
+  // payroll dedupe to prevent double-counting salary).
+  const { data: trainerUserIds = new Set<string>() } = useQuery<Set<string>>({
+    queryKey: ['hrm-trainer-user-ids'],
+    queryFn: async () => {
+      const { data } = await supabase.from('trainers').select('user_id').eq('is_active', true);
+      return new Set((data || []).map((t: any) => t.user_id).filter(Boolean));
+    },
   });
 
   // Payroll calculations per unified staff
