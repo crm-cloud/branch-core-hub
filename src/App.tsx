@@ -238,8 +238,9 @@ function RoutedContent() {
           {/* New plan creation flow */}
           <Route path="/fitness/create" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateModePickerPage /></ProtectedRoute>} />
           <Route path="/fitness/create/ai" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><CreateAIPage /></ProtectedRoute>} />
-          <Route path="/fitness/create/manual/workout" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateManualWorkoutPage /></ProtectedRoute>} />
-          <Route path="/fitness/create/manual/diet" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateManualDietPage /></ProtectedRoute>} />
+          <Route path="/fitness/create/manual" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateManualPage /></ProtectedRoute>} />
+          <Route path="/fitness/create/manual/workout" element={<Navigate to="/fitness/create/manual?type=workout" replace />} />
+          <Route path="/fitness/create/manual/diet" element={<Navigate to="/fitness/create/manual?type=diet" replace />} />
           <Route path="/fitness/preview/:planId" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><PreviewPlanPage /></ProtectedRoute>} />
           {/* Trainers may view templates / member plans; AI Generate tab is hidden in-page for non-AI roles */}
           <Route path="/fitness/templates" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><FitnessTemplatesPage /></ProtectedRoute>} />
