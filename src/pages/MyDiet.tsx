@@ -332,7 +332,7 @@ export default function MyDiet() {
                 </CardContent>
               </Card>
             ) : (
-            <></>
+            <>
 
             {/* ===== Meal Timeline ===== */}
             {planData?.meals && planData.meals.length > 0 ? (
