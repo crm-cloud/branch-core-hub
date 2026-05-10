@@ -305,6 +305,35 @@ export default function MyDiet() {
               )}
             </Card>
 
+            {dietPlan.source_kind === 'pdf' && dietPlan.pdf_url ? (
+              <Card className="rounded-2xl border-border/60 shadow-sm overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10 text-success">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{dietPlan.pdf_filename || 'Diet Plan PDF'}</CardTitle>
+                      <CardDescription className="text-xs">Tap download if the preview doesn't load</CardDescription>
+                    </div>
+                  </div>
+                  <Button asChild size="sm" variant="outline">
+                    <a href={dietPlan.pdf_url} target="_blank" rel="noopener noreferrer" download>
+                      <Download className="h-4 w-4 mr-1.5" /> Download
+                    </a>
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <iframe
+                    src={dietPlan.pdf_url}
+                    title={dietPlan.pdf_filename || 'Diet Plan'}
+                    className="w-full h-[80vh] border-0"
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+            <></>
+
             {/* ===== Meal Timeline ===== */}
             {planData?.meals && planData.meals.length > 0 ? (
               <section className="space-y-4">
