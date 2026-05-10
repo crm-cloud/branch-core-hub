@@ -19,6 +19,7 @@ import {
   Users,
   Lock,
   Share2,
+  Target,
 } from "lucide-react";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
