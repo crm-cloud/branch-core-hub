@@ -157,6 +157,22 @@ export default function FitnessTemplatesPage() {
                 <Share2 className="h-3 w-3" /> Common
               </Badge>
             )}
+            {template.is_common && (template.target_age_min || template.target_age_max) && (
+              <Badge variant="outline" className="text-[10px]">
+                {template.target_age_min ?? "any"}–{template.target_age_max ?? "any"} yrs
+              </Badge>
+            )}
+            {template.is_common && template.target_gender && template.target_gender !== "any" && (
+              <Badge variant="outline" className="text-[10px] capitalize">{template.target_gender}</Badge>
+            )}
+            {template.is_common && template.target_goal && (
+              <Badge variant="outline" className="text-[10px]">{template.target_goal.replace(/_/g, " ")}</Badge>
+            )}
+            {template.is_common && template.duration_weeks && (
+              <Badge variant="outline" className="text-[10px]">
+                {template.duration_weeks}w{template.days_per_week ? ` · ${template.days_per_week}d/wk` : ""}
+              </Badge>
+            )}
             {isSystem && (
               <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20 gap-1">
                 <Lock className="h-3 w-3" /> Built-in
