@@ -413,7 +413,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
           contract_type: formData.contractType,
         },
       );
-      toast.success('Contract created successfully');
+      toast.success(`Contract created — Base ₹${Number(formData.salary).toLocaleString('en-IN')}/mo${formData.commissionPercentage ? `, ${formData.commissionPercentage}% commission` : ''}`);
       queryClient.invalidateQueries({ queryKey: ['employee-contracts'] });
       queryClient.invalidateQueries({ queryKey: ['all-contracts'] });
       onOpenChange(false);
