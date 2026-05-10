@@ -28,6 +28,7 @@ export default function PreviewPlanPage() {
     if (!draft) return;
     setSavingTemplate(true);
     try {
+      const aud = draft.audience || {};
       const tpl = await createPlanTemplate({
         branch_id: effectiveBranchId ?? null,
         name: draft.name,
@@ -36,10 +37,18 @@ export default function PreviewPlanPage() {
         difficulty: draft.difficulty,
         goal: draft.goal,
         content: draft.content,
+        is_common: !!draft.isCommon,
+        target_age_min: aud.target_age_min ?? null,
+        target_age_max: aud.target_age_max ?? null,
+        target_gender: (aud.target_gender as any) ?? null,
+        target_experience: aud.target_experience ?? null,
+        target_weight_min_kg: aud.target_weight_min_kg ?? null,
+        target_weight_max_kg: aud.target_weight_max_kg ?? null,
+        duration_weeks: aud.duration_weeks ?? null,
       });
       setSavedTemplateId(tpl.id);
       queryClient.invalidateQueries({ queryKey: ['fitness-templates'] });
-      toast.success('Saved as template');
+      toast.success(draft.isCommon ? 'Saved as Common Plan template' : 'Saved as template');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save template');
     } finally {
