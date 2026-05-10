@@ -311,7 +311,14 @@ export default function EmployeesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredStaff.map((staff) => (
+                  {(() => {
+                    const userIdCounts = filteredStaff.reduce((acc, s) => {
+                      if (s.user_id) acc[s.user_id] = (acc[s.user_id] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+                    return filteredStaff.map((staff) => {
+                      const isLinked = !!(staff.user_id && userIdCounts[staff.user_id] > 1);
+                      return (
                     <TableRow key={`${staff.staff_type}-${staff.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -322,7 +329,18 @@ export default function EmployeesPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{staff.name || 'N/A'}</div>
+                            <div className="font-medium flex items-center gap-2">
+                              {staff.name || 'N/A'}
+                              {isLinked && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50"
+                                  title="Same user — single payroll, commissions added on top"
+                                >
+                                  Linked
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-sm text-muted-foreground">{staff.email}</div>
                           </div>
                         </div>
