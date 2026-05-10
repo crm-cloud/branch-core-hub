@@ -291,7 +291,7 @@ export default function CreateAIPage() {
   return (
     <CreateFlowLayout
       title="AI Plan Generation"
-      subtitle="Personalized programs powered by member metrics"
+      subtitle={mode === 'audience' ? 'Generate a Common (no-PT) plan for an audience segment' : 'Personalized programs powered by member metrics'}
       step="build"
       buildLabel="Generate"
       backTo="/fitness/create"
