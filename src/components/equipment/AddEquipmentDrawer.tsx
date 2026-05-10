@@ -8,6 +8,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createEquipment, updateEquipment, type Equipment } from '@/services/equipmentService';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
+import { PRIMARY_CATEGORIES, MUSCLE_GROUPS, MOVEMENT_PATTERNS } from '@/lib/equipment/taxonomy';
+import { Badge } from '@/components/ui/badge';
+import { X } from 'lucide-react';
 
 interface AddEquipmentDrawerProps {
   open: boolean;
@@ -22,22 +25,15 @@ const getInitialFormData = (equipment?: Equipment | null) => ({
   model: equipment?.model || '',
   serialNumber: equipment?.serial_number || '',
   category: equipment?.category || '',
+  primaryCategory: equipment?.primary_category || '',
+  muscleGroups: (equipment?.muscle_groups ?? []) as string[],
+  movementPattern: equipment?.movement_pattern || '',
   location: equipment?.location || '',
   purchaseDate: equipment?.purchase_date || '',
   purchasePrice: equipment?.purchase_price ? String(equipment.purchase_price) : '',
   warrantyExpiry: equipment?.warranty_expiry || '',
   notes: equipment?.notes || '',
 });
-
-const CATEGORIES = [
-  'Cardio',
-  'Strength',
-  'Free Weights',
-  'Machines',
-  'Functional',
-  'Recovery',
-  'Other',
-];
 
 export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEdit }: AddEquipmentDrawerProps) {
   const queryClient = useQueryClient();
@@ -63,6 +59,9 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEd
       model: formData.model || undefined,
       serialNumber: formData.serialNumber || undefined,
       category: formData.category || undefined,
+      primaryCategory: formData.primaryCategory || undefined,
+      muscleGroups: formData.muscleGroups,
+      movementPattern: formData.movementPattern || undefined,
       location: formData.location || undefined,
       purchaseDate: formData.purchaseDate || undefined,
       purchasePrice: formData.purchasePrice ? parseFloat(formData.purchasePrice) : undefined,
@@ -94,6 +93,9 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEd
         model: formData.model || null,
         serial_number: formData.serialNumber || null,
         category: formData.category || null,
+        primary_category: formData.primaryCategory || null,
+        muscle_groups: formData.muscleGroups,
+        movement_pattern: formData.movementPattern || null,
         location: formData.location || null,
         purchase_date: formData.purchaseDate || null,
         purchase_price: formData.purchasePrice ? parseFloat(formData.purchasePrice) : null,
@@ -181,32 +183,107 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEd
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
+              <Label htmlFor="primaryCategory">Primary Category</Label>
               <Select
-                value={formData.category}
-                onValueChange={(value) => setFormData({ ...formData, category: value })}
+                value={formData.primaryCategory}
+                onValueChange={(value) => setFormData({ ...formData, primaryCategory: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat.toLowerCase()}>
-                      {cat}
+                  {PRIMARY_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                placeholder="e.g., Cardio Zone"
-              />
+              <Label htmlFor="movementPattern">Movement Pattern</Label>
+              <Select
+                value={formData.movementPattern}
+                onValueChange={(value) => setFormData({ ...formData, movementPattern: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOVEMENT_PATTERNS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+          </div>
+
+          {/* Muscle groups multi-select — drives AI plan personalisation */}
+          <div className="space-y-2">
+            <Label>Muscle Groups Trained</Label>
+            <p className="text-xs text-muted-foreground">
+              Pick every muscle this equipment targets. The AI plan generator uses
+              this to map exercises to the right machines (e.g., abs → core_abs).
+            </p>
+            <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto rounded-md border p-2">
+              {MUSCLE_GROUPS.map((mg) => {
+                const active = formData.muscleGroups.includes(mg.value);
+                return (
+                  <button
+                    type="button"
+                    key={mg.value}
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        muscleGroups: active
+                          ? formData.muscleGroups.filter((m) => m !== mg.value)
+                          : [...formData.muscleGroups, mg.value],
+                      })
+                    }
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      active
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:bg-muted'
+                    }`}
+                  >
+                    {mg.label}
+                  </button>
+                );
+              })}
+            </div>
+            {formData.muscleGroups.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {formData.muscleGroups.map((m) => (
+                  <Badge key={m} variant="secondary" className="gap-1">
+                    {MUSCLE_GROUPS.find((g) => g.value === m)?.label ?? m}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          muscleGroups: formData.muscleGroups.filter((x) => x !== m),
+                        })
+                      }
+                      aria-label={`Remove ${m}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="location">Location</Label>
+            <Input
+              id="location"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              placeholder="e.g., Cardio Zone"
+            />
           </div>
 
           <div className="space-y-2">

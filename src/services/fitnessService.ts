@@ -32,9 +32,77 @@ export interface FitnessPlanTemplate {
   is_active: boolean | null;
   is_common?: boolean | null;
   system_template?: boolean | null;
+  // Audience targeting (applies when is_common = true)
+  target_age_min?: number | null;
+  target_age_max?: number | null;
+  target_gender?: string | null;
+  target_weight_min_kg?: number | null;
+  target_weight_max_kg?: number | null;
+  target_bmi_min?: number | null;
+  target_bmi_max?: number | null;
+  target_goal?: string | null;
+  target_experience?: string[] | null;
+  duration_weeks?: number | null;
+  days_per_week?: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Audience-targeting fields editable on common (no-PT) templates. */
+export interface CommonPlanTargeting {
+  target_age_min?: number | null;
+  target_age_max?: number | null;
+  target_gender?: 'any' | 'male' | 'female';
+  target_weight_min_kg?: number | null;
+  target_weight_max_kg?: number | null;
+  target_bmi_min?: number | null;
+  target_bmi_max?: number | null;
+  target_goal?: string | null;
+  target_experience?: string[];
+  duration_weeks?: number | null;
+  days_per_week?: number | null;
+}
+
+/** A row returned by `match_common_plans()` — ranked common templates for a member. */
+export interface MatchedCommonPlan {
+  template_id: string;
+  name: string;
+  description: string | null;
+  goal: string | null;
+  difficulty: string | null;
+  duration_weeks: number | null;
+  days_per_week: number | null;
+  target_goal: string | null;
+  target_gender: string | null;
+  target_age_min: number | null;
+  target_age_max: number | null;
+  match_score: number;
+}
+
+/** Calls the SECURITY DEFINER `match_common_plans` RPC. */
+export async function fetchMatchedCommonPlans(
+  memberId: string,
+  type: 'workout' | 'diet',
+): Promise<MatchedCommonPlan[]> {
+  const { data, error } = await supabase.rpc('match_common_plans', {
+    p_member_id: memberId,
+    p_type: type,
+  });
+  if (error) throw error;
+  return (data || []) as MatchedCommonPlan[];
+}
+
+/** Patch a template's audience-targeting metadata. */
+export async function updateTemplateTargeting(
+  id: string,
+  patch: Partial<CommonPlanTargeting & { is_common: boolean }>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('fitness_plan_templates')
+    .update(patch as Record<string, unknown>)
+    .eq('id', id);
+  if (error) throw error;
 }
 
 export interface MemberFitnessPlan {

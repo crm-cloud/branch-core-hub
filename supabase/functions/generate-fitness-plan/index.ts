@@ -23,6 +23,9 @@ interface CatalogMeal {
 interface EquipmentLite {
   name: string;
   category?: string | null;
+  primary_category?: string | null;
+  muscle_groups?: string[] | null;
+  movement_pattern?: string | null;
   brand?: string | null;
   model?: string | null;
 }
@@ -190,9 +193,15 @@ serve(async (req) => {
       : "";
 
     const equipmentPrompt = type === "workout" && availableEquipment.length > 0
-      ? `\n\nIMPORTANT — this gym has the following OPERATIONAL equipment. When prescribing exercises, prefer movements that use this exact equipment. Use the EXACT machine name in the "exercise" field where possible (the trainer matches names back to inventory). Bodyweight, mobility, stretching, and basic cardio (running, jump rope) are always allowed without being on the list. Do NOT recommend machines that are not on the list (e.g. don't say "leg press" if it's not below).\n\n${availableEquipment
+      ? `\n\nIMPORTANT — this gym has the following OPERATIONAL equipment. Each line lists the muscle groups it trains and the movement pattern. When prescribing exercises, prefer movements that use this exact equipment, AND respect muscle-group coverage across the week (balance push/pull, include 1-2 dedicated CORE sessions, hit legs at least once). Use the EXACT machine name in the "exercise" field where possible. Bodyweight, mobility, stretching, and basic cardio (running, jump rope) are always allowed without being on the list. Do NOT recommend machines not on the list.\n\n${availableEquipment
           .slice(0, 100)
-          .map((e) => `- ${e.name}${e.category ? ` [${e.category}]` : ""}${e.brand ? ` — ${e.brand}${e.model ? ` ${e.model}` : ""}` : ""}`)
+          .map((e) => {
+            const cat = e.primary_category || e.category;
+            const muscles = (e.muscle_groups || []).length ? ` muscles=[${(e.muscle_groups || []).join(",")}]` : "";
+            const move = e.movement_pattern ? ` pattern=${e.movement_pattern}` : "";
+            const brand = e.brand ? ` — ${e.brand}${e.model ? ` ${e.model}` : ""}` : "";
+            return `- ${e.name}${cat ? ` [${cat}]` : ""}${muscles}${move}${brand}`;
+          })
           .join("\n")}`
       : "";
 

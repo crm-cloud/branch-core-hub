@@ -3276,8 +3276,11 @@ export type Database = {
           id: string
           location: string | null
           model: string | null
+          movement_pattern: string | null
+          muscle_groups: string[]
           name: string
           notes: string | null
+          primary_category: string | null
           purchase_date: string | null
           purchase_price: number | null
           serial_number: string | null
@@ -3293,8 +3296,11 @@ export type Database = {
           id?: string
           location?: string | null
           model?: string | null
+          movement_pattern?: string | null
+          muscle_groups?: string[]
           name: string
           notes?: string | null
+          primary_category?: string | null
           purchase_date?: string | null
           purchase_price?: number | null
           serial_number?: string | null
@@ -3310,8 +3316,11 @@ export type Database = {
           id?: string
           location?: string | null
           model?: string | null
+          movement_pattern?: string | null
+          muscle_groups?: string[]
           name?: string
           notes?: string | null
+          primary_category?: string | null
           purchase_date?: string | null
           purchase_price?: number | null
           serial_number?: string | null
@@ -3816,8 +3825,10 @@ export type Database = {
           content: Json
           created_at: string | null
           created_by: string | null
+          days_per_week: number | null
           description: string | null
           difficulty: string | null
+          duration_weeks: number | null
           goal: string | null
           id: string
           is_active: boolean | null
@@ -3825,6 +3836,15 @@ export type Database = {
           is_public: boolean | null
           name: string
           system_template: boolean
+          target_age_max: number | null
+          target_age_min: number | null
+          target_bmi_max: number | null
+          target_bmi_min: number | null
+          target_experience: string[]
+          target_gender: string
+          target_goal: string | null
+          target_weight_max_kg: number | null
+          target_weight_min_kg: number | null
           type: string
           updated_at: string | null
         }
@@ -3833,8 +3853,10 @@ export type Database = {
           content?: Json
           created_at?: string | null
           created_by?: string | null
+          days_per_week?: number | null
           description?: string | null
           difficulty?: string | null
+          duration_weeks?: number | null
           goal?: string | null
           id?: string
           is_active?: boolean | null
@@ -3842,6 +3864,15 @@ export type Database = {
           is_public?: boolean | null
           name: string
           system_template?: boolean
+          target_age_max?: number | null
+          target_age_min?: number | null
+          target_bmi_max?: number | null
+          target_bmi_min?: number | null
+          target_experience?: string[]
+          target_gender?: string
+          target_goal?: string | null
+          target_weight_max_kg?: number | null
+          target_weight_min_kg?: number | null
           type: string
           updated_at?: string | null
         }
@@ -3850,8 +3881,10 @@ export type Database = {
           content?: Json
           created_at?: string | null
           created_by?: string | null
+          days_per_week?: number | null
           description?: string | null
           difficulty?: string | null
+          duration_weeks?: number | null
           goal?: string | null
           id?: string
           is_active?: boolean | null
@@ -3859,6 +3892,15 @@ export type Database = {
           is_public?: boolean | null
           name?: string
           system_template?: boolean
+          target_age_max?: number | null
+          target_age_min?: number | null
+          target_bmi_max?: number | null
+          target_bmi_min?: number | null
+          target_experience?: string[]
+          target_gender?: string
+          target_goal?: string | null
+          target_weight_max_kg?: number | null
+          target_weight_min_kg?: number | null
           type?: string
           updated_at?: string | null
         }
@@ -11591,6 +11633,23 @@ export type Database = {
         Returns: Json
       }
       mark_no_show_bookings: { Args: never; Returns: number }
+      match_common_plans: {
+        Args: { p_member_id: string; p_type: string }
+        Returns: {
+          days_per_week: number
+          description: string
+          difficulty: string
+          duration_weeks: number
+          goal: string
+          match_score: number
+          name: string
+          target_age_max: number
+          target_age_min: number
+          target_gender: string
+          target_goal: string
+          template_id: string
+        }[]
+      }
       member_check_in: {
         Args: { _branch_id: string; _member_id: string; _method?: string }
         Returns: Json
