@@ -113,7 +113,7 @@ export default function HRMPage() {
         .select(`
           *,
           employees!contracts_employee_id_fkey(id, employee_code, user_id, position, department, branch_id),
-          trainers!contracts_trainer_id_fkey(id, user_id, specializations, commission_percentage)
+          trainers!contracts_trainer_id_fkey(id, user_id, specializations, pt_share_percentage)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
