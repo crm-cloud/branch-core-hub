@@ -120,6 +120,9 @@ export default function MyDiet() {
           trainer_name: trainerName,
           template_id: (unified as any).template_id ?? null,
           template_name: templateName,
+          source_kind: ((unified as any).source_kind as 'pdf' | 'structured') || 'structured',
+          pdf_url: (unified as any).pdf_url ?? null,
+          pdf_filename: (unified as any).pdf_filename ?? null,
         };
       }
 
