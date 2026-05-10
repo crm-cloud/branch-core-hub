@@ -135,10 +135,14 @@ export default function EmployeesPage() {
     setSelectedEmployee({
       id: staff.id,
       user_id: staff.user_id,
+      staff_type: staff.staff_type,
+      branch_id: (staff as any).branch_id,
       employee_code: staff.code,
       department: staff.department,
       position: staff.position,
+      profile: { full_name: staff.name, email: staff.email, phone: staff.phone },
       profiles: { full_name: staff.name, email: staff.email },
+      full_name: staff.name,
     });
     setContractOpen(true);
   };
