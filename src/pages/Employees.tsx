@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Users, UserMinus, UserCheck, FileText, Filter, Dumbbell, Pencil } from 'lucide-react';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Plus, Search, Users, UserMinus, UserCheck, FileText, Filter, Dumbbell, Pencil, Briefcase, ChevronDown } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
@@ -16,198 +17,250 @@ import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
 import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { toast } from 'sonner';
 
-type StaffType = 'all' | 'employee' | 'trainer';
+type RoleFilter = 'all' | 'manager' | 'trainer' | 'staff';
+type Role = 'manager' | 'trainer' | 'staff';
 
-interface UnifiedStaff {
-  id: string;
+interface StaffPerson {
+  key: string;                 // user_id (or fallback record id)
   user_id: string | null;
-  staff_type: 'employee' | 'trainer';
   name: string;
   email: string | null;
   phone: string | null;
   avatar_url: string | null;
-  code: string | null;
+  profile: any;
+  roles: Role[];               // sorted, unique
+  employee?: any;              // raw employees row (when role manager/staff)
+  trainer?: any;               // raw trainers row (when role trainer)
+  code: string | null;         // employee_code preferred, else trainer code
   department: string | null;
   position: string | null;
+  specialization: string | null;
   branch_id: string | null;
   branch_name: string | null;
   is_active: boolean;
   hire_date: string;
-  specialization?: string | null;
-  raw: any;
-  profile: any;
+}
+
+const roleClass: Record<Role, string> = {
+  manager: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30',
+  trainer: 'bg-purple-500/10 text-purple-600 border-purple-500/30',
+  staff:   'bg-blue-500/10 text-blue-600 border-blue-500/30',
+};
+
+function detectEmployeeRole(emp: any): Role {
+  const dept = String(emp?.department || '').toLowerCase();
+  const pos = String(emp?.position || '').toLowerCase();
+  if (dept.includes('management') || pos.includes('manager')) return 'manager';
+  return 'staff';
 }
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  const [contractTarget, setContractTarget] = useState<any>(null);
+  const [contractDefaultRole, setContractDefaultRole] = useState<'trainer' | 'manager' | 'staff' | undefined>(undefined);
   const [search, setSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [staffTypeFilter, setStaffTypeFilter] = useState<StaffType>('all');
-
-  // Fetch both employees and trainers
-  const { data: allStaff = [], isLoading } = useQuery({
-    queryKey: ['all-staff'],
-    queryFn: async () => {
-      // Fetch employees
-      const { data: employees, error: empError } = await supabase
-        .from('employees')
-        .select(`*, branches:branch_id(name)`)
-        .order('created_at', { ascending: false });
-      
-      if (empError) throw empError;
-
-      // Fetch trainers
-      const { data: trainers, error: trainerError } = await supabase
-        .from('trainers')
-        .select(`*, branches:branch_id(name)`)
-        .order('created_at', { ascending: false });
-      
-      if (trainerError) throw trainerError;
-
-      // Fetch profiles for all users
-      const allUserIds = [
-        ...(employees || []).map(e => e.user_id),
-        ...(trainers || []).map(t => t.user_id),
-      ].filter(Boolean);
-
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, phone, avatar_url, gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone, government_id_type, government_id_number')
-        .in('id', allUserIds);
-
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
-
-      // Transform employees
-      const employeeStaff: UnifiedStaff[] = (employees || []).map(emp => {
-        const p = profileMap.get(emp.user_id) as any;
-        return {
-          id: emp.id,
-          user_id: emp.user_id,
-          staff_type: 'employee' as const,
-          name: p?.full_name || 'Unknown',
-          email: p?.email || null,
-          phone: p?.phone || null,
-          avatar_url: p?.avatar_url || null,
-          code: emp.employee_code,
-          department: emp.department,
-          position: emp.position,
-          branch_id: emp.branch_id,
-          branch_name: (emp.branches as any)?.name || null,
-          is_active: emp.is_active,
-          hire_date: emp.hire_date,
-          raw: emp,
-          profile: p || null,
-        };
-      });
-
-      // Transform trainers
-      const trainerStaff: UnifiedStaff[] = (trainers || []).map(trainer => {
-        const p = profileMap.get(trainer.user_id) as any;
-        return {
-          id: trainer.id,
-          user_id: trainer.user_id,
-          staff_type: 'trainer' as const,
-          name: p?.full_name || 'Unknown',
-          email: p?.email || null,
-          phone: p?.phone || null,
-          avatar_url: p?.avatar_url || null,
-          code: null,
-          department: 'Training',
-          position: 'Trainer',
-          branch_id: trainer.branch_id,
-          branch_name: (trainer.branches as any)?.name || null,
-          is_active: trainer.is_active,
-          hire_date: trainer.created_at,
-          specialization: trainer.specializations?.join(', ') || null,
-          raw: trainer,
-          profile: p || null,
-        };
-      });
-
-      return [...employeeStaff, ...trainerStaff];
-    },
-  });
-
-  const toggleActive = async (staff: UnifiedStaff) => {
-    try {
-      const table = staff.staff_type === 'trainer' ? 'trainers' : 'employees';
-      const { error } = await supabase
-        .from(table)
-        .update({ is_active: !staff.is_active })
-        .eq('id', staff.id);
-      
-      if (error) throw error;
-      toast.success(staff.is_active ? 'Staff deactivated' : 'Staff activated');
-      queryClient.invalidateQueries({ queryKey: ['all-staff'] });
-    } catch (error) {
-      toast.error('Failed to update status');
-    }
-  };
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
 
   const [editEmpOpen, setEditEmpOpen] = useState(false);
   const [editTrainerOpen, setEditTrainerOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<any>(null);
 
-  const openContractDrawer = (staff: UnifiedStaff) => {
-    setSelectedEmployee({
-      id: staff.id,
-      user_id: staff.user_id,
-      staff_type: staff.staff_type,
-      branch_id: (staff as any).branch_id,
-      employee_code: staff.code,
-      department: staff.department,
-      position: staff.position,
-      profile: staff.profile || { full_name: staff.name, email: staff.email, phone: staff.phone },
-      profiles: { full_name: staff.name, email: staff.email },
-      full_name: staff.name,
-    });
-    setContractOpen(true);
-  };
+  const { data: people = [], isLoading } = useQuery<StaffPerson[]>({
+    queryKey: ['unified-staff-people'],
+    queryFn: async () => {
+      const [{ data: employees, error: empError }, { data: trainers, error: trainerError }] = await Promise.all([
+        supabase.from('employees').select(`*, branches:branch_id(name)`).order('created_at', { ascending: false }),
+        supabase.from('trainers').select(`*, branches:branch_id(name)`).order('created_at', { ascending: false }),
+      ]);
+      if (empError) throw empError;
+      if (trainerError) throw trainerError;
 
-  const openEditDrawer = (staff: UnifiedStaff) => {
-    if (staff.staff_type === 'trainer') {
-      setEditingRow({ ...staff.raw, profile: staff.profile, profile_name: staff.name });
-      setEditTrainerOpen(true);
-    } else {
-      setEditingRow({
-        ...staff.raw,
-        profile: staff.profile,
-        branch: { name: staff.branch_name },
+      const allUserIds = [
+        ...(employees || []).map(e => e.user_id),
+        ...(trainers || []).map(t => t.user_id),
+      ].filter(Boolean) as string[];
+
+      let profileMap = new Map<string, any>();
+      if (allUserIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, avatar_url, gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone, government_id_type, government_id_number')
+          .in('id', allUserIds);
+        profileMap = new Map((profiles || []).map(p => [p.id, p]));
+      }
+
+      // Aggregate by user_id
+      const map = new Map<string, StaffPerson>();
+      const upsert = (key: string, base: Partial<StaffPerson>) => {
+        const existing = map.get(key);
+        if (!existing) {
+          map.set(key, base as StaffPerson);
+        } else {
+          map.set(key, {
+            ...existing,
+            ...base,
+            roles: Array.from(new Set([...existing.roles, ...(base.roles || [])])) as Role[],
+            employee: base.employee || existing.employee,
+            trainer: base.trainer || existing.trainer,
+            code: existing.code || base.code || null,
+            department: existing.department || base.department || null,
+            position: existing.position || base.position || null,
+            specialization: existing.specialization || base.specialization || null,
+            branch_id: existing.branch_id || base.branch_id || null,
+            branch_name: existing.branch_name || base.branch_name || null,
+            is_active: (existing.is_active || !!base.is_active),
+            hire_date: existing.hire_date || base.hire_date || new Date().toISOString(),
+            profile: existing.profile || base.profile,
+            name: existing.name || base.name || 'Unknown',
+            email: existing.email || base.email || null,
+            phone: existing.phone || base.phone || null,
+            avatar_url: existing.avatar_url || base.avatar_url || null,
+          });
+        }
+      };
+
+      (employees || []).forEach((emp: any) => {
+        const key = emp.user_id || `emp-${emp.id}`;
+        const p = emp.user_id ? profileMap.get(emp.user_id) : null;
+        upsert(key, {
+          key,
+          user_id: emp.user_id,
+          name: p?.full_name || 'Unknown',
+          email: p?.email || null,
+          phone: p?.phone || null,
+          avatar_url: p?.avatar_url || null,
+          profile: p || null,
+          roles: [detectEmployeeRole(emp)],
+          employee: emp,
+          code: emp.employee_code,
+          department: emp.department,
+          position: emp.position,
+          specialization: null,
+          branch_id: emp.branch_id,
+          branch_name: (emp.branches as any)?.name || null,
+          is_active: !!emp.is_active,
+          hire_date: emp.hire_date,
+        });
       });
-      setEditEmpOpen(true);
+
+      (trainers || []).forEach((t: any) => {
+        const key = t.user_id || `tr-${t.id}`;
+        const p = t.user_id ? profileMap.get(t.user_id) : null;
+        upsert(key, {
+          key,
+          user_id: t.user_id,
+          name: p?.full_name || 'Unknown',
+          email: p?.email || null,
+          phone: p?.phone || null,
+          avatar_url: p?.avatar_url || null,
+          profile: p || null,
+          roles: ['trainer'],
+          trainer: t,
+          code: null, // employee_code wins if both
+          department: 'Training',
+          position: 'Trainer',
+          specialization: t.specializations?.join(', ') || null,
+          branch_id: t.branch_id,
+          branch_name: (t.branches as any)?.name || null,
+          is_active: !!t.is_active,
+          hire_date: t.created_at,
+        });
+      });
+
+      return Array.from(map.values());
+    },
+  });
+
+  const departments = useMemo(
+    () => Array.from(new Set(people.map(p => p.department).filter(Boolean))) as string[],
+    [people],
+  );
+
+  const filteredPeople = people.filter((p) => {
+    const term = search.toLowerCase();
+    const matchesSearch = !term ||
+      p.name?.toLowerCase().includes(term) ||
+      p.code?.toLowerCase().includes(term) ||
+      p.email?.toLowerCase().includes(term) ||
+      (p.phone || '').includes(search);
+    const matchesDept = departmentFilter === 'all' || p.department === departmentFilter;
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'active' && p.is_active) ||
+      (statusFilter === 'inactive' && !p.is_active);
+    const matchesRole = roleFilter === 'all' || p.roles.includes(roleFilter);
+    return matchesSearch && matchesDept && matchesStatus && matchesRole;
+  });
+
+  // People-centric stats; sum of role counts may exceed people (1 person, 2 roles).
+  const stats = useMemo(() => ({
+    people: people.length,
+    managers: people.filter(p => p.roles.includes('manager')).length,
+    trainers: people.filter(p => p.roles.includes('trainer')).length,
+    otherStaff: people.filter(p => p.roles.includes('staff')).length,
+    active: people.filter(p => p.is_active).length,
+    dualRole: people.filter(p => p.roles.length > 1).length,
+  }), [people]);
+
+  const toggleActive = async (person: StaffPerson, role: Role) => {
+    try {
+      if (role === 'trainer' && person.trainer) {
+        const { error } = await supabase.from('trainers').update({ is_active: !person.trainer.is_active }).eq('id', person.trainer.id);
+        if (error) throw error;
+      } else if (person.employee) {
+        const { error } = await supabase.from('employees').update({ is_active: !person.employee.is_active }).eq('id', person.employee.id);
+        if (error) throw error;
+      }
+      toast.success('Status updated');
+      queryClient.invalidateQueries({ queryKey: ['unified-staff-people'] });
+    } catch {
+      toast.error('Failed to update status');
     }
   };
 
-  // Get unique departments for filter
-  const departments = [...new Set(allStaff.map(s => s.department).filter(Boolean))];
+  const openContractFor = (person: StaffPerson, role: Role) => {
+    if (role === 'trainer' && person.trainer) {
+      setContractTarget({
+        id: person.trainer.id,
+        user_id: person.user_id,
+        staff_type: 'trainer',
+        branch_id: person.trainer.branch_id,
+        employee_code: null,
+        department: 'Training',
+        position: 'Trainer',
+        salary: person.trainer.fixed_salary || 0,
+        profile: person.profile || { full_name: person.name, email: person.email, phone: person.phone },
+        full_name: person.name,
+      });
+      setContractDefaultRole('trainer');
+    } else if (person.employee) {
+      setContractTarget({
+        ...person.employee,
+        user_id: person.user_id,
+        staff_type: 'employee',
+        profile: person.profile || { full_name: person.name, email: person.email, phone: person.phone },
+        full_name: person.name,
+      });
+      setContractDefaultRole(role === 'manager' ? 'manager' : 'staff');
+    }
+    setContractOpen(true);
+  };
 
-  // Filter staff
-  const filteredStaff = allStaff.filter((staff) => {
-    const matchesSearch = search === '' || 
-      staff.name?.toLowerCase().includes(search.toLowerCase()) ||
-      staff.code?.toLowerCase().includes(search.toLowerCase()) ||
-      staff.email?.toLowerCase().includes(search.toLowerCase()) ||
-      staff.phone?.includes(search);
-    
-    const matchesDepartment = departmentFilter === 'all' || staff.department === departmentFilter;
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && staff.is_active) ||
-      (statusFilter === 'inactive' && !staff.is_active);
-    const matchesType = staffTypeFilter === 'all' || staff.staff_type === staffTypeFilter;
-    
-    return matchesSearch && matchesDepartment && matchesStatus && matchesType;
-  });
-
-  // Stats
-  const stats = {
-    total: allStaff.length,
-    employees: allStaff.filter(s => s.staff_type === 'employee').length,
-    trainers: allStaff.filter(s => s.staff_type === 'trainer').length,
-    active: allStaff.filter(s => s.is_active).length,
+  const openEditFor = (person: StaffPerson, role: Role) => {
+    if (role === 'trainer' && person.trainer) {
+      setEditingRow({ ...person.trainer, profile: person.profile, profile_name: person.name });
+      setEditTrainerOpen(true);
+    } else if (person.employee) {
+      setEditingRow({
+        ...person.employee,
+        profile: person.profile,
+        branch: { name: person.branch_name },
+      });
+      setEditEmpOpen(true);
+    }
   };
 
   return (
@@ -216,7 +269,7 @@ export default function EmployeesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">All Staff</h1>
-            <p className="text-muted-foreground">Manage employees, trainers, and staff records</p>
+            <p className="text-muted-foreground">One person, all roles. Managers, trainers and staff unified.</p>
           </div>
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -225,16 +278,30 @@ export default function EmployeesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Users className="h-4 w-4" />
-                Total Staff
+                People
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stats.total}</div>
+              <div className="text-3xl font-bold">{stats.people}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.dualRole > 0 ? `${stats.dualRole} hold multiple roles` : 'unique humans'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border-indigo-500/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-indigo-600" />
+                Managers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-indigo-600">{stats.managers}</div>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-500/20">
@@ -250,10 +317,10 @@ export default function EmployeesPage() {
           </Card>
           <Card className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 border-blue-500/20">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Employees</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Other Staff</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-blue-600">{stats.employees}</div>
+              <div className="text-3xl font-bold text-blue-600">{stats.otherStaff}</div>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
@@ -279,14 +346,15 @@ export default function EmployeesPage() {
                   className="pl-10"
                 />
               </div>
-              <Select value={staffTypeFilter} onValueChange={(v) => setStaffTypeFilter(v as StaffType)}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Staff Type" />
+              <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as RoleFilter)}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="employee">Employees</SelectItem>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="manager">Managers</SelectItem>
                   <SelectItem value="trainer">Trainers</SelectItem>
+                  <SelectItem value="staff">Other Staff</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
@@ -297,9 +365,7 @@ export default function EmployeesPage() {
                 <SelectContent>
                   <SelectItem value="all">All Departments</SelectItem>
                   {departments.map((dept) => (
-                    <SelectItem key={dept} value={dept as string}>
-                      {dept as string}
-                    </SelectItem>
+                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -320,7 +386,7 @@ export default function EmployeesPage() {
         {/* Staff Table */}
         <Card>
           <CardHeader>
-            <CardTitle>All Staff ({filteredStaff.length})</CardTitle>
+            <CardTitle>All Staff ({filteredPeople.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -332,117 +398,143 @@ export default function EmployeesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Staff Member</TableHead>
-                    <TableHead>Type</TableHead>
+                    <TableHead>Roles</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Position</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Hire Date</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(() => {
-                    const userIdCounts = filteredStaff.reduce((acc, s) => {
-                      if (s.user_id) acc[s.user_id] = (acc[s.user_id] || 0) + 1;
-                      return acc;
-                    }, {} as Record<string, number>);
-                    return filteredStaff.map((staff) => {
-                      const isLinked = !!(staff.user_id && userIdCounts[staff.user_id] > 1);
-                      return (
-                    <TableRow key={`${staff.staff_type}-${staff.id}`}>
+                  {filteredPeople.map((person) => (
+                    <TableRow key={person.key}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
-                            <AvatarImage src={staff.avatar_url || undefined} />
+                            <AvatarImage src={person.avatar_url || undefined} />
                             <AvatarFallback className="bg-primary/10 text-primary">
-                              {staff.name?.[0] || 'S'}
+                              {person.name?.[0] || 'S'}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium flex items-center gap-2">
-                              {staff.name || 'N/A'}
-                              {isLinked && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50"
-                                  title="Same user — single payroll, commissions added on top"
-                                >
-                                  Linked
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-sm text-muted-foreground">{staff.email}</div>
+                            <div className="font-medium">{person.name || 'N/A'}</div>
+                            <div className="text-sm text-muted-foreground">{person.email}</div>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
-                          className={staff.staff_type === 'trainer' 
-                            ? 'bg-purple-500/10 text-purple-600 border-purple-500/30' 
-                            : 'bg-blue-500/10 text-blue-600 border-blue-500/30'
-                          }
-                        >
-                          {staff.staff_type === 'trainer' && <Dumbbell className="h-3 w-3 mr-1" />}
-                          {staff.staff_type.charAt(0).toUpperCase() + staff.staff_type.slice(1)}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {person.roles.map((r) => (
+                            <Badge key={r} className={roleClass[r]}>
+                              {r === 'trainer' && <Dumbbell className="h-3 w-3 mr-1" />}
+                              {r === 'manager' && <Briefcase className="h-3 w-3 mr-1" />}
+                              {r.charAt(0).toUpperCase() + r.slice(1)}
+                            </Badge>
+                          ))}
+                        </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{staff.code || '-'}</TableCell>
-                      <TableCell>{staff.department || '-'}</TableCell>
+                      <TableCell className="font-mono text-sm">{person.code || '-'}</TableCell>
+                      <TableCell>{person.department || '-'}</TableCell>
                       <TableCell>
-                        {staff.position || '-'}
-                        {staff.specialization && (
-                          <span className="block text-xs text-muted-foreground">{staff.specialization}</span>
+                        {person.position || '-'}
+                        {person.specialization && (
+                          <span className="block text-xs text-muted-foreground">{person.specialization}</span>
                         )}
                       </TableCell>
-                      <TableCell>{staff.branch_name || '-'}</TableCell>
+                      <TableCell>{person.branch_name || '-'}</TableCell>
                       <TableCell>
-                        <Badge className={staff.is_active ? 'bg-success/10 text-success border-success/30' : 'bg-muted text-muted-foreground'}>
-                          {staff.is_active ? 'Active' : 'Inactive'}
+                        <Badge className={person.is_active ? 'bg-success/10 text-success border-success/30' : 'bg-muted text-muted-foreground'}>
+                          {person.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{new Date(staff.hire_date).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(person.hire_date).toLocaleDateString()}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDrawer(staff)}
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openContractDrawer(staff)}
-                            title="Create Contract"
-                          >
-                            <FileText className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleActive(staff)}
-                            title={staff.is_active ? 'Deactivate' : 'Activate'}
-                          >
-                            {staff.is_active ? (
-                              <UserMinus className="h-4 w-4" />
-                            ) : (
-                              <UserCheck className="h-4 w-4" />
-                            )}
-                          </Button>
+                        <div className="flex justify-end gap-1">
+                          {/* Edit */}
+                          {person.roles.length > 1 ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" title="Edit">
+                                  <Pencil className="h-4 w-4" />
+                                  <ChevronDown className="h-3 w-3 ml-0.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Edit role</DropdownMenuLabel>
+                                {person.roles.map((r) => (
+                                  <DropdownMenuItem key={r} onClick={() => openEditFor(person, r)}>
+                                    {r === 'trainer' ? 'Trainer profile & commission' : r === 'manager' ? 'Manager profile & salary' : 'Staff profile & salary'}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={() => openEditFor(person, person.roles[0])} title="Edit">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+
+                          {/* Contract */}
+                          {person.roles.length > 1 ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" title="Contracts">
+                                  <FileText className="h-4 w-4" />
+                                  <ChevronDown className="h-3 w-3 ml-0.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>New contract for…</DropdownMenuLabel>
+                                {person.roles.map((r) => (
+                                  <DropdownMenuItem key={r} onClick={() => openContractFor(person, r)}>
+                                    {r.charAt(0).toUpperCase() + r.slice(1)} role
+                                  </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                                  Each role gets its own contract.
+                                </DropdownMenuLabel>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={() => openContractFor(person, person.roles[0])} title="Create Contract">
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                          )}
+
+                          {/* Toggle active */}
+                          {person.roles.length > 1 ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" title="Toggle active">
+                                  {person.is_active ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Toggle role status</DropdownMenuLabel>
+                                {person.roles.map((r) => (
+                                  <DropdownMenuItem key={r} onClick={() => toggleActive(person, r)}>
+                                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={() => toggleActive(person, person.roles[0])} title={person.is_active ? 'Deactivate' : 'Activate'}>
+                              {person.is_active ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
-                      );
-                    });
-                  })()}
-                  {filteredStaff.length === 0 && (
+                  ))}
+                  {filteredPeople.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                        {search || departmentFilter !== 'all' || statusFilter !== 'all' || staffTypeFilter !== 'all'
+                        {search || departmentFilter !== 'all' || statusFilter !== 'all' || roleFilter !== 'all'
                           ? 'No staff match your filters'
                           : 'No staff found'}
                       </TableCell>
@@ -455,19 +547,20 @@ export default function EmployeesPage() {
         </Card>
 
         <AddEmployeeDrawer open={addOpen} onOpenChange={setAddOpen} />
-        <CreateContractDrawer 
-          open={contractOpen} 
-          onOpenChange={setContractOpen} 
-          employee={selectedEmployee}
+        <CreateContractDrawer
+          open={contractOpen}
+          onOpenChange={(o) => { setContractOpen(o); if (!o) setContractDefaultRole(undefined); }}
+          employee={contractTarget}
+          defaultRole={contractDefaultRole}
         />
         <EditEmployeeDrawer
           open={editEmpOpen}
-          onOpenChange={(o) => { setEditEmpOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['all-staff'] }); }}
+          onOpenChange={(o) => { setEditEmpOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['unified-staff-people'] }); }}
           employee={editingRow}
         />
         <EditTrainerDrawer
           open={editTrainerOpen}
-          onOpenChange={(o) => { setEditTrainerOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['all-staff'] }); }}
+          onOpenChange={(o) => { setEditTrainerOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['unified-staff-people'] }); }}
           trainer={editingRow}
         />
       </div>
