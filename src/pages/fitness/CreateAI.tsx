@@ -524,7 +524,7 @@ export default function CreateAIPage() {
 
               <Button
                 onClick={handleGenerate}
-                disabled={!member || generate.isPending || !dietRequirementsMet}
+                disabled={(mode === 'member' && !member) || !audienceRequirementsMet || generate.isPending || !dietRequirementsMet || !planName.trim()}
                 className="w-full"
                 size="lg"
               >
