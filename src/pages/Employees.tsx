@@ -408,6 +408,14 @@ export default function EmployeesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => openEditDrawer(staff)}
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => openContractDrawer(staff)}
                             title="Create Contract"
                           >
