@@ -8,6 +8,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createEquipment, updateEquipment, type Equipment } from '@/services/equipmentService';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
+import { PRIMARY_CATEGORIES, MUSCLE_GROUPS, MOVEMENT_PATTERNS } from '@/lib/equipment/taxonomy';
+import { Badge } from '@/components/ui/badge';
+import { X } from 'lucide-react';
 
 interface AddEquipmentDrawerProps {
   open: boolean;
