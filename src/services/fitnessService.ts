@@ -156,6 +156,19 @@ export async function createPlanTemplate(template: {
   goal?: string;
   content: FitnessPlanContent;
   is_public?: boolean;
+  is_common?: boolean;
+  // Audience targeting (only meaningful when is_common = true)
+  target_age_min?: number | null;
+  target_age_max?: number | null;
+  target_gender?: 'any' | 'male' | 'female' | null;
+  target_weight_min_kg?: number | null;
+  target_weight_max_kg?: number | null;
+  target_bmi_min?: number | null;
+  target_bmi_max?: number | null;
+  target_goal?: string | null;
+  target_experience?: string[] | null;
+  duration_weeks?: number | null;
+  days_per_week?: number | null;
 }): Promise<FitnessPlanTemplate> {
   const { data: { user } } = await supabase.auth.getUser();
 
