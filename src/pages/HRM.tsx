@@ -226,12 +226,6 @@ export default function HRMPage() {
     activeContracts: allContracts.filter((c: any) => c.status === 'active').length,
     trainers: payrollStaff.filter((s: PayrollStaffItem) => s.staff_type === 'trainer').length,
     employees: payrollStaff.filter((s: PayrollStaffItem) => s.staff_type === 'employee').length,
-    // Dual-role people: employees in payroll who also have a trainer record
-    dualRole: payrollStaff.filter((s: PayrollStaffItem) =>
-      s.staff_type === 'employee' && (s as any).employeeRecord?.user_id &&
-      // any contract or trainer record exists for the same user_id
-      false // placeholder — exact computation lives in /employees page
-    ).length,
   };
 
   const getStatusColor = (status: string) => {
