@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    const body = await req.json();
     const { 
       email, 
       fullName, 
@@ -78,7 +79,15 @@ Deno.serve(async (req) => {
       activityLevel,
       equipmentAvailability,
       injuriesLimitations,
-    } = await req.json()
+      password: suppliedPasswordRaw,
+    } = body;
+    const suppliedPassword = typeof suppliedPasswordRaw === 'string' ? suppliedPasswordRaw.trim() : '';
+    if (suppliedPassword && suppliedPassword.length < 8) {
+      return new Response(
+        JSON.stringify({ error: 'Password must be at least 8 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (!email || !fullName || !branchId) {
       return new Response(
