@@ -46,11 +46,15 @@ interface AssignPlanDrawerProps {
     type: 'workout' | 'diet';
     description?: string;
     content: any;
-    /** Optional: template this plan was loaded from. Stored on the
-     * assignment so trainers can later see "N members on Template A". */
+    /** Optional: template this plan was loaded from. */
     template_id?: string | null;
-    /** Pre-selects the "Common Plan" toggle. Defaults to false. */
+    /** Pre-selects the "Common Plan" toggle. */
     is_common?: boolean;
+    /** PDF-template support */
+    source_kind?: 'structured' | 'pdf';
+    pdf_url?: string | null;
+    pdf_filename?: string | null;
+    pdf_size_bytes?: number | null;
   } | null;
   branchId?: string;
 }
