@@ -136,10 +136,20 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
       // Referral row is created server-side inside `create-member-user`
       // (transactional with member creation). Do not insert a duplicate here.
 
-      return { id: memberId, member_code: result.memberCode };
+      return { id: memberId, member_code: result.memberCode, tempPassword: result.tempPassword as string | null };
     },
-    onSuccess: () => {
-      toast.success('Member added successfully');
+    onSuccess: (res) => {
+      if (res.tempPassword) {
+        toast.success(`Member added. Temp password: ${res.tempPassword}`, {
+          duration: 15000,
+          action: {
+            label: 'Copy',
+            onClick: () => navigator.clipboard.writeText(res.tempPassword!),
+          },
+        });
+      } else {
+        toast.success('Member added successfully');
+      }
       invalidateMembersData(queryClient);
       if (branchFilter && branchFilter !== branchId) {
         const targetBranch = branches.find((b) => b.id === branchId);
