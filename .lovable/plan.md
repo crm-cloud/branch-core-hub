@@ -1,109 +1,85 @@
+## Audit findings
 
-## Goal
+1. **Reset-password link is being sent, but the clicked token is already invalid/consumed**
+   - Auth logs show `/recover` succeeds, then `/verify` returns **“Email link is invalid or has expired / One-time token not found”**.
+   - That usually means the recovery link was opened more than once, pre-opened by an email/security scanner, or the user clicked an older reset email after requesting a newer one.
+   - Current app also sends reset links from multiple places (`Forgot password`, `Profile`, `Member profile`) all pointing to `/auth/reset-password`, so repeated requests can invalidate older links.
 
-1. Let staff generate **Common (no-PT) plans** without picking a member — driven by audience (age, gender, goal, experience, optional weight/BMI).
-2. Collapse `CreateManualWorkout` + `CreateManualDiet` into a single **Manual Builder** with a workout/diet toggle.
-3. Remove leftover/duplicate fitness files to eliminate confusion.
+2. **The reset callback page is fragile**
+   - `/auth/reset-password` only checks whether `user` exists.
+   - It does not explicitly wait for password-recovery auth state or show a proper “verifying reset link” state.
+   - If the app loads before the recovery session is established, it can immediately say invalid/expired and redirect to `/auth`.
 
----
+3. **Email code login is confusing and currently not reliable for this project**
+   - `/auth` has an “Email code” tab using `signInWithOtp()` and a 6-digit OTP field.
+   - No branded email sender domain is configured in this workspace, so relying on auth email OTP creates confusion.
+   - If the code delivery is inconsistent, the field should be hidden instead of presented as a normal sign-in path.
 
-## Part A — Common Plan flow in `CreateAI`
+4. **Default/temporary password onboarding already partially exists**
+   - Member, staff, and admin creation functions already create users with a generated temporary password and set `profiles.must_set_password = true`.
+   - Problem: the temporary password is random and not visible/usable by staff, so users still depend on reset/magic-link email to enter the app.
 
-Add an **Audience tab** at the top of `CreateAI.tsx`, replacing the current single-mode form with two modes:
+## Recommended product decision
 
-```
-[ Member-specific ]   [ Common (no PT) ]
-```
+Use **password-first onboarding** for operational gym users:
 
-### Member-specific mode
-Unchanged — current member picker + profile card on the right.
+- Admin/manager creates member/trainer/staff/manager with a temporary password.
+- User signs in with email + temporary password.
+- App immediately redirects them to `/auth/set-password` because `must_set_password = true`.
+- They choose their own password.
+- Email reset stays available as a backup, not the primary onboarding path.
 
-### Common (no PT) mode
-- Hide the member picker and right-side member profile card.
-- Show an **Audience card** in the right column instead, with required fields:
-  - Plan Name *
-  - Type * (Workout / Diet — same toggle)
-  - Primary Goal * (existing enum: weight_loss / muscle_gain / endurance / general_fitness / flexibility / recomposition)
-  - Duration (weeks) * + Days/week *
-  - Age band * (min/max)
-  - Gender * (any / male / female)
-  - Experience * (multi: beginner / intermediate / advanced)
-- Optional: Weight band (kg), BMI band, Cuisine + Dietary type (diet only), Equipment hint, Special notes.
-- "Generate Plan" button calls the same `generate-fitness-plan` edge function but builds a synthetic `memberInfo` from the audience (mid-band age/weight, goal, experience). No member-history / previous-plan context.
+This is safer and clearer than relying on magic links/OTP for every gym member.
 
-### After generation
-Routes to the existing `PreviewPlan` page. The draft carries `audience` + `is_common: true`. The "Save as template" button on Preview now persists `is_common = true` plus all targeting fields (`target_age_min/max`, `target_gender`, `target_goal`, `target_experience`, `duration_weeks`, `days_per_week`, optional weight/BMI bands) so the new template immediately appears under **Plan Templates → Common (no PT)** and is matched by `match_common_plans` RPC. "Assign to member" stays available but is optional.
+## Implementation plan
 
-### CreateModePicker
-Update the "AI-Generated Plan" card to mention both modes and add a secondary CTA "Generate Common Plan" that deep-links to `/fitness/create/ai?mode=common`.
+### 1. Fix the reset-password callback UX
+- Update `ResetPasswordForm` to:
+  - Show a “Verifying reset link” loading state first.
+  - Wait for the auth recovery session instead of instantly redirecting when `user` is temporarily null.
+  - Detect expired/invalid link errors from the URL and show a clear recovery message.
+  - Provide actions: **Request a new reset link** and **Back to sign in**.
+- Keep `/auth/reset-password` as the only reset callback path.
+- Keep the existing `redirectTo: ${window.location.origin}/auth/reset-password` usage.
 
----
+### 2. Remove/hide confusing Email Code sign-in
+- Remove the “Email code” tab and 6-digit OTP field from `LoginForm` for now.
+- Keep only email + password on `/auth`.
+- Remove unused OTP UI imports and auth context methods if no longer used elsewhere.
+- Result: users will not see a code field that may never receive a code.
 
-## Part B — Merge manual builders
+### 3. Add default-password onboarding path
+- Update user creation flows for:
+  - member
+  - trainer/staff/manager
+  - admin/owner-created users
+- Instead of only generating a hidden random temp password, allow the creator to set or copy a temporary password.
+- Keep `must_set_password = true`, so the first successful login still forces the user to change it.
+- Never store the temporary password in public tables.
 
-Create `src/pages/fitness/CreateManual.tsx` that hosts a `Tabs` for Workout / Diet and renders the existing per-type editor sections (lifted from `CreateManualWorkout.tsx` and `CreateManualDiet.tsx` into two child components inside `src/components/fitness/create/manual/`):
-- `ManualWorkoutEditor.tsx`
-- `ManualDietEditor.tsx`
+### 4. Make the UI clear for staff/admins
+- On create-user drawers/pages, add a temporary password field with:
+  - “Generate” action
+  - “Copy” action
+  - helper text: “User must change this after first login.”
+- For security, show it only at creation time.
+- Do not send it automatically by email unless a reliable transactional email setup is added later.
 
-Single page handles `?template=`, `?draft=`, `?edit=1`, `?mode=common`. URL param `?type=workout|diet` selects the initial tab.
+### 5. Harden auth configuration
+- Enable leaked-password protection for stronger password safety.
+- Keep email signups disabled if this is staff-created-account only.
+- Do not enable anonymous signups.
 
-Routing changes in `src/App.tsx`:
-- New: `/fitness/create/manual` → `CreateManual` (with `?type=workout|diet`)
-- Old paths `/fitness/create/manual/workout` and `/fitness/create/manual/diet` → 301-style `<Navigate>` to the new route preserving query params (so existing template "Edit" buttons keep working).
+## Technical notes
 
-Update all internal links (`Templates.tsx`, `PreviewPlan.tsx`, `CreateModePicker.tsx`) to the new unified path.
-
-Delete after migration:
-- `src/pages/fitness/CreateManualWorkout.tsx`
-- `src/pages/fitness/CreateManualDiet.tsx`
-
----
-
-## Part C — Cleanup of dead/duplicate files
-
-Audit and remove (after grep confirms no references):
-- `src/lib/planDraft.ts` — keep (still used).
-- Confirm `src/services/workoutShufflerService.ts` already gone (was deleted earlier).
-- Verify `MyWorkout.tsx` / `MyDiet.tsx` / `MemberPlans.tsx` member-side pages are still wired — keep.
-- Look for stale `templates`-related helpers, ghost imports, or unused `ai_plan_logs`-era references and remove.
-
-A short cleanup pass at the end: `rg` for any imports pointing to removed files and fix.
-
----
-
-## Part D — Service / DB
-
-`createPlanTemplate` already accepts `is_common`. Extend it to also accept the audience-targeting fields so Preview's "Save as template" can persist them in one call (no extra `updateTemplateTargeting` round-trip when coming from the Common flow).
-
-No DB migration needed — columns exist from the prior round.
-
----
-
-## Files touched
-
-**New**
-- `src/pages/fitness/CreateManual.tsx`
-- `src/components/fitness/create/manual/ManualWorkoutEditor.tsx`
-- `src/components/fitness/create/manual/ManualDietEditor.tsx`
-- `src/components/fitness/create/AudienceCard.tsx` (right-column form for Common mode)
-
-**Edited**
-- `src/pages/fitness/CreateAI.tsx` — add mode toggle + audience flow
-- `src/pages/fitness/CreateModePicker.tsx` — add "Generate Common Plan" CTA
-- `src/pages/fitness/PreviewPlan.tsx` — pass audience + is_common when saving template
-- `src/pages/fitness/Templates.tsx` — link Edit/Use buttons to `/fitness/create/manual`
-- `src/lib/planDraft.ts` — add optional `audience` + `isCommon` fields
-- `src/services/fitnessService.ts` — extend `createPlanTemplate` with targeting fields
-- `src/App.tsx` — new route + redirects
-
-**Deleted**
-- `src/pages/fitness/CreateManualWorkout.tsx`
-- `src/pages/fitness/CreateManualDiet.tsx`
-- any unreferenced helpers found during cleanup pass
-
----
-
-## Out of scope
-- No DB schema changes (audience columns already exist).
-- No changes to `generate-fitness-plan` edge function logic — only the client payload differs.
-- Member-side pages (`MyWorkout`, `MyDiet`) untouched.
+- Files to update:
+  - `src/components/auth/LoginForm.tsx`
+  - `src/contexts/AuthContext.tsx`
+  - `src/components/auth/ResetPasswordForm.tsx`
+  - `src/components/auth/ResetPasswordRequestForm.tsx`
+  - user creation UI/services for members, staff, trainers, managers/admins
+  - `supabase/functions/create-member-user/index.ts`
+  - `supabase/functions/create-staff-user/index.ts`
+  - `supabase/functions/admin-create-user/index.ts`
+- No schema change is required for the default-password flow unless we want to add audit metadata like “temporary password issued at”.
+- If later you want reliable email reset/code delivery, the proper path is to configure a sender domain in Cloud Emails and use branded auth emails.
