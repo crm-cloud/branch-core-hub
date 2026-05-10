@@ -482,9 +482,10 @@ export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole
     e.preventDefault();
     if (!employee?.id) return;
 
-    // Check if this is a trainer (has staff_type = 'trainer') or regular employee
-    const isTrainer = employee.staff_type === 'trainer';
-    
+    // Trainer contract goes to trainers table; manager/staff to employees table.
+    // When dual-role, the caller passes defaultRole + the matching role record id as employee.id.
+    const isTrainer = formData.agreementRole === 'trainer';
+
     createContractMutation.mutate({
       employeeId: isTrainer ? undefined : employee.id,
       trainerId: isTrainer ? employee.id : undefined,
