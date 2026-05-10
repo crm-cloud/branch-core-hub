@@ -31,6 +31,7 @@ export default function CreateAIPage() {
   const templateId = searchParams.get('template');
 
   const [type, setType] = useState<'workout' | 'diet'>('workout');
+  const [mode, setMode] = useState<'member' | 'audience'>('member');
   const [member, setMember] = useState<PickedMember | null>(null);
   const [profile, setProfile] = useState<MemberProfileOverrides>({});
   const [planName, setPlanName] = useState('');
@@ -42,6 +43,19 @@ export default function CreateAIPage() {
   const [fatTarget, setFatTarget] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
+
+  // Audience fields (only used when mode === 'audience')
+  const [audAgeMin, setAudAgeMin] = useState<string>('18');
+  const [audAgeMax, setAudAgeMax] = useState<string>('45');
+  const [audGender, setAudGender] = useState<'any' | 'male' | 'female'>('any');
+  const [audExperience, setAudExperience] = useState<string[]>(['beginner']);
+  const [audWeightMin, setAudWeightMin] = useState<string>('');
+  const [audWeightMax, setAudWeightMax] = useState<string>('');
+  const [audDaysPerWeek, setAudDaysPerWeek] = useState<string>('4');
+  const [audDietaryType, setAudDietaryType] = useState<string>('');
+  const [audCuisine, setAudCuisine] = useState<string>('');
+  const [audEquipmentHint, setAudEquipmentHint] = useState<string>('');
+
   const { effectiveBranchId } = useBranchContext();
 
   // Pull catalog meals matching the selected diet/cuisine so we can pass them
