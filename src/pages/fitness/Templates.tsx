@@ -450,8 +450,6 @@ export default function FitnessTemplatesPage() {
                 data: viewing.content,
               }))
         }
-          })
-        }
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
