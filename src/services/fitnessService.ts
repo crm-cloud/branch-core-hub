@@ -123,6 +123,11 @@ export interface MemberFitnessPlan {
   valid_until: string | null;
   created_by: string | null;
   branch_id: string | null;
+  // PDF-template support
+  source_kind?: string | null;
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
   created_at: string;
   updated_at: string;
 }
