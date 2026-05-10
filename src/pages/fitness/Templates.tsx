@@ -45,6 +45,7 @@ import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
 import { EditTemplateTargetingDrawer } from "@/components/fitness/EditTemplateTargetingDrawer";
 import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
 import { PlanViewerSheet } from "@/components/fitness/PlanViewerSheet";
+import { UploadPdfTemplateDrawer } from "@/components/fitness/UploadPdfTemplateDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
