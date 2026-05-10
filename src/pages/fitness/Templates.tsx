@@ -310,6 +310,11 @@ export default function FitnessTemplatesPage() {
                 <Utensils className="h-4 w-4" /> Diet
               </Button>
             </div>
+            {canCreate && (
+              <Button size="sm" variant="outline" onClick={() => setUploadPdfOpen(true)} className="gap-1.5">
+                <FileUp className="h-4 w-4" /> Upload PDF Template
+              </Button>
+            )}
           </div>
         </div>
 
