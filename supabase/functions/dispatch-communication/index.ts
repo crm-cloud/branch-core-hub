@@ -340,6 +340,7 @@ Deno.serve(async (req) => {
         p_member_id: input.member_id ?? null,
         p_channel: input.channel,
         p_category: input.category,
+        p_branch_id: input.branch_id ?? null,
       });
 
       const allowed = Array.isArray(pref) ? pref[0]?.allowed : pref?.allowed;
