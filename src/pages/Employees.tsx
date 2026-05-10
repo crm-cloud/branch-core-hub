@@ -460,6 +460,16 @@ export default function EmployeesPage() {
           onOpenChange={setContractOpen} 
           employee={selectedEmployee}
         />
+        <EditEmployeeDrawer
+          open={editEmpOpen}
+          onOpenChange={(o) => { setEditEmpOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['all-staff'] }); }}
+          employee={editingRow}
+        />
+        <EditTrainerDrawer
+          open={editTrainerOpen}
+          onOpenChange={(o) => { setEditTrainerOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['all-staff'] }); }}
+          trainer={editingRow}
+        />
       </div>
     </AppLayout>
   );
