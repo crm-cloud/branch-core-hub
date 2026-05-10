@@ -183,6 +183,11 @@ export default function FitnessTemplatesPage() {
                 <Lock className="h-3 w-3" /> Built-in
               </Badge>
             )}
+            {isPdf && (
+              <Badge className="bg-rose-500/10 text-rose-600 border-rose-200 text-xs gap-1">
+                <FileText className="h-3 w-3" /> PDF
+              </Badge>
+            )}
             <Badge
               variant="outline"
               className="text-xs gap-1"
