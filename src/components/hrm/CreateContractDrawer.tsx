@@ -402,7 +402,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole
   useEffect(() => {
     if (!open || !employee) return;
 
-    const role = detectAgreementRole(employee);
+    const role = defaultRoleProp || detectAgreementRole(employee);
     const employeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
     const startDate = new Date().toISOString().split('T')[0];
     const salary = Number(employee?.salary || 0);
@@ -425,7 +425,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole
     });
     setLegalTermsUnlocked(false);
     setLegalTermsUnlockedAt(null);
-  }, [open, employee]);
+  }, [open, employee, defaultRoleProp]);
 
   const createContractMutation = useMutation({
     mutationFn: createContract,
