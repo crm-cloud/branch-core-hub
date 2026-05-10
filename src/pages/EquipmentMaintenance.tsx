@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { muscleGroupLabel, primaryCategoryLabel } from '@/lib/equipment/taxonomy';
 
 export default function EquipmentMaintenancePage() {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
