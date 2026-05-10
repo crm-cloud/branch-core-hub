@@ -32,6 +32,10 @@ interface PlanViewerSheetProps {
     valid_from?: string | null;
     valid_until?: string | null;
     template_name?: string | null;
+    /** PDF-template support — when set to 'pdf', renders an inline PDF iframe instead of structured days. */
+    source_kind?: 'structured' | 'pdf';
+    pdf_url?: string | null;
+    pdf_filename?: string | null;
   } | null;
   onDownload?: () => void;
   footerExtras?: React.ReactNode;
