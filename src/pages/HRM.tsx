@@ -256,13 +256,23 @@ export default function HRMPage() {
   };
 
   const getStaffTypeBadge = (staff: PayrollStaffItem) => {
+    const alsoTrainer = staff.staff_type === 'employee' && staff.user_id && trainerUserIds.has(staff.user_id);
     if (staff.staff_type === 'trainer') {
       return <Badge className="border bg-info/10 text-info border-info/20"><Dumbbell className="mr-1 h-3 w-3 inline" />Trainer</Badge>;
     }
-    if (staff.department === 'Management') {
-      return <Badge className="border bg-accent/10 text-accent border-accent/20">Manager</Badge>;
-    }
-    return <Badge className="border bg-muted text-muted-foreground border-border">Staff</Badge>;
+    const primary = staff.department === 'Management'
+      ? <Badge className="border bg-accent/10 text-accent border-accent/20">Manager</Badge>
+      : <Badge className="border bg-muted text-muted-foreground border-border">Staff</Badge>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {primary}
+        {alsoTrainer && (
+          <Badge className="border bg-purple-500/10 text-purple-600 border-purple-500/30" title="Also holds a trainer record — PT commissions added on top of base salary">
+            <Dumbbell className="mr-1 h-3 w-3 inline" />Trainer
+          </Badge>
+        )}
+      </div>
+    );
   };
 
   const openContractPdf = (contract: any) => {
