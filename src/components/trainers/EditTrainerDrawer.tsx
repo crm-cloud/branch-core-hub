@@ -158,6 +158,27 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
           is_active: formData.is_active,
         },
       });
+
+      if (trainer.user_id) {
+        const { error: profErr } = await supabase
+          .from('profiles')
+          .update({
+            full_name: profileData.full_name || null,
+            phone: profileData.phone || null,
+            gender: (profileData.gender as any) || null,
+            date_of_birth: profileData.date_of_birth || null,
+            address: profileData.address || null,
+            city: profileData.city || null,
+            state: profileData.state || null,
+            postal_code: profileData.postal_code || null,
+            emergency_contact_name: profileData.emergency_contact_name || null,
+            emergency_contact_phone: profileData.emergency_contact_phone || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', trainer.user_id);
+        if (profErr) throw profErr;
+      }
+
       toast.success('Trainer updated successfully');
       onOpenChange(false);
     } catch (error: any) {
