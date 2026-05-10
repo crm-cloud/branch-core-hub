@@ -66,10 +66,6 @@ const EMPTY_TABLE_CANDIDATES = [
   { name: 'payroll_rules', note: 'Never used' },
   { name: 'biometric_sync_queue', note: 'Never used' },
   { name: 'device_commands', note: 'Never used' },
-  { name: 'exercises', note: 'Never used' },
-  { name: 'workout_templates', note: 'Never used' },
-  { name: 'diet_templates', note: 'Never used' },
-  { name: 'ai_plan_logs', note: 'Never used' },
 ];
 
 function DatabaseAuditCard() {
