@@ -212,11 +212,8 @@ export default function FitnessTemplatesPage() {
               size="sm"
               variant="outline"
               onClick={() => {
-                const path =
-                  template.type === "workout"
-                    ? "/fitness/create/manual/workout"
-                    : "/fitness/create/manual/diet";
-                navigate(`${path}?template=${template.id}`);
+                const t = template.type === "workout" ? "workout" : "diet";
+                navigate(`/fitness/create/manual?type=${t}&template=${template.id}`);
               }}
               title="Use as starting point"
             >
@@ -227,11 +224,8 @@ export default function FitnessTemplatesPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  const path =
-                    template.type === "workout"
-                      ? "/fitness/create/manual/workout"
-                      : "/fitness/create/manual/diet";
-                  navigate(`${path}?template=${template.id}&edit=1`);
+                  const t = template.type === "workout" ? "workout" : "diet";
+                  navigate(`/fitness/create/manual?type=${t}&template=${template.id}&edit=1`);
                 }}
                 title={isSystem ? "Customize a copy" : "Edit template content"}
               >

@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Sparkles, Dumbbell, UtensilsCrossed } from 'lucide-react';
+import { Loader2, Sparkles, Dumbbell, UtensilsCrossed, User, Users } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
@@ -30,6 +31,7 @@ export default function CreateAIPage() {
   const templateId = searchParams.get('template');
 
   const [type, setType] = useState<'workout' | 'diet'>('workout');
+  const [mode, setMode] = useState<'member' | 'audience'>('member');
   const [member, setMember] = useState<PickedMember | null>(null);
   const [profile, setProfile] = useState<MemberProfileOverrides>({});
   const [planName, setPlanName] = useState('');
@@ -41,20 +43,36 @@ export default function CreateAIPage() {
   const [fatTarget, setFatTarget] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
+
+  // Audience fields (only used when mode === 'audience')
+  const [audAgeMin, setAudAgeMin] = useState<string>('18');
+  const [audAgeMax, setAudAgeMax] = useState<string>('45');
+  const [audGender, setAudGender] = useState<'any' | 'male' | 'female'>('any');
+  const [audExperience, setAudExperience] = useState<string[]>(['beginner']);
+  const [audWeightMin, setAudWeightMin] = useState<string>('');
+  const [audWeightMax, setAudWeightMax] = useState<string>('');
+  const [audDaysPerWeek, setAudDaysPerWeek] = useState<string>('4');
+  const [audDietaryType, setAudDietaryType] = useState<string>('');
+  const [audCuisine, setAudCuisine] = useState<string>('');
+  const [audEquipmentHint, setAudEquipmentHint] = useState<string>('');
+
   const { effectiveBranchId } = useBranchContext();
 
   // Pull catalog meals matching the selected diet/cuisine so we can pass them
   // to the AI as the gym's preferred food list. Cached because the catalog
   // doesn't change often within a session.
+  const dietaryPrefForAI = mode === 'audience' ? audDietaryType : profile.dietary_preference;
+  const cuisineForAI = mode === 'audience' ? audCuisine : profile.cuisine;
+
   const { data: catalogMeals = [] } = useQuery({
-    queryKey: ['meal-catalog-ai', profile.dietary_preference, profile.cuisine, effectiveBranchId],
+    queryKey: ['meal-catalog-ai', dietaryPrefForAI, cuisineForAI, effectiveBranchId],
     queryFn: () =>
       fetchMealCatalog({
-        dietaryType: profile.dietary_preference || null,
-        cuisine: profile.cuisine || null,
+        dietaryType: dietaryPrefForAI || null,
+        cuisine: cuisineForAI || null,
         branchId: effectiveBranchId ?? null,
       }),
-    enabled: type === 'diet' && !!profile.dietary_preference && !!profile.cuisine,
+    enabled: type === 'diet' && !!dietaryPrefForAI && !!cuisineForAI,
   });
 
   // Branch operational equipment — drives workout AI to use real machines.
@@ -121,23 +139,41 @@ export default function CreateAIPage() {
     return () => { cancelled = true; };
   }, [templateId]);
 
-  const dietRequirementsMet = type !== 'diet' || (!!profile.dietary_preference && !!profile.cuisine);
+  const dietRequirementsMet = type !== 'diet'
+    || (mode === 'member' ? (!!profile.dietary_preference && !!profile.cuisine) : (!!audDietaryType && !!audCuisine));
+
+  const audienceRequirementsMet = mode !== 'audience' || (
+    !!audAgeMin && !!audAgeMax && !!audGender && audExperience.length > 0
+  );
+
+  const ageBandMid = (() => {
+    const lo = parseInt(audAgeMin) || 0;
+    const hi = parseInt(audAgeMax) || 0;
+    if (!lo && !hi) return undefined;
+    return Math.round((lo + hi) / 2) || undefined;
+  })();
 
   const handleGenerate = async () => {
-    if (!member) { toast.error('Please select a member'); return; }
     if (!planName.trim()) { toast.error('Please enter a plan name'); return; }
+    if (mode === 'member' && !member) { toast.error('Please select a member'); return; }
+    if (mode === 'audience' && !audienceRequirementsMet) {
+      toast.error('Please complete the audience: age range, gender, experience');
+      return;
+    }
     if (type === 'diet' && !dietRequirementsMet) {
-      toast.error('Please select dietary type and cuisine in the member profile');
+      toast.error(mode === 'member'
+        ? 'Please select dietary type and cuisine in the member profile'
+        : 'Please select dietary type and cuisine for the audience');
       return;
     }
 
-    setProgressMsg('Sending member context to the AI…');
+    setProgressMsg(mode === 'audience'
+      ? 'Generating a Common (no-PT) plan for the audience…'
+      : 'Sending member context to the AI…');
     const slow = setTimeout(() => setProgressMsg('Still generating — building a personalized program 🤔'), 12000);
 
     try {
-      const plan = await generate.mutateAsync({
-        type,
-        memberInfo: {
+      const memberInfo = mode === 'member' ? {
           name: planName,
           age: profile.age ? parseInt(profile.age) : undefined,
           gender: profile.gender,
@@ -155,7 +191,30 @@ export default function CreateAIPage() {
               && `include activities: ${profile.workout_activities.join(', ')} (structure each session warm-up → main → cool-down)`,
             specialNotes,
           ].filter(Boolean).join('; ') || undefined,
-        },
+        } : {
+          // Synthetic "audience profile" — no real member, just band metadata.
+          name: planName,
+          age: ageBandMid,
+          gender: audGender === 'any' ? undefined : audGender,
+          weight: audWeightMin && audWeightMax
+            ? Math.round((parseFloat(audWeightMin) + parseFloat(audWeightMax)) / 2)
+            : undefined,
+          fitnessGoals: goal || undefined,
+          experience: audExperience[0] || 'beginner',
+          preferences: [
+            `Common (no-PT) plan targeting ${audAgeMin}-${audAgeMax}y, gender: ${audGender}, experience: ${audExperience.join('/')}`,
+            audDaysPerWeek && type === 'workout' && `${audDaysPerWeek} days/week`,
+            audWeightMin && audWeightMax && `weight band ${audWeightMin}-${audWeightMax}kg`,
+            type === 'diet' && audDietaryType && `diet: ${audDietaryType}`,
+            type === 'diet' && audCuisine && `cuisine: ${audCuisine}`,
+            type === 'workout' && audEquipmentHint && `equipment: ${audEquipmentHint}`,
+            specialNotes,
+          ].filter(Boolean).join('; ') || undefined,
+        };
+
+      const plan = await generate.mutateAsync({
+        type,
+        memberInfo,
         options: {
           durationWeeks,
           caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined,
@@ -172,7 +231,7 @@ export default function CreateAIPage() {
               }))
             : undefined,
           availableEquipment: type === 'workout' ? branchEquipment.slice(0, 100) : undefined,
-          previousPlanContext: buildPreviousPlanContext(),
+          previousPlanContext: mode === 'member' ? buildPreviousPlanContext() : undefined,
         },
       });
 
@@ -196,14 +255,26 @@ export default function CreateAIPage() {
         name: plan.name || planName,
         description: plan.description,
         goal: plan.goal || goal,
-        difficulty: plan.difficulty || profile.fitness_level,
+        difficulty: plan.difficulty || (mode === 'member' ? profile.fitness_level : audExperience[0]),
         caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : plan.dailyCalories,
-        memberId: member.id,
-        memberName: member.full_name,
-        memberCode: member.member_code,
-        memberProfile: profile,
-        dietaryType: profile.dietary_preference,
-        cuisine: profile.cuisine,
+        memberId: mode === 'member' ? member!.id : undefined,
+        memberName: mode === 'member' ? member!.full_name : undefined,
+        memberCode: mode === 'member' ? member!.member_code : undefined,
+        memberProfile: mode === 'member' ? profile : undefined,
+        dietaryType: mode === 'member' ? profile.dietary_preference : audDietaryType,
+        cuisine: mode === 'member' ? profile.cuisine : audCuisine,
+        isCommon: mode === 'audience',
+        audience: mode === 'audience' ? {
+          target_age_min: parseInt(audAgeMin) || null,
+          target_age_max: parseInt(audAgeMax) || null,
+          target_gender: audGender,
+          target_experience: audExperience,
+          target_weight_min_kg: audWeightMin ? parseFloat(audWeightMin) : null,
+          target_weight_max_kg: audWeightMax ? parseFloat(audWeightMax) : null,
+          target_goal: goal || null,
+          duration_weeks: durationWeeks,
+          days_per_week: audDaysPerWeek ? parseInt(audDaysPerWeek) : null,
+        } : undefined,
         content: plan,
         createdAt: new Date().toISOString(),
       });
@@ -220,7 +291,7 @@ export default function CreateAIPage() {
   return (
     <CreateFlowLayout
       title="AI Plan Generation"
-      subtitle="Personalized programs powered by member metrics"
+      subtitle={mode === 'audience' ? 'Generate a Common (no-PT) plan for an audience segment' : 'Personalized programs powered by member metrics'}
       step="build"
       buildLabel="Generate"
       backTo="/fitness/create"
@@ -232,18 +303,149 @@ export default function CreateAIPage() {
               <CardTitle>Plan Setup</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Tabs value={type} onValueChange={(v) => setType(v as any)}>
-                <TabsList className="grid grid-cols-2 w-full sm:w-fit">
-                  <TabsTrigger value="workout" className="gap-1.5">
-                    <Dumbbell className="h-4 w-4" /> Workout
-                  </TabsTrigger>
-                  <TabsTrigger value="diet" className="gap-1.5">
-                    <UtensilsCrossed className="h-4 w-4" /> Diet
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="flex flex-wrap items-center gap-3">
+                <Tabs value={type} onValueChange={(v) => setType(v as any)}>
+                  <TabsList className="grid grid-cols-2 w-full sm:w-fit">
+                    <TabsTrigger value="workout" className="gap-1.5">
+                      <Dumbbell className="h-4 w-4" /> Workout
+                    </TabsTrigger>
+                    <TabsTrigger value="diet" className="gap-1.5">
+                      <UtensilsCrossed className="h-4 w-4" /> Diet
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
-              <MemberSearchPicker value={member} onChange={(m) => { setMember(m); setProfile({}); }} required />
+                <Tabs value={mode} onValueChange={(v) => setMode(v as any)}>
+                  <TabsList className="grid grid-cols-2 w-full sm:w-fit">
+                    <TabsTrigger value="member" className="gap-1.5">
+                      <User className="h-4 w-4" /> Member-specific
+                    </TabsTrigger>
+                    <TabsTrigger value="audience" className="gap-1.5">
+                      <Users className="h-4 w-4" /> Common (no PT)
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {mode === 'member' ? (
+                <MemberSearchPicker value={member} onChange={(m) => { setMember(m); setProfile({}); }} required />
+              ) : (
+                <Card className="border-dashed bg-muted/30">
+                  <CardContent className="p-4 space-y-4">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Users className="h-4 w-4 text-primary" />
+                      Audience targeting
+                      <Badge variant="outline" className="ml-1 text-[10px]">Required</Badge>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Age min *</Label>
+                        <Input type="number" min={10} max={90} value={audAgeMin} onChange={(e) => setAudAgeMin(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Age max *</Label>
+                        <Input type="number" min={10} max={90} value={audAgeMax} onChange={(e) => setAudAgeMax(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Gender *</Label>
+                        <Select value={audGender} onValueChange={(v) => setAudGender(v as any)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="any">Any</SelectItem>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Experience *</Label>
+                      <div className="flex flex-wrap gap-3">
+                        {(['beginner', 'intermediate', 'advanced'] as const).map((lvl) => (
+                          <label key={lvl} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={audExperience.includes(lvl)}
+                              onCheckedChange={(c) => {
+                                setAudExperience((prev) => c
+                                  ? Array.from(new Set([...prev, lvl]))
+                                  : prev.filter((x) => x !== lvl));
+                              }}
+                            />
+                            <span className="capitalize">{lvl}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Weight min (kg)</Label>
+                        <Input type="number" placeholder="optional" value={audWeightMin} onChange={(e) => setAudWeightMin(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Weight max (kg)</Label>
+                        <Input type="number" placeholder="optional" value={audWeightMax} onChange={(e) => setAudWeightMax(e.target.value)} />
+                      </div>
+                      {type === 'workout' && (
+                        <div className="space-y-2">
+                          <Label>Days/week</Label>
+                          <Input type="number" min={1} max={7} value={audDaysPerWeek} onChange={(e) => setAudDaysPerWeek(e.target.value)} />
+                        </div>
+                      )}
+                    </div>
+
+                    {type === 'diet' && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Dietary type *</Label>
+                          <Select value={audDietaryType} onValueChange={setAudDietaryType}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="vegetarian">Vegetarian</SelectItem>
+                              <SelectItem value="vegan">Vegan</SelectItem>
+                              <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
+                              <SelectItem value="eggetarian">Eggetarian</SelectItem>
+                              <SelectItem value="jain">Jain</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cuisine *</Label>
+                          <Select value={audCuisine} onValueChange={setAudCuisine}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="indian">Indian</SelectItem>
+                              <SelectItem value="south_indian">South Indian</SelectItem>
+                              <SelectItem value="north_indian">North Indian</SelectItem>
+                              <SelectItem value="continental">Continental</SelectItem>
+                              <SelectItem value="mediterranean">Mediterranean</SelectItem>
+                              <SelectItem value="asian">Asian</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {type === 'workout' && (
+                      <div className="space-y-2">
+                        <Label>Equipment hint</Label>
+                        <Input
+                          placeholder="e.g. dumbbells + bench (or leave blank to use branch equipment)"
+                          value={audEquipmentHint}
+                          onChange={(e) => setAudEquipmentHint(e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    <p className="text-xs text-muted-foreground">
+                      This generates a reusable Common Plan. Save it as a template from the preview screen so the right
+                      members are auto-matched on their dashboard.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               <div className="space-y-2">
                 <Label>Plan Name *</Label>
@@ -322,7 +524,7 @@ export default function CreateAIPage() {
 
               <Button
                 onClick={handleGenerate}
-                disabled={!member || generate.isPending || !dietRequirementsMet}
+                disabled={(mode === 'member' && !member) || !audienceRequirementsMet || generate.isPending || !dietRequirementsMet || !planName.trim()}
                 className="w-full"
                 size="lg"
               >
@@ -350,7 +552,29 @@ export default function CreateAIPage() {
         </div>
 
         <div className="space-y-4">
-          {member ? (
+          {mode === 'audience' ? (
+            <Card>
+              <CardContent className="py-4 px-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Users className="h-4 w-4 text-primary" /> Audience summary
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>Age: <span className="text-foreground font-medium">{audAgeMin || '—'}–{audAgeMax || '—'}y</span></li>
+                  <li>Gender: <span className="text-foreground font-medium capitalize">{audGender}</span></li>
+                  <li>Experience: <span className="text-foreground font-medium">{audExperience.join(', ') || '—'}</span></li>
+                  {(audWeightMin || audWeightMax) && (
+                    <li>Weight band: <span className="text-foreground font-medium">{audWeightMin || '—'}–{audWeightMax || '—'} kg</span></li>
+                  )}
+                  {goal && <li>Goal: <span className="text-foreground font-medium">{goal}</span></li>}
+                  {type === 'workout' && <li>Days/week: <span className="text-foreground font-medium">{audDaysPerWeek || '—'}</span></li>}
+                </ul>
+                <p className="text-[11px] text-muted-foreground pt-2 border-t">
+                  After previewing, click <strong>Save as template</strong> to publish it as a Common Plan and auto-match
+                  qualifying members.
+                </p>
+              </CardContent>
+            </Card>
+          ) : member ? (
             <>
               <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} planType={type} />
 
