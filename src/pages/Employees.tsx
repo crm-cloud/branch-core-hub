@@ -7,10 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Users, UserMinus, UserCheck, FileText, Filter, Dumbbell } from 'lucide-react';
+import { Plus, Search, Users, UserMinus, UserCheck, FileText, Filter, Dumbbell, Pencil } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
+import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
+import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
 import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { toast } from 'sonner';
 
@@ -32,6 +34,8 @@ interface UnifiedStaff {
   is_active: boolean;
   hire_date: string;
   specialization?: string | null;
+  raw: any;
+  profile: any;
 }
 
 export default function EmployeesPage() {
@@ -72,47 +76,57 @@ export default function EmployeesPage() {
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, email, phone, avatar_url')
+        .select('id, full_name, email, phone, avatar_url, gender, date_of_birth, address, city, state, postal_code, emergency_contact_name, emergency_contact_phone, government_id_type, government_id_number')
         .in('id', allUserIds);
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
 
       // Transform employees
-      const employeeStaff: UnifiedStaff[] = (employees || []).map(emp => ({
-        id: emp.id,
-        user_id: emp.user_id,
-        staff_type: 'employee' as const,
-        name: profileMap.get(emp.user_id)?.full_name || 'Unknown',
-        email: profileMap.get(emp.user_id)?.email || null,
-        phone: profileMap.get(emp.user_id)?.phone || null,
-        avatar_url: profileMap.get(emp.user_id)?.avatar_url || null,
-        code: emp.employee_code,
-        department: emp.department,
-        position: emp.position,
-        branch_id: emp.branch_id,
-        branch_name: (emp.branches as any)?.name || null,
-        is_active: emp.is_active,
-        hire_date: emp.hire_date,
-      }));
+      const employeeStaff: UnifiedStaff[] = (employees || []).map(emp => {
+        const p = profileMap.get(emp.user_id) as any;
+        return {
+          id: emp.id,
+          user_id: emp.user_id,
+          staff_type: 'employee' as const,
+          name: p?.full_name || 'Unknown',
+          email: p?.email || null,
+          phone: p?.phone || null,
+          avatar_url: p?.avatar_url || null,
+          code: emp.employee_code,
+          department: emp.department,
+          position: emp.position,
+          branch_id: emp.branch_id,
+          branch_name: (emp.branches as any)?.name || null,
+          is_active: emp.is_active,
+          hire_date: emp.hire_date,
+          raw: emp,
+          profile: p || null,
+        };
+      });
 
       // Transform trainers
-      const trainerStaff: UnifiedStaff[] = (trainers || []).map(trainer => ({
-        id: trainer.id,
-        user_id: trainer.user_id,
-        staff_type: 'trainer' as const,
-        name: profileMap.get(trainer.user_id)?.full_name || 'Unknown',
-        email: profileMap.get(trainer.user_id)?.email || null,
-        phone: profileMap.get(trainer.user_id)?.phone || null,
-        avatar_url: profileMap.get(trainer.user_id)?.avatar_url || null,
-        code: null,
-        department: 'Training',
-        position: 'Trainer',
-        branch_id: trainer.branch_id,
-        branch_name: (trainer.branches as any)?.name || null,
-        is_active: trainer.is_active,
-        hire_date: trainer.created_at,
-        specialization: trainer.specializations?.join(', ') || null,
-      }));
+      const trainerStaff: UnifiedStaff[] = (trainers || []).map(trainer => {
+        const p = profileMap.get(trainer.user_id) as any;
+        return {
+          id: trainer.id,
+          user_id: trainer.user_id,
+          staff_type: 'trainer' as const,
+          name: p?.full_name || 'Unknown',
+          email: p?.email || null,
+          phone: p?.phone || null,
+          avatar_url: p?.avatar_url || null,
+          code: null,
+          department: 'Training',
+          position: 'Trainer',
+          branch_id: trainer.branch_id,
+          branch_name: (trainer.branches as any)?.name || null,
+          is_active: trainer.is_active,
+          hire_date: trainer.created_at,
+          specialization: trainer.specializations?.join(', ') || null,
+          raw: trainer,
+          profile: p || null,
+        };
+      });
 
       return [...employeeStaff, ...trainerStaff];
     },
@@ -134,6 +148,10 @@ export default function EmployeesPage() {
     }
   };
 
+  const [editEmpOpen, setEditEmpOpen] = useState(false);
+  const [editTrainerOpen, setEditTrainerOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<any>(null);
+
   const openContractDrawer = (staff: UnifiedStaff) => {
     setSelectedEmployee({
       id: staff.id,
@@ -143,11 +161,25 @@ export default function EmployeesPage() {
       employee_code: staff.code,
       department: staff.department,
       position: staff.position,
-      profile: { full_name: staff.name, email: staff.email, phone: staff.phone },
+      profile: staff.profile || { full_name: staff.name, email: staff.email, phone: staff.phone },
       profiles: { full_name: staff.name, email: staff.email },
       full_name: staff.name,
     });
     setContractOpen(true);
+  };
+
+  const openEditDrawer = (staff: UnifiedStaff) => {
+    if (staff.staff_type === 'trainer') {
+      setEditingRow({ ...staff.raw, profile: staff.profile, profile_name: staff.name });
+      setEditTrainerOpen(true);
+    } else {
+      setEditingRow({
+        ...staff.raw,
+        profile: staff.profile,
+        branch: { name: staff.branch_name },
+      });
+      setEditEmpOpen(true);
+    }
   };
 
   // Get unique departments for filter
@@ -376,6 +408,14 @@ export default function EmployeesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => openEditDrawer(staff)}
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => openContractDrawer(staff)}
                             title="Create Contract"
                           >
@@ -419,6 +459,16 @@ export default function EmployeesPage() {
           open={contractOpen} 
           onOpenChange={setContractOpen} 
           employee={selectedEmployee}
+        />
+        <EditEmployeeDrawer
+          open={editEmpOpen}
+          onOpenChange={(o) => { setEditEmpOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['all-staff'] }); }}
+          employee={editingRow}
+        />
+        <EditTrainerDrawer
+          open={editTrainerOpen}
+          onOpenChange={(o) => { setEditTrainerOpen(o); if (!o) queryClient.invalidateQueries({ queryKey: ['all-staff'] }); }}
+          trainer={editingRow}
         />
       </div>
     </AppLayout>
