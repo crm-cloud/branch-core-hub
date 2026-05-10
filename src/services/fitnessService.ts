@@ -35,7 +35,7 @@ export interface FitnessPlanTemplate {
   // Audience targeting (applies when is_common = true)
   target_age_min?: number | null;
   target_age_max?: number | null;
-  target_gender?: 'any' | 'male' | 'female' | null;
+  target_gender?: string | null;
   target_weight_min_kg?: number | null;
   target_weight_max_kg?: number | null;
   target_bmi_min?: number | null;
