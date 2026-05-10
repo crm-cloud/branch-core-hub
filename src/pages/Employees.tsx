@@ -27,6 +27,7 @@ interface UnifiedStaff {
   code: string | null;
   department: string | null;
   position: string | null;
+  branch_id: string | null;
   branch_name: string | null;
   is_active: boolean;
   hire_date: string;
@@ -88,6 +89,7 @@ export default function EmployeesPage() {
         code: emp.employee_code,
         department: emp.department,
         position: emp.position,
+        branch_id: emp.branch_id,
         branch_name: (emp.branches as any)?.name || null,
         is_active: emp.is_active,
         hire_date: emp.hire_date,
@@ -105,6 +107,7 @@ export default function EmployeesPage() {
         code: null,
         department: 'Training',
         position: 'Trainer',
+        branch_id: trainer.branch_id,
         branch_name: (trainer.branches as any)?.name || null,
         is_active: trainer.is_active,
         hire_date: trainer.created_at,
