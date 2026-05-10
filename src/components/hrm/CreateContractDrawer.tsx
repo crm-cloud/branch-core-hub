@@ -546,9 +546,18 @@ export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole
           )}
 
           <div className="space-y-2">
-            <Label>Agreement Role *</Label>
+            <div className="flex items-center justify-between">
+              <Label>Agreement Role *</Label>
+              {defaultRoleProp && (
+                <Badge variant="outline" className="text-[10px] gap-1">
+                  <Lock className="h-3 w-3" />
+                  Contract for: {defaultRoleProp.charAt(0).toUpperCase() + defaultRoleProp.slice(1)}
+                </Badge>
+              )}
+            </div>
             <Select
               value={formData.agreementRole}
+              disabled={!!defaultRoleProp}
               onValueChange={async (value: AgreementRole) => {
                 const employeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
                 // Try fetching template from DB first
@@ -585,7 +594,11 @@ export function CreateContractDrawer({ open, onOpenChange, employee, defaultRole
                 <SelectItem value="manager">Manager</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Selecting role auto-fills the contract template for trainer/staff/manager.</p>
+            <p className="text-xs text-muted-foreground">
+              {defaultRoleProp
+                ? 'Role is locked because this contract is for a specific role of a dual-role person.'
+                : 'Selecting role auto-fills the contract template for trainer/staff/manager.'}
+            </p>
           </div>
 
           <div className="space-y-2">
