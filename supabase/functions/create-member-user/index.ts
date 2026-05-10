@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
     )
 
     let userId: string
+    let createdTempPassword: string | null = null
 
     if (existingUser) {
       // Check if a member record already exists for this auth user
