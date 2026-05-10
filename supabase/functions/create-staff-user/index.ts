@@ -389,6 +389,7 @@ Deno.serve(async (req) => {
         userId: authData.user.id,
         trainerId,
         employeeId,
+        tempPassword,
         message: `${role} user created successfully. They will set their password on first login.`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
