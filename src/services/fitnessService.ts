@@ -32,6 +32,11 @@ export interface FitnessPlanTemplate {
   is_active: boolean | null;
   is_common?: boolean | null;
   system_template?: boolean | null;
+  // PDF-template support
+  source_kind?: string | null;
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
   // Audience targeting (applies when is_common = true)
   target_age_min?: number | null;
   target_age_max?: number | null;
@@ -118,6 +123,11 @@ export interface MemberFitnessPlan {
   valid_until: string | null;
   created_by: string | null;
   branch_id: string | null;
+  // PDF-template support
+  source_kind?: string | null;
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -154,9 +164,14 @@ export async function createPlanTemplate(template: {
   description?: string;
   difficulty?: string;
   goal?: string;
-  content: FitnessPlanContent;
+  content?: FitnessPlanContent;
   is_public?: boolean;
   is_common?: boolean;
+  // PDF-template support
+  source_kind?: 'structured' | 'pdf';
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
   // Audience targeting (only meaningful when is_common = true)
   target_age_min?: number | null;
   target_age_max?: number | null;
@@ -172,11 +187,12 @@ export async function createPlanTemplate(template: {
 }): Promise<FitnessPlanTemplate> {
   const { data: { user } } = await supabase.auth.getUser();
 
+  const { content, ...rest } = template;
   const { data, error } = await supabase
     .from('fitness_plan_templates')
     .insert({
-      ...template,
-      content: toJsonContent(template.content),
+      ...rest,
+      content: toJsonContent(content ?? ({} as FitnessPlanContent)),
       created_by: user?.id,
     })
     .select()
@@ -188,6 +204,28 @@ export async function createPlanTemplate(template: {
     type: data.type as 'workout' | 'diet',
     content: narrowPlanContent(data.content),
   };
+}
+
+/**
+ * Upload a PDF file to the public `attachments` bucket under
+ * `fitness-templates/{branchId|global}/{uuid}.pdf` and return the public URL.
+ */
+export async function uploadTemplatePdf(
+  file: File,
+  branchId?: string | null,
+): Promise<{ url: string; path: string; size: number; filename: string }> {
+  if (file.type !== 'application/pdf') throw new Error('Only PDF files are allowed.');
+  const MAX = 16 * 1024 * 1024;
+  if (file.size > MAX) throw new Error('PDF must be 16 MB or smaller.');
+  const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const path = `fitness-templates/${branchId || 'global'}/${id}.pdf`;
+  const { error } = await supabase.storage.from('attachments').upload(path, file, {
+    contentType: 'application/pdf',
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from('attachments').getPublicUrl(path);
+  return { url: pub.publicUrl, path, size: file.size, filename: file.name };
 }
 
 // Update an existing plan template in place (name, description, content, etc.)
@@ -343,6 +381,11 @@ export interface BulkAssignParams {
   template_id?: string | null;
   /** When true, marks the assignment as a "Common Plan" (no PT required). */
   is_common?: boolean;
+  /** PDF-template support — when set, the member plan carries a direct PDF instead of structured data. */
+  source_kind?: 'structured' | 'pdf';
+  pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_size_bytes?: number | null;
 }
 
 interface MemberContact {
@@ -446,6 +489,10 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
     created_by: user?.id,
     template_id: params.template_id ?? null,
     is_common: params.is_common ?? false,
+    source_kind: params.source_kind ?? 'structured',
+    pdf_url: params.pdf_url ?? null,
+    pdf_filename: params.pdf_filename ?? null,
+    pdf_size_bytes: params.pdf_size_bytes ?? null,
   }));
 
   const { data: inserted, error } = await supabase

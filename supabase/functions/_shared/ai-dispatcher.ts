@@ -153,8 +153,14 @@ async function executeCall(
   if (opts.tool_choice) body.tool_choice = opts.tool_choice;
   if (opts.response_format) body.response_format = opts.response_format;
   if (opts.reasoning) body.reasoning = opts.reasoning;
-  if (opts.temperature !== undefined) body.temperature = opts.temperature;
-  if (opts.max_tokens !== undefined) body.max_tokens = opts.max_tokens;
+  // GPT-5 / o-series on OpenAI: only default temperature, and require `max_completion_tokens`.
+  const isOpenAIReasoning =
+    cfg.provider === "openai" && /^(gpt-5|gpt-5\.|o\d)/i.test(model);
+  if (opts.temperature !== undefined && !isOpenAIReasoning) body.temperature = opts.temperature;
+  if (opts.max_tokens !== undefined) {
+    if (isOpenAIReasoning) body.max_completion_tokens = opts.max_tokens;
+    else body.max_tokens = opts.max_tokens;
+  }
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), opts.timeoutMs ?? 60000);

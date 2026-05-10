@@ -46,11 +46,15 @@ interface AssignPlanDrawerProps {
     type: 'workout' | 'diet';
     description?: string;
     content: any;
-    /** Optional: template this plan was loaded from. Stored on the
-     * assignment so trainers can later see "N members on Template A". */
+    /** Optional: template this plan was loaded from. */
     template_id?: string | null;
-    /** Pre-selects the "Common Plan" toggle. Defaults to false. */
+    /** Pre-selects the "Common Plan" toggle. */
     is_common?: boolean;
+    /** PDF-template support */
+    source_kind?: 'structured' | 'pdf';
+    pdf_url?: string | null;
+    pdf_filename?: string | null;
+    pdf_size_bytes?: number | null;
   } | null;
   branchId?: string;
 }
@@ -146,6 +150,10 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
         channels,
         template_id: plan?.template_id ?? null,
         is_common: isCommon,
+        source_kind: plan?.source_kind ?? 'structured',
+        pdf_url: plan?.pdf_url ?? null,
+        pdf_filename: plan?.pdf_filename ?? null,
+        pdf_size_bytes: plan?.pdf_size_bytes ?? null,
       });
 
       // If "Send PDF on assign" is enabled, dispatch PDFs to whichever

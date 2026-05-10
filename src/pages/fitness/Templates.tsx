@@ -20,6 +20,8 @@ import {
   Lock,
   Share2,
   Target,
+  FileUp,
+  FileText,
 } from "lucide-react";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +45,7 @@ import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
 import { EditTemplateTargetingDrawer } from "@/components/fitness/EditTemplateTargetingDrawer";
 import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
 import { PlanViewerSheet } from "@/components/fitness/PlanViewerSheet";
+import { UploadPdfTemplateDrawer } from "@/components/fitness/UploadPdfTemplateDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
@@ -74,6 +77,7 @@ export default function FitnessTemplatesPage() {
   const [viewing, setViewing] = useState<FitnessPlanTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FitnessPlanTemplate | null>(null);
   const [targetingTemplate, setTargetingTemplate] = useState<FitnessPlanTemplate | null>(null);
+  const [uploadPdfOpen, setUploadPdfOpen] = useState(false);
 
   const { data: allTemplates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ["fitness-templates", planType],
@@ -117,6 +121,7 @@ export default function FitnessTemplatesPage() {
   const renderTemplateCard = (template: FitnessPlanTemplate) => {
     const usage = usageCounts[template.id] || 0;
     const isSystem = !!template.system_template;
+    const isPdf = template.source_kind === 'pdf';
     return (
       <Card
         key={template.id}
@@ -178,6 +183,11 @@ export default function FitnessTemplatesPage() {
                 <Lock className="h-3 w-3" /> Built-in
               </Badge>
             )}
+            {isPdf && (
+              <Badge className="bg-rose-500/10 text-rose-600 border-rose-200 text-xs gap-1">
+                <FileText className="h-3 w-3" /> PDF
+              </Badge>
+            )}
             <Badge
               variant="outline"
               className="text-xs gap-1"
@@ -197,29 +207,35 @@ export default function FitnessTemplatesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() =>
-                generatePlanPDF({
-                  name: template.name,
-                  type: template.type,
-                  data: template.content,
-                })
-              }
-              title="Download PDF"
+              onClick={() => {
+                if (isPdf && template.pdf_url) {
+                  window.open(template.pdf_url, '_blank', 'noopener');
+                } else {
+                  generatePlanPDF({
+                    name: template.name,
+                    type: template.type,
+                    data: template.content,
+                  });
+                }
+              }}
+              title={isPdf ? 'Open PDF' : 'Download PDF'}
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const t = template.type === "workout" ? "workout" : "diet";
-                navigate(`/fitness/create/manual?type=${t}&template=${template.id}`);
-              }}
-              title="Use as starting point"
-            >
-              <FilePlus className="h-3.5 w-3.5" />
-            </Button>
-            {canCreate && (
+            {!isPdf && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const t = template.type === "workout" ? "workout" : "diet";
+                  navigate(`/fitness/create/manual?type=${t}&template=${template.id}`);
+                }}
+                title="Use as starting point"
+              >
+                <FilePlus className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canCreate && !isPdf && (
               <Button
                 size="sm"
                 variant="outline"
@@ -294,6 +310,11 @@ export default function FitnessTemplatesPage() {
                 <Utensils className="h-4 w-4" /> Diet
               </Button>
             </div>
+            {canCreate && (
+              <Button size="sm" variant="outline" onClick={() => setUploadPdfOpen(true)} className="gap-1.5">
+                <FileUp className="h-4 w-4" /> Upload PDF Template
+              </Button>
+            )}
           </div>
         </div>
 
@@ -381,9 +402,19 @@ export default function FitnessTemplatesPage() {
                 content: selectedTemplate.content,
                 template_id: selectedTemplate.id,
                 is_common: !!selectedTemplate.is_common,
+                source_kind: (selectedTemplate.source_kind as 'structured' | 'pdf') || 'structured',
+                pdf_url: selectedTemplate.pdf_url ?? null,
+                pdf_filename: selectedTemplate.pdf_filename ?? null,
+                pdf_size_bytes: selectedTemplate.pdf_size_bytes ?? null,
               }
             : null
         }
+      />
+
+      <UploadPdfTemplateDrawer
+        open={uploadPdfOpen}
+        onOpenChange={setUploadPdfOpen}
+        defaultType={planType}
       />
 
       <EditTemplateTargetingDrawer
@@ -403,16 +434,21 @@ export default function FitnessTemplatesPage() {
                 type: viewing.type,
                 description: viewing.description,
                 data: viewing.content,
+                source_kind: (viewing.source_kind as 'structured' | 'pdf') || 'structured',
+                pdf_url: viewing.pdf_url ?? null,
+                pdf_filename: viewing.pdf_filename ?? null,
               }
             : null
         }
         onDownload={() =>
           viewing &&
-          generatePlanPDF({
-            name: viewing.name,
-            type: viewing.type,
-            data: viewing.content,
-          })
+          (viewing.source_kind === 'pdf' && viewing.pdf_url
+            ? window.open(viewing.pdf_url, '_blank', 'noopener')
+            : generatePlanPDF({
+                name: viewing.name,
+                type: viewing.type,
+                data: viewing.content,
+              }))
         }
       />
 

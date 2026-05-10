@@ -1,106 +1,82 @@
-# Unified People-Centric Staff Model
+## Part 1 — Fix "Test Connection" failure for GPT-5 / OpenAI new models
 
-## The problem (audited)
+### Root cause
+GPT-5 (and the gpt-5.x family) on OpenAI's API rejects `max_tokens` and requires `max_completion_tokens`. Two places send `max_tokens` blindly:
 
-Same person, two records, two different counts:
+1. `supabase/functions/test-ai-provider/index.ts` (line 108) — hard-coded `max_tokens: 10` in the test ping.
+2. `supabase/functions/_shared/ai-dispatcher.ts` (line 157) — forwards `opts.max_tokens` for every provider.
 
-| Page | "Total Staff" for Bhagirath | Why |
-|---|---|---|
-| **HRM → Employees** | 1 (`1 Staff · 0 Trainers`) | `fetchAllPayrollStaff()` dedupes by `user_id`, drops trainer row when employee row exists. Counts only the employee side → `0 Trainers`. |
-| **All Staff (`/employees`)** | 2 (`Trainers 1 · Employees 1 · Active 2`) | `all-staff` query simply concatenates `employees + trainers` rows. No dedupe. |
+Both fail the moment the chosen model is `openai/gpt-5*` going directly to OpenAI. (Lovable AI Gateway tolerates either, which is why Lovable AI provider passes.)
 
-Both are "correct" under different mental models, but the UI presents them as the same metric, so the numbers fight each other. Bhagirath also appears as **two rows with a "Linked" badge**, which is itself a workaround for the duplication.
+### Fix
+Add a small helper `tokenLimitParam(provider, model)` that picks the right key:
+- `max_completion_tokens` when `provider === "openai"` AND model matches `/^gpt-(5|5\.\d|o\d)/i`
+- `max_tokens` otherwise
 
-There are also **two separate Edit drawers** (Edit Employee, Edit Trainer) for one human, and contracts must be opened from the right row — easy to mis-attribute.
+Apply in both files. Also strip `temperature` for the same reasoning models (GPT-5 only allows default temperature) — safer to omit it when not explicitly required.
 
-## Senior-dev fix — one canonical "Person", many "Roles"
+### Files touched
+- `supabase/functions/test-ai-provider/index.ts` — use helper; deploy.
+- `supabase/functions/_shared/ai-dispatcher.ts` — use helper in `executeCall`; auto-redeploys with each consumer.
 
-Treat the human as the primary entity. `employees` and `trainers` rows become **role records** attached to the same person (keyed by `user_id`). The UI, stats, contracts, payroll and edit flows all pivot on the person.
+No DB / UI changes. Verify by re-clicking "Test Connection" on the openai/gpt-5 provider row.
 
-### 1. Single unified list (frontend reshape, no schema change)
+---
 
-Build a `StaffPerson` aggregator (one per `user_id`, fallback to record id when `user_id` is null):
+## Part 2 — Manual Diet/Workout plans via uploaded PDF templates
 
-```ts
-type StaffPerson = {
-  user_id: string | null;
-  profile: Profile;                 // shared personal data
-  roles: Array<'manager' | 'staff' | 'trainer'>;
-  employee?: EmployeeRow;           // base salary + position + branch
-  trainer?: TrainerRow;             // commission % + specializations
-  branches: Set<string>;            // a person can hold roles in >1 branch
-  is_active: boolean;               // OR of underlying rows
-};
-```
+### Goal
+Trainers/managers already have polished printed plans (PDFs). They want to:
+1. Upload a PDF once as a **named template** (e.g. "Beginner Fat-Loss Diet — 1500kcal").
+2. Re-use it: assign that template to any member, who then sees/downloads the PDF in their portal and gets it via WhatsApp/email — exactly like AI/manual plans today.
 
-Use this aggregator on **both** `/employees` (All Staff) and `/hrm` (Employees tab). Single source of truth, identical numbers everywhere.
+### Schema additions (single migration)
 
-### 2. Stats become unambiguous
+Add three nullable columns to `fitness_plan_templates`:
+- `source_kind text default 'structured' check (source_kind in ('structured','pdf'))`
+- `pdf_url text`
+- `pdf_filename text`
+- `pdf_size_bytes int`
 
-Replace the current 4 ambiguous tiles with role-disaggregated tiles:
+Add the same to `member_fitness_plans` so an assigned plan carries the PDF reference (no JSON to render):
+- `source_kind`, `pdf_url`, `pdf_filename`, `pdf_size_bytes`
 
-```
-People        Managers   Trainers   Other Staff   Active Contracts   Monthly Payroll
-   1             1          1            0               0                ₹25,000
-```
+Storage: reuse existing public `attachments` bucket under prefix `fitness-templates/{branch_id}/{uuid}.pdf` (max 16 MB, mime `application/pdf` only — validated client-side).
 
-- **People** = `distinct user_id` (Bhagirath = 1).
-- **Managers / Trainers / Other Staff** = role counts (Bhagirath contributes to two: 1 Manager + 1 Trainer). Sum of role counts may exceed People — that's expected and labeled as such (`1 person, 2 roles`).
-- **Monthly Payroll** = single base salary per person (employee row wins) + PT commissions on top. Already implemented in `fetchAllPayrollStaff`'s dedupe; we just expose the math in a tooltip.
+### UI changes
 
-### 3. One row per person, with Role chips
+**Templates page (`src/pages/fitness/Templates.tsx`)**
+- Add "Source" filter chip: All · Structured · PDF.
+- New button next to "Create Template": **"Upload PDF Template"** → opens right-side Sheet `UploadPdfTemplateDrawer`:
+  - Fields: Name, Type (Diet/Workout), Goal, Difficulty, Description, PDF file (drag-drop).
+  - On save: upload PDF to bucket, insert row with `source_kind='pdf'`.
+- Template card shows a "PDF" badge when `source_kind='pdf'` plus a "Preview PDF" link.
 
-```
-Staff Member          Roles                       Code           Branch    Status   Actions
-Bhagirath Gurjar      [Manager] [Trainer]         EMP-MOZWZUNA   INCLINE   Active   Edit · Contracts ▾ · Payroll
-bhagirathbhau@…       Strength Training, …
-```
+**Create Mode Picker (`CreateModePicker.tsx`)**
+- Add a third tile: **"From PDF Template"** → routes to a new `AssignPdfTemplate` step that lists `source_kind='pdf'` templates filtered by Diet/Workout, lets the trainer pick member(s), date range, then creates `member_fitness_plans` rows with the PDF reference (no structured days).
 
-- "Roles" cell shows colored chips per role (Manager indigo, Trainer purple, Staff blue). No more "Linked" badge — duplication is gone.
-- Specialization moves under the Trainer chip on hover/expanded.
-- Code shows employee_code; trainer-only people show `TR-…`.
+**Preview / Member view**
+- `PreviewPlan.tsx` and member-side `MyDiet.tsx` / `MyWorkout.tsx`: when `source_kind='pdf'`, render an inline PDF embed + Download button + "Share via WhatsApp/Email" buttons (uses existing `sendPlanToMember` util — extend it to accept a direct `pdf_url` instead of generating a PDF from JSON).
 
-### 4. Actions split by role (clean handoff to the right drawer)
+**Assignment send flow**
+- `utils/sendPlanToMember.ts`: branch on `source_kind`. For `pdf`, skip the HTML→PDF generation step and pass the existing `pdf_url` straight to `dispatch-communication` as the document attachment.
 
-- **Edit ▾** — if the person has 2 roles, dropdown:
-  - Edit Personal & Manager Role → `EditEmployeeDrawer`
-  - Edit Trainer Role → `EditTrainerDrawer`  
-  Single role → button opens the relevant drawer directly.
-- **Contracts ▾** — list existing contracts grouped by role, plus `+ New contract for Manager` and `+ New contract for Trainer` items. The new-contract action pre-selects the role in `CreateContractDrawer`, removing the current FK-violation footgun and the manual "is this for trainer or employee?" guess.
-- **Payroll** — opens person's payslip preview for the active month (already exists, just unified entry point).
+### Out of scope (explicitly)
+- No PDF text extraction / OCR / AI parsing into structured plans (separate future feature).
+- No per-day editing of PDF templates — they are immutable distributables; to revise, upload a new version.
 
-### 5. Contracts page mirrors the same model
+### Files touched
+- `supabase/migrations/<new>.sql` — column adds.
+- `src/services/fitnessService.ts` — accept `source_kind`/`pdf_*` in template + plan CRUD; new `uploadTemplatePdf()` helper.
+- `src/pages/fitness/Templates.tsx` — filter chip, Upload PDF button, badge.
+- `src/components/fitness/UploadPdfTemplateDrawer.tsx` — new Sheet.
+- `src/pages/fitness/CreateModePicker.tsx` — third tile.
+- `src/pages/fitness/AssignPdfTemplate.tsx` — new screen (route added in `App.tsx`).
+- `src/pages/fitness/PreviewPlan.tsx`, `src/pages/MyDiet.tsx`, `src/pages/MyWorkout.tsx` — PDF render branch.
+- `src/utils/sendPlanToMember.ts` — direct-PDF branch.
 
-`HRM → Contracts` tab gets a "Role" column (Manager · Trainer) so the dual-role person's two contracts are visually distinct. No schema change — `contracts.employee_id` vs `contracts.trainer_id` already encodes role.
-
-### 6. Personal data already shared (just confirmed)
-
-`profiles` is the single source of truth for name/phone/dob/address/gov-ID/emergency. Editing in either drawer updates the same row → reflected everywhere instantly. The previous round wired Edit drawers correctly; this plan only changes how the list/stats present them.
-
-### 7. Optional DB convenience (non-blocking)
-
-Add a SQL view `public.staff_unified` that pre-joins `profiles`, `employees`, `trainers` and emits `roles[]`. Useful for reports & later RLS, but not required for this UI change. Skip in this round unless the user asks.
-
-## Files to touch
-
-- `src/services/hrmService.ts` — new `fetchUnifiedPeople(branchId?)` returning `StaffPerson[]`. Refactor `fetchAllPayrollStaff` to derive from it (keeps payroll math intact).
-- `src/pages/Employees.tsx` — switch `all-staff` to `fetchUnifiedPeople`, render one row per person with Role chips, split Edit & Contracts dropdowns, drop `Linked` badge, recompute stats from people.
-- `src/pages/HRM.tsx` — replace stats block + Employees tab table with the same component used on `/employees`. Removes the divergence.
-- `src/components/hrm/CreateContractDrawer.tsx` — accept an optional `defaultRole: 'manager' | 'trainer'` prop and lock the role when set; show a small badge "Contract for: Trainer".
-- `src/components/employees/EditEmployeeDrawer.tsx` & `src/components/trainers/EditTrainerDrawer.tsx` — both already show the "shared profile" notice; add a quick-link button "Open Trainer role" / "Open Manager role" when the person has both roles.
-- New: `src/components/staff/UnifiedStaffTable.tsx` — extracted shared component used by both pages.
-
-## Verification
-
-1. `/employees` shows **1 row** for Bhagirath with `[Manager]` `[Trainer]` chips. Stat tiles: `People 1 · Managers 1 · Trainers 1 · Active 1`.
-2. HRM stat tiles read identically.
-3. `Edit ▾` shows two items; each opens the correct drawer with profile pre-filled.
-4. `Contracts ▾ → + New for Trainer` opens contract drawer locked to trainer; saving inserts with `trainer_id` only (no FK error). Same for Manager.
-5. Adding a second person with only a trainer role → list shows 2 People · 1 Manager · 2 Trainers.
-6. Payroll math unchanged (single base salary + commissions); a tooltip on Monthly Payroll explains the dedupe rule.
-
-## Out of scope
-
-- No DB migration in this round.
-- No payroll formula change.
-- Existing biometrics & MIPS sync paths unchanged.
+### Verification
+- Upload sample PDF as template → appears with PDF badge.
+- Assign to test member → member portal shows embed + download.
+- Send via WhatsApp → member receives the original PDF (not a regenerated one).
+- Existing structured templates/plans continue to work unchanged (`source_kind` defaults to `'structured'`).

@@ -32,6 +32,10 @@ interface PlanViewerSheetProps {
     valid_from?: string | null;
     valid_until?: string | null;
     template_name?: string | null;
+    /** PDF-template support — when set to 'pdf', renders an inline PDF iframe instead of structured days. */
+    source_kind?: 'structured' | 'pdf';
+    pdf_url?: string | null;
+    pdf_filename?: string | null;
   } | null;
   onDownload?: () => void;
   footerExtras?: React.ReactNode;
@@ -109,7 +113,26 @@ export function PlanViewerSheet({
         </SheetHeader>
 
         <ScrollArea className="flex-1 px-6 py-4">
-          {plan.type === 'workout' ? (
+          {plan.source_kind === 'pdf' && plan.pdf_url ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border bg-muted/40 p-3 text-xs text-muted-foreground flex items-center justify-between">
+                <span className="truncate">{plan.pdf_filename || 'PDF document'}</span>
+                <a
+                  href={plan.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Open in new tab
+                </a>
+              </div>
+              <iframe
+                src={plan.pdf_url}
+                title={plan.name}
+                className="w-full h-[70vh] rounded-xl border bg-background"
+              />
+            </div>
+          ) : plan.type === 'workout' ? (
             weeks.length > 0 ? (
               <Accordion type="multiple" defaultValue={["w0"]} className="space-y-2">
                 {weeks.map((week: any, wi: number) => (
