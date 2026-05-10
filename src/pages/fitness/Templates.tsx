@@ -238,6 +238,16 @@ export default function FitnessTemplatesPage() {
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
             )}
+            {canCreate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setTargetingTemplate(template)}
+                title="Audience targeting (age/weight/goal)"
+              >
+                <Target className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {canCreate && !isSystem && (
               <Button
                 size="sm"
