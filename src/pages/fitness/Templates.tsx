@@ -207,29 +207,35 @@ export default function FitnessTemplatesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() =>
-                generatePlanPDF({
-                  name: template.name,
-                  type: template.type,
-                  data: template.content,
-                })
-              }
-              title="Download PDF"
+              onClick={() => {
+                if (isPdf && template.pdf_url) {
+                  window.open(template.pdf_url, '_blank', 'noopener');
+                } else {
+                  generatePlanPDF({
+                    name: template.name,
+                    type: template.type,
+                    data: template.content,
+                  });
+                }
+              }}
+              title={isPdf ? 'Open PDF' : 'Download PDF'}
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const t = template.type === "workout" ? "workout" : "diet";
-                navigate(`/fitness/create/manual?type=${t}&template=${template.id}`);
-              }}
-              title="Use as starting point"
-            >
-              <FilePlus className="h-3.5 w-3.5" />
-            </Button>
-            {canCreate && (
+            {!isPdf && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const t = template.type === "workout" ? "workout" : "diet";
+                  navigate(`/fitness/create/manual?type=${t}&template=${template.id}`);
+                }}
+                title="Use as starting point"
+              >
+                <FilePlus className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canCreate && !isPdf && (
               <Button
                 size="sm"
                 variant="outline"
