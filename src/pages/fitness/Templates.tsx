@@ -40,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
+import { EditTemplateTargetingDrawer } from "@/components/fitness/EditTemplateTargetingDrawer";
 import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
 import { PlanViewerSheet } from "@/components/fitness/PlanViewerSheet";
 import { useAuth } from "@/contexts/AuthContext";
