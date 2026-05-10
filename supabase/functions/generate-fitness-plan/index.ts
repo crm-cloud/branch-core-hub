@@ -23,6 +23,9 @@ interface CatalogMeal {
 interface EquipmentLite {
   name: string;
   category?: string | null;
+  primary_category?: string | null;
+  muscle_groups?: string[] | null;
+  movement_pattern?: string | null;
   brand?: string | null;
   model?: string | null;
 }
