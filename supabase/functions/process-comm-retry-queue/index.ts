@@ -131,6 +131,18 @@ Deno.serve(async (req) => {
         dispatchStatus = parsed?.status;
         if (resp.ok && (dispatchStatus === "sent" || dispatchStatus === "queued" || dispatchStatus === "deduped")) {
           success = true;
+        } else if (resp.ok && dispatchStatus === "suppressed") {
+          // Channel kill-switch (or member preference) — terminal, no retry.
+          await supabase
+            .from("communication_retry_queue")
+            .update({
+              status: "exhausted",
+              retry_count: (row.retry_count || 0) + 1,
+              last_error: parsed?.reason || "suppressed",
+            })
+            .eq("id", row.id);
+          results.push({ id: row.id, status: "suppressed", reason: parsed?.reason });
+          continue;
         } else {
           errorMsg = `dispatch ${resp.status}: ${parsed?.reason || parsed?.error || text.slice(0, 300)}`;
         }
