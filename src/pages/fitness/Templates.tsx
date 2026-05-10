@@ -20,6 +20,8 @@ import {
   Lock,
   Share2,
   Target,
+  FileUp,
+  FileText,
 } from "lucide-react";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
