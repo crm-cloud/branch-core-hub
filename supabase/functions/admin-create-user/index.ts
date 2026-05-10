@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const { email, fullName, phone, role, branchId } = await req.json()
+    const { email, fullName, phone, role, branchId, password: suppliedPasswordRaw } = await req.json()
 
     if (!email || !role) {
       return new Response(
@@ -62,8 +62,14 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Generate a temporary password
-    const tempPassword = crypto.randomUUID().slice(0, 12)
+    const suppliedPassword = typeof suppliedPasswordRaw === 'string' ? suppliedPasswordRaw.trim() : '';
+    if (suppliedPassword && suppliedPassword.length < 8) {
+      return new Response(
+        JSON.stringify({ error: 'Password must be at least 8 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
 
     // Create the user with email confirmed (they'll set password on first login)
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
