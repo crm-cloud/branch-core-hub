@@ -119,6 +119,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           activityLevel: data.activityLevel || null,
           equipmentAvailability,
           injuriesLimitations: data.injuriesLimitations || null,
+          password: tempPassword || undefined,
         },
       });
 
