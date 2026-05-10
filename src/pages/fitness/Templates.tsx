@@ -73,6 +73,7 @@ export default function FitnessTemplatesPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<FitnessPlanTemplate | null>(null);
   const [viewing, setViewing] = useState<FitnessPlanTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FitnessPlanTemplate | null>(null);
+  const [targetingTemplate, setTargetingTemplate] = useState<FitnessPlanTemplate | null>(null);
 
   const { data: allTemplates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ["fitness-templates", planType],
