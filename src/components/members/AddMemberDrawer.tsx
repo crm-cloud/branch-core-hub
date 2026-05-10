@@ -417,6 +417,10 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
             />
           </div>
 
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <TempPasswordField value={tempPassword} onChange={setTempPassword} />
+          </div>
+
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancel
