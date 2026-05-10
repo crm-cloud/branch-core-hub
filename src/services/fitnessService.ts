@@ -489,6 +489,10 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
     created_by: user?.id,
     template_id: params.template_id ?? null,
     is_common: params.is_common ?? false,
+    source_kind: params.source_kind ?? 'structured',
+    pdf_url: params.pdf_url ?? null,
+    pdf_filename: params.pdf_filename ?? null,
+    pdf_size_bytes: params.pdf_size_bytes ?? null,
   }));
 
   const { data: inserted, error } = await supabase
