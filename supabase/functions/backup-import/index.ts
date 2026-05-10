@@ -20,7 +20,7 @@ const RESTORE_ORDER = [
   "leads", "follow_ups",
   "classes",
   "pt_packages", "member_pt_packages", "pt_sessions", "trainer_commissions",
-  "exercises", "diet_templates", "workout_templates", "diet_plans", "workout_plans",
+  "diet_plans",
   "income_categories", "expense_categories",
   "discount_codes",
   "invoices", "invoice_items", "wallets", "wallet_transactions", "payments", "expenses",
@@ -36,7 +36,7 @@ const RESTORE_ORDER = [
   "referrals",
   "rewards_ledger",
   "approval_requests",
-  "ai_plan_logs", "ai_tool_logs",
+  "ai_tool_logs",
   "audit_logs",
 ];
 
