@@ -148,6 +148,12 @@ Deno.serve(async (req) => {
           { onConflict: 'user_id,role' }
         )
 
+      // If admin supplied a password, reset it on the orphan auth user too
+      if (suppliedPassword) {
+        await supabaseAdmin.auth.admin.updateUserById(userId, { password: suppliedPassword })
+        createdTempPassword = suppliedPassword
+      }
+
     } else {
       // Create new auth user
       const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
