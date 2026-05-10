@@ -149,6 +149,7 @@ export async function fetchEmployeeContracts(employeeId: string) {
 export async function createContract(contract: {
   employeeId?: string;
   trainerId?: string;
+  branchId?: string;
   contractType: string;
   startDate: string;
   endDate?: string;
@@ -163,6 +164,7 @@ export async function createContract(contract: {
     .insert({
       employee_id: contract.employeeId || null,
       trainer_id: contract.trainerId || null,
+      branch_id: contract.branchId || null,
       contract_type: contract.contractType,
       start_date: contract.startDate,
       end_date: contract.endDate,

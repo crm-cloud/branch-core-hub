@@ -413,7 +413,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
           contract_type: formData.contractType,
         },
       );
-      toast.success('Contract created successfully');
+      toast.success(`Contract created — Base ₹${Number(formData.salary).toLocaleString('en-IN')}/mo${formData.commissionPercentage ? `, ${formData.commissionPercentage}% commission` : ''}`);
       queryClient.invalidateQueries({ queryKey: ['employee-contracts'] });
       queryClient.invalidateQueries({ queryKey: ['all-contracts'] });
       onOpenChange(false);
@@ -460,6 +460,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     createContractMutation.mutate({
       employeeId: isTrainer ? undefined : employee.id,
       trainerId: isTrainer ? employee.id : undefined,
+      branchId: employee.branch_id || undefined,
       contractType: formData.contractType,
       startDate: formData.startDate,
       endDate: formData.endDate || undefined,

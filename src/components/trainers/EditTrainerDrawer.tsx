@@ -50,6 +50,18 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
     government_id: '',
     is_active: true,
   });
+  const [profileData, setProfileData] = useState({
+    full_name: '',
+    phone: '',
+    gender: '',
+    date_of_birth: '',
+    address: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+  });
   
   const [newCertification, setNewCertification] = useState('');
 
@@ -82,8 +94,20 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
         pt_share_percentage: trainer.pt_share_percentage || 50,
         specializations: trainer.specializations || [],
         certifications: trainer.certifications || [],
-        government_id: trainer.government_id || '',
+        government_id: trainer.government_id || trainer.government_id_number || '',
         is_active: trainer.is_active ?? true,
+      });
+      setProfileData({
+        full_name: trainer.profile_name || trainer.profile?.full_name || '',
+        phone: trainer.profile_phone || trainer.profile?.phone || '',
+        gender: trainer.profile?.gender || '',
+        date_of_birth: trainer.profile?.date_of_birth || '',
+        address: trainer.profile?.address || '',
+        city: trainer.profile?.city || '',
+        state: trainer.profile?.state || '',
+        postal_code: trainer.profile?.postal_code || '',
+        emergency_contact_name: trainer.profile?.emergency_contact_name || '',
+        emergency_contact_phone: trainer.profile?.emergency_contact_phone || '',
       });
     }
   }, [trainer]);
@@ -134,6 +158,27 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
           is_active: formData.is_active,
         },
       });
+
+      if (trainer.user_id) {
+        const { error: profErr } = await supabase
+          .from('profiles')
+          .update({
+            full_name: profileData.full_name || null,
+            phone: profileData.phone || null,
+            gender: (profileData.gender as any) || null,
+            date_of_birth: profileData.date_of_birth || null,
+            address: profileData.address || null,
+            city: profileData.city || null,
+            state: profileData.state || null,
+            postal_code: profileData.postal_code || null,
+            emergency_contact_name: profileData.emergency_contact_name || null,
+            emergency_contact_phone: profileData.emergency_contact_phone || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', trainer.user_id);
+        if (profErr) throw profErr;
+      }
+
       toast.success('Trainer updated successfully');
       onOpenChange(false);
     } catch (error: any) {
@@ -174,6 +219,94 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
               checked={formData.is_active}
               onCheckedChange={(v) => setFormData({ ...formData, is_active: v })}
             />
+          </div>
+
+          {/* Personal Details */}
+          <div className="space-y-3 p-4 border rounded-lg">
+            <h4 className="font-medium text-sm">Personal Details</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2 col-span-2">
+                <Label>Full Name</Label>
+                <Input
+                  value={profileData.full_name}
+                  onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  value={profileData.phone}
+                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                  placeholder="+91…"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Gender</Label>
+                <Select
+                  value={profileData.gender || 'unspecified'}
+                  onValueChange={(v) => setProfileData({ ...profileData, gender: v === 'unspecified' ? '' : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unspecified">—</SelectItem>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Date of Birth</Label>
+                <Input
+                  type="date"
+                  value={profileData.date_of_birth}
+                  onChange={(e) => setProfileData({ ...profileData, date_of_birth: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Postal Code</Label>
+                <Input
+                  value={profileData.postal_code}
+                  onChange={(e) => setProfileData({ ...profileData, postal_code: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label>Address</Label>
+                <Textarea
+                  rows={2}
+                  value={profileData.address}
+                  onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input
+                  value={profileData.city}
+                  onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>State</Label>
+                <Input
+                  value={profileData.state}
+                  onChange={(e) => setProfileData({ ...profileData, state: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Emergency Contact Name</Label>
+                <Input
+                  value={profileData.emergency_contact_name}
+                  onChange={(e) => setProfileData({ ...profileData, emergency_contact_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Emergency Contact Phone</Label>
+                <Input
+                  value={profileData.emergency_contact_phone}
+                  onChange={(e) => setProfileData({ ...profileData, emergency_contact_phone: e.target.value })}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Bio */}
