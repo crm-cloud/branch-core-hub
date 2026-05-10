@@ -112,44 +112,47 @@ export default function HRMPage() {
         .from('contracts')
         .select(`
           *,
-          employees(employee_code, user_id, position, department, profiles:employees_user_id_profiles_fkey(full_name, email, phone)),
-          trainers(user_id, specializations)
+          employees!contracts_employee_id_fkey(id, employee_code, user_id, position, department, branch_id),
+          trainers!contracts_trainer_id_fkey(id, user_id, specializations, commission_percentage)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      
-      // For trainer contracts, resolve the name from profiles
-      const trainerUserIds = (data || [])
-        .filter((c: any) => c.trainer_id && !c.employee_id && c.trainers?.user_id)
-        .map((c: any) => c.trainers.user_id);
-      
-      let trainerProfiles: any[] = [];
-      if (trainerUserIds.length > 0) {
-        const { data: tp } = await supabase
+
+      const userIds = Array.from(new Set(
+        (data || [])
+          .flatMap((c: any) => [c.employees?.user_id, c.trainers?.user_id])
+          .filter(Boolean)
+      ));
+
+      let profiles: any[] = [];
+      if (userIds.length > 0) {
+        const { data: pr } = await supabase
           .from('profiles')
           .select('id, full_name, email, phone')
-          .in('id', trainerUserIds);
-        trainerProfiles = tp || [];
+          .in('id', userIds);
+        profiles = pr || [];
       }
-      
-      return (data || []).map((c: any) => ({
-        trainerProfile: trainerProfiles.find((p: any) => p.id === c.trainers?.user_id) || null,
-        ...c,
-        _resolvedName: c.employees?.profiles?.full_name 
-          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.full_name 
-          || null,
-        _resolvedCode: c.employees?.employee_code || (c.trainers ? 'Trainer' : null),
-        _resolvedEmail: c.employees?.profiles?.email
-          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.email
-          || null,
-        _resolvedPhone: c.employees?.profiles?.phone
-          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.phone
-          || null,
-        _resolvedPosition: c.employees?.position || (c.trainers ? 'Trainer' : null),
-        _resolvedDepartment: c.employees?.department || (c.trainers ? 'Training' : null),
-        _isTrainer: !!c.trainer_id && !c.employee_id,
-      }));
+      const findProfile = (uid?: string | null) =>
+        uid ? profiles.find((p) => p.id === uid) || null : null;
+
+      return (data || []).map((c: any) => {
+        const isTrainer = !!c.trainer_id && !c.employee_id;
+        const empProfile = findProfile(c.employees?.user_id);
+        const trainerProfile = findProfile(c.trainers?.user_id);
+        const profile = isTrainer ? trainerProfile : empProfile;
+        return {
+          ...c,
+          trainerProfile,
+          _resolvedName: profile?.full_name || null,
+          _resolvedCode: c.employees?.employee_code || (isTrainer ? 'Trainer' : null),
+          _resolvedEmail: profile?.email || null,
+          _resolvedPhone: profile?.phone || null,
+          _resolvedPosition: c.employees?.position || (isTrainer ? 'Trainer' : null),
+          _resolvedDepartment: c.employees?.department || (isTrainer ? 'Training' : null),
+          _isTrainer: isTrainer,
+        };
+      });
     },
   });
 
