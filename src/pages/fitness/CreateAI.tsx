@@ -552,7 +552,29 @@ export default function CreateAIPage() {
         </div>
 
         <div className="space-y-4">
-          {member ? (
+          {mode === 'audience' ? (
+            <Card>
+              <CardContent className="py-4 px-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Users className="h-4 w-4 text-primary" /> Audience summary
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>Age: <span className="text-foreground font-medium">{audAgeMin || '—'}–{audAgeMax || '—'}y</span></li>
+                  <li>Gender: <span className="text-foreground font-medium capitalize">{audGender}</span></li>
+                  <li>Experience: <span className="text-foreground font-medium">{audExperience.join(', ') || '—'}</span></li>
+                  {(audWeightMin || audWeightMax) && (
+                    <li>Weight band: <span className="text-foreground font-medium">{audWeightMin || '—'}–{audWeightMax || '—'} kg</span></li>
+                  )}
+                  {goal && <li>Goal: <span className="text-foreground font-medium">{goal}</span></li>}
+                  {type === 'workout' && <li>Days/week: <span className="text-foreground font-medium">{audDaysPerWeek || '—'}</span></li>}
+                </ul>
+                <p className="text-[11px] text-muted-foreground pt-2 border-t">
+                  After previewing, click <strong>Save as template</strong> to publish it as a Common Plan and auto-match
+                  qualifying members.
+                </p>
+              </CardContent>
+            </Card>
+          ) : member ? (
             <>
               <MemberProfileCard memberId={member.id} value={profile} onChange={setProfile} planType={type} />
 
