@@ -11535,6 +11535,10 @@ export type Database = {
         }
         Returns: Json
       }
+      channel_active_for_branch: {
+        Args: { p_branch_id: string; p_channel: string }
+        Returns: boolean
+      }
       check_critical_error_alerts: { Args: never; Returns: number }
       check_trainer_slot_available: {
         Args: {
@@ -12305,13 +12309,26 @@ export type Database = {
         }
         Returns: Json
       }
-      should_send_communication: {
-        Args: { p_category: string; p_channel: string; p_member_id: string }
-        Returns: {
-          allowed: boolean
-          reason: string
-        }[]
-      }
+      should_send_communication:
+        | {
+            Args: { p_category: string; p_channel: string; p_member_id: string }
+            Returns: {
+              allowed: boolean
+              reason: string
+            }[]
+          }
+        | {
+            Args: {
+              p_branch_id?: string
+              p_category: string
+              p_channel: string
+              p_member_id: string
+            }
+            Returns: {
+              allowed: boolean
+              reason: string
+            }[]
+          }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       staff_check_in:

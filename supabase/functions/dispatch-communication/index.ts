@@ -1,4 +1,9 @@
-// dispatch-communication v1.11.0
+// dispatch-communication v1.12.0
+// v1.12.0: Channel-level kill switch — if Settings → Integrations has the
+//          target channel (whatsapp/sms/email) toggled OFF for the branch
+//          (with global fallback), suppress the send cleanly. Logs a single
+//          `delivery_status='suppressed'` row with reason
+//          `channel_disabled_in_settings` and never enqueues a retry.
 // v1.11.0: Document-header WhatsApp templates never inject the signed PDF URL
 //          into BODY variables (would surface as "Download: <url>" in chat).
 //          PDF flows ONLY through the HEADER component. Also writes a clean
@@ -260,6 +265,49 @@ Deno.serve(async (req) => {
   );
 
   try {
+    // ── 0) channel kill-switch (Settings → Integrations) ──
+    // If the target channel is toggled OFF for this branch (or globally,
+    // when no branch row exists), suppress immediately. This applies to ALL
+    // categories — including transactional — so disabled providers never
+    // produce failed/retried sends. `in_app` is always allowed.
+    if (input.channel !== 'in_app') {
+      const { data: chActive, error: chErr } = await supabase.rpc(
+        'channel_active_for_branch',
+        { p_branch_id: input.branch_id, p_channel: input.channel },
+      );
+      if (chErr) {
+        return bad(500, { error: 'channel_check_failed', detail: chErr.message });
+      }
+      if (chActive === false) {
+        // Idempotent suppressed log on dedupe_key.
+        const { data: log } = await supabase
+          .from('communication_logs')
+          .upsert({
+            branch_id: input.branch_id,
+            member_id: input.member_id ?? null,
+            user_id: input.user_id ?? null,
+            type: input.channel,
+            channel: input.channel,
+            category: input.category,
+            recipient: input.recipient,
+            subject: input.payload.subject ?? null,
+            content: input.payload.body,
+            template_id: input.template_id ?? null,
+            dedupe_key: input.dedupe_key,
+            status: 'suppressed',
+            delivery_status: 'suppressed',
+            error_message: 'channel_disabled_in_settings',
+          }, { onConflict: 'dedupe_key', ignoreDuplicates: false })
+          .select('id')
+          .maybeSingle();
+        return ok({
+          status: 'suppressed',
+          log_id: log?.id,
+          reason: 'channel_disabled_in_settings',
+        });
+      }
+    }
+
     // ── 1) dedupe lookup ──
     const cutoff = new Date(Date.now() - ttl * 1000).toISOString();
     const { data: existing } = await supabase
@@ -292,6 +340,7 @@ Deno.serve(async (req) => {
         p_member_id: input.member_id ?? null,
         p_channel: input.channel,
         p_category: input.category,
+        p_branch_id: input.branch_id ?? null,
       });
 
       const allowed = Array.isArray(pref) ? pref[0]?.allowed : pref?.allowed;

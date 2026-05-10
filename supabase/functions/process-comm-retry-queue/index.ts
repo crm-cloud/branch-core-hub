@@ -1,4 +1,7 @@
-// process-comm-retry-queue v2.0.0
+// process-comm-retry-queue v2.1.0
+// v2.1.0: Treat dispatcher `suppressed` (channel toggled off in Settings →
+//          Integrations) as TERMINAL — abandon the queue row instead of
+//          consuming retry attempts and producing endless 4xx loops.
 // v2.0.0: ALWAYS retry through `dispatch-communication` (was calling
 //          send-whatsapp/send-sms/send-email directly with the wrong contract,
 //          which produced `Missing required fields: message_id, phone_number,
@@ -128,6 +131,18 @@ Deno.serve(async (req) => {
         dispatchStatus = parsed?.status;
         if (resp.ok && (dispatchStatus === "sent" || dispatchStatus === "queued" || dispatchStatus === "deduped")) {
           success = true;
+        } else if (resp.ok && dispatchStatus === "suppressed") {
+          // Channel kill-switch (or member preference) — terminal, no retry.
+          await supabase
+            .from("communication_retry_queue")
+            .update({
+              status: "exhausted",
+              retry_count: (row.retry_count || 0) + 1,
+              last_error: parsed?.reason || "suppressed",
+            })
+            .eq("id", row.id);
+          results.push({ id: row.id, status: "suppressed", reason: parsed?.reason });
+          continue;
         } else {
           errorMsg = `dispatch ${resp.status}: ${parsed?.reason || parsed?.error || text.slice(0, 300)}`;
         }
