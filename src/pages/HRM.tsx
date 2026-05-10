@@ -370,7 +370,13 @@ export default function HRMPage() {
                 <div>
                   <p className="text-sm opacity-80">Total Staff</p>
                   <h3 className="text-3xl font-bold mt-1">{stats.total}</h3>
-                  <p className="text-xs opacity-70 mt-1">{stats.employees} Staff · {stats.trainers} Trainers</p>
+                  <p className="text-xs opacity-70 mt-1">
+                    {stats.employees} Managers/Staff · {stats.trainers} Trainer-only
+                    {(() => {
+                      const dual = (payrollStaff as PayrollStaffItem[]).filter(s => s.staff_type === 'employee' && s.user_id && trainerUserIds.has(s.user_id)).length;
+                      return dual > 0 ? ` · ${dual} dual-role` : '';
+                    })()}
+                  </p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
                   <Users className="h-6 w-6" />
