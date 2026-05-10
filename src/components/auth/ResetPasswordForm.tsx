@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Loader2, Lock, Eye, EyeOff, Check } from 'lucide-react';
+import { Loader2, Lock, Eye, EyeOff, Check, AlertCircle, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 
 const passwordSchema = z
@@ -16,13 +17,17 @@ const passwordSchema = z
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number');
 
+type LinkState = 'verifying' | 'ready' | 'invalid';
+
 export function ResetPasswordForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { updatePassword, user } = useAuth();
+  const [linkState, setLinkState] = useState<LinkState>('verifying');
+  const { updatePassword } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const passwordValidation = passwordSchema.safeParse(password);
   const passwordRequirements = [
@@ -32,38 +37,105 @@ export function ResetPasswordForm() {
     { met: /[0-9]/.test(password), text: 'One number' },
   ];
 
+  // Detect URL-level errors (Supabase appends ?error=... or #error=... when
+  // the recovery token is invalid/expired) and listen for the recovery session.
   useEffect(() => {
-    if (!user) {
-      toast.error('Invalid or expired reset link');
-      navigate('/auth');
+    const hash = window.location.hash || '';
+    const urlErr =
+      searchParams.get('error') ||
+      searchParams.get('error_code') ||
+      (hash.includes('error') ? 'invalid' : null);
+
+    if (urlErr) {
+      setLinkState('invalid');
+      return;
     }
-  }, [user, navigate]);
+
+    let resolved = false;
+    const finishReady = () => {
+      resolved = true;
+      setLinkState('ready');
+    };
+
+    // If a session is already present, we're good.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && !resolved) finishReady();
+    });
+
+    // Otherwise wait briefly for the PASSWORD_RECOVERY auth event.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session?.user) {
+        finishReady();
+      }
+    });
+
+    const timeout = setTimeout(() => {
+      if (!resolved) setLinkState('invalid');
+    }, 4000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!passwordValidation.success) {
       toast.error(passwordValidation.error.errors[0].message);
       return;
     }
-
     if (password !== confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
-
     setIsLoading(true);
     const { error } = await updatePassword(password);
     setIsLoading(false);
-
     if (error) {
       toast.error(error.message);
       return;
     }
-
     toast.success('Password updated successfully!');
-    navigate('/dashboard');
+    navigate('/auth');
   };
+
+  if (linkState === 'verifying') {
+    return (
+      <Card className="w-full max-w-md glass animate-in">
+        <CardContent className="py-12 flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Verifying reset link…</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (linkState === 'invalid') {
+    return (
+      <Card className="w-full max-w-md glass animate-in">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+            <AlertCircle className="h-7 w-7" />
+          </div>
+          <CardTitle className="text-2xl font-bold">Reset link invalid or expired</CardTitle>
+          <CardDescription>
+            For security, password reset links can only be used once and expire after a short time. Request a new link to try again.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Link to="/auth/forgot-password">
+            <Button className="w-full">Request a new reset link</Button>
+          </Link>
+          <Link to="/auth">
+            <Button variant="outline" className="w-full">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Sign In
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-md glass animate-in">
@@ -72,9 +144,7 @@ export function ResetPasswordForm() {
           <Lock className="h-7 w-7" />
         </div>
         <CardTitle className="text-2xl font-bold">Set New Password</CardTitle>
-        <CardDescription>
-          Enter your new password below
-        </CardDescription>
+        <CardDescription>Enter your new password below</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -94,6 +164,7 @@ export function ResetPasswordForm() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -136,8 +207,7 @@ export function ResetPasswordForm() {
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating...
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...
               </>
             ) : (
               'Update Password'

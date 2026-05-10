@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    const body = await req.json();
     const { 
       email, 
       fullName, 
@@ -78,7 +79,15 @@ Deno.serve(async (req) => {
       activityLevel,
       equipmentAvailability,
       injuriesLimitations,
-    } = await req.json()
+      password: suppliedPasswordRaw,
+    } = body;
+    const suppliedPassword = typeof suppliedPasswordRaw === 'string' ? suppliedPasswordRaw.trim() : '';
+    if (suppliedPassword && suppliedPassword.length < 8) {
+      return new Response(
+        JSON.stringify({ error: 'Password must be at least 8 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (!email || !fullName || !branchId) {
       return new Response(
@@ -94,6 +103,7 @@ Deno.serve(async (req) => {
     )
 
     let userId: string
+    let createdTempPassword: string | null = null
 
     if (existingUser) {
       // Check if a member record already exists for this auth user
@@ -138,9 +148,16 @@ Deno.serve(async (req) => {
           { onConflict: 'user_id,role' }
         )
 
+      // If admin supplied a password, reset it on the orphan auth user too
+      if (suppliedPassword) {
+        await supabaseAdmin.auth.admin.updateUserById(userId, { password: suppliedPassword })
+        createdTempPassword = suppliedPassword
+      }
+
     } else {
       // Create new auth user
-      const tempPassword = crypto.randomUUID().slice(0, 12)
+      const tempPassword = suppliedPassword || (crypto.randomUUID().slice(0, 10) + 'A1!')
+      createdTempPassword = tempPassword
 
       const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
@@ -261,6 +278,7 @@ Deno.serve(async (req) => {
         userId: userId,
         memberId: result.member_id,
         memberCode: result.member_code,
+        tempPassword: createdTempPassword,
         message: 'Member created successfully. They will set their password on first login.',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

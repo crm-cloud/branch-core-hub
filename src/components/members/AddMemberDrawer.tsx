@@ -22,6 +22,7 @@ import {
   EQUIPMENT_OPTIONS,
 } from '@/types/fitnessPlan';
 import { Checkbox } from '@/components/ui/checkbox';
+import { TempPasswordField } from '@/components/auth/TempPasswordField';
 
 interface AddMemberDrawerProps {
   open: boolean;
@@ -57,6 +58,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
   });
   const [equipmentAvailability, setEquipmentAvailability] = useState<string[]>([]);
   const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
+  const [tempPassword, setTempPassword] = useState('');
   const queryClient = useQueryClient();
 
   // Validate referral code
@@ -117,6 +119,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           activityLevel: data.activityLevel || null,
           equipmentAvailability,
           injuriesLimitations: data.injuriesLimitations || null,
+          password: tempPassword || undefined,
         },
       });
 
@@ -133,10 +136,20 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
       // Referral row is created server-side inside `create-member-user`
       // (transactional with member creation). Do not insert a duplicate here.
 
-      return { id: memberId, member_code: result.memberCode };
+      return { id: memberId, member_code: result.memberCode, tempPassword: result.tempPassword as string | null };
     },
-    onSuccess: () => {
-      toast.success('Member added successfully');
+    onSuccess: (res) => {
+      if (res.tempPassword) {
+        toast.success(`Member added. Temp password: ${res.tempPassword}`, {
+          duration: 15000,
+          action: {
+            label: 'Copy',
+            onClick: () => navigator.clipboard.writeText(res.tempPassword!),
+          },
+        });
+      } else {
+        toast.success('Member added successfully');
+      }
       invalidateMembersData(queryClient);
       if (branchFilter && branchFilter !== branchId) {
         const targetBranch = branches.find((b) => b.id === branchId);
@@ -177,6 +190,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     });
     setEquipmentAvailability([]);
     setReferrerInfo(null);
+    setTempPassword('');
   };
 
   const toggleEquipment = (value: string) => {
@@ -401,6 +415,10 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
               placeholder="Any medical conditions..."
               rows={2}
             />
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <TempPasswordField value={tempPassword} onChange={setTempPassword} />
           </div>
 
           <div className="flex gap-3 pt-4">
