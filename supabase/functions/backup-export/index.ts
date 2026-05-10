@@ -19,7 +19,7 @@ const TABLES = [
   "leads", "follow_ups",
   "classes", "class_bookings", "class_waitlist",
   "pt_packages", "member_pt_packages", "pt_sessions",
-  "diet_plans", "diet_templates", "workout_plans", "workout_templates", "exercises",
+  "diet_plans",
   "invoices", "invoice_items", "payments", "wallets", "wallet_transactions",
   "expenses", "expense_categories", "income_categories",
   "discount_codes",
@@ -36,7 +36,7 @@ const TABLES = [
   "referrals",
   "rewards_ledger",
   "approval_requests",
-  "ai_plan_logs", "ai_tool_logs",
+  "ai_tool_logs",
   "audit_logs",
 ];
 

@@ -12,7 +12,7 @@ import type { DietPlanContent, MealEntry, WorkoutDayEntry, WorkoutPlanContent } 
 // can use the global client directly.
 type Json = string | number | boolean | null | { [k: string]: Json } | Json[];
 
-export type WorkoutPlanSource = 'member_fitness_plans' | 'workout_plans';
+export type WorkoutPlanSource = 'member_fitness_plans';
 export type DietPlanSource = 'member_fitness_plans' | 'diet_plans';
 
 interface MealCatalogRow {

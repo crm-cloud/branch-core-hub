@@ -25,17 +25,11 @@ export function MemberPlanProgressBlock({ memberId }: Props) {
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ['member-plans-summary', memberId],
     queryFn: async () => {
-      const [{ data: fitness }, { data: workout }, { data: diet }] = await Promise.all([
+      const [{ data: fitness }, { data: diet }] = await Promise.all([
         supabase
           .from('member_fitness_plans')
           .select('*')
           .eq('member_id', memberId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('workout_plans')
-          .select('*')
-          .eq('member_id', memberId)
-          .eq('is_active', true)
           .order('created_at', { ascending: false }),
         supabase
           .from('diet_plans')
@@ -46,7 +40,7 @@ export function MemberPlanProgressBlock({ memberId }: Props) {
       ]);
       const out: Array<{
         id: string;
-        source: 'member_fitness_plans' | 'workout_plans' | 'diet_plans';
+        source: 'member_fitness_plans' | 'diet_plans';
         name: string;
         type: 'workout' | 'diet';
         validFrom?: string | null;
@@ -66,17 +60,6 @@ export function MemberPlanProgressBlock({ memberId }: Props) {
           isAI: p.is_ai_generated,
         });
       });
-      (workout || []).forEach((p: any) =>
-        out.push({
-          id: p.id,
-          source: 'workout_plans',
-          name: p.name || 'Workout Plan',
-          type: 'workout',
-          validFrom: p.start_date,
-          validUntil: p.end_date,
-          content: p.workout_data || {},
-        }),
-      );
       (diet || []).forEach((p: any) =>
         out.push({
           id: p.id,
