@@ -141,7 +141,7 @@ export default function CreateModePickerPage() {
                 <Button
                   variant="outline"
                   className="h-auto py-4 flex-col gap-2"
-                  onClick={() => navigate('/fitness/create/manual/workout')}
+                  onClick={() => navigate('/fitness/create/manual?type=workout')}
                 >
                   <Dumbbell className="h-5 w-5" />
                   <span className="text-sm">Workout Plan</span>
@@ -149,7 +149,7 @@ export default function CreateModePickerPage() {
                 <Button
                   variant="outline"
                   className="h-auto py-4 flex-col gap-2"
-                  onClick={() => navigate('/fitness/create/manual/diet')}
+                  onClick={() => navigate('/fitness/create/manual?type=diet')}
                 >
                   <UtensilsCrossed className="h-5 w-5" />
                   <span className="text-sm">Diet Plan</span>
