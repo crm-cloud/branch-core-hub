@@ -303,18 +303,149 @@ export default function CreateAIPage() {
               <CardTitle>Plan Setup</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Tabs value={type} onValueChange={(v) => setType(v as any)}>
-                <TabsList className="grid grid-cols-2 w-full sm:w-fit">
-                  <TabsTrigger value="workout" className="gap-1.5">
-                    <Dumbbell className="h-4 w-4" /> Workout
-                  </TabsTrigger>
-                  <TabsTrigger value="diet" className="gap-1.5">
-                    <UtensilsCrossed className="h-4 w-4" /> Diet
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <div className="flex flex-wrap items-center gap-3">
+                <Tabs value={type} onValueChange={(v) => setType(v as any)}>
+                  <TabsList className="grid grid-cols-2 w-full sm:w-fit">
+                    <TabsTrigger value="workout" className="gap-1.5">
+                      <Dumbbell className="h-4 w-4" /> Workout
+                    </TabsTrigger>
+                    <TabsTrigger value="diet" className="gap-1.5">
+                      <UtensilsCrossed className="h-4 w-4" /> Diet
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
-              <MemberSearchPicker value={member} onChange={(m) => { setMember(m); setProfile({}); }} required />
+                <Tabs value={mode} onValueChange={(v) => setMode(v as any)}>
+                  <TabsList className="grid grid-cols-2 w-full sm:w-fit">
+                    <TabsTrigger value="member" className="gap-1.5">
+                      <User className="h-4 w-4" /> Member-specific
+                    </TabsTrigger>
+                    <TabsTrigger value="audience" className="gap-1.5">
+                      <Users className="h-4 w-4" /> Common (no PT)
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {mode === 'member' ? (
+                <MemberSearchPicker value={member} onChange={(m) => { setMember(m); setProfile({}); }} required />
+              ) : (
+                <Card className="border-dashed bg-muted/30">
+                  <CardContent className="p-4 space-y-4">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Users className="h-4 w-4 text-primary" />
+                      Audience targeting
+                      <Badge variant="outline" className="ml-1 text-[10px]">Required</Badge>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Age min *</Label>
+                        <Input type="number" min={10} max={90} value={audAgeMin} onChange={(e) => setAudAgeMin(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Age max *</Label>
+                        <Input type="number" min={10} max={90} value={audAgeMax} onChange={(e) => setAudAgeMax(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Gender *</Label>
+                        <Select value={audGender} onValueChange={(v) => setAudGender(v as any)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="any">Any</SelectItem>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Experience *</Label>
+                      <div className="flex flex-wrap gap-3">
+                        {(['beginner', 'intermediate', 'advanced'] as const).map((lvl) => (
+                          <label key={lvl} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={audExperience.includes(lvl)}
+                              onCheckedChange={(c) => {
+                                setAudExperience((prev) => c
+                                  ? Array.from(new Set([...prev, lvl]))
+                                  : prev.filter((x) => x !== lvl));
+                              }}
+                            />
+                            <span className="capitalize">{lvl}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Weight min (kg)</Label>
+                        <Input type="number" placeholder="optional" value={audWeightMin} onChange={(e) => setAudWeightMin(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Weight max (kg)</Label>
+                        <Input type="number" placeholder="optional" value={audWeightMax} onChange={(e) => setAudWeightMax(e.target.value)} />
+                      </div>
+                      {type === 'workout' && (
+                        <div className="space-y-2">
+                          <Label>Days/week</Label>
+                          <Input type="number" min={1} max={7} value={audDaysPerWeek} onChange={(e) => setAudDaysPerWeek(e.target.value)} />
+                        </div>
+                      )}
+                    </div>
+
+                    {type === 'diet' && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Dietary type *</Label>
+                          <Select value={audDietaryType} onValueChange={setAudDietaryType}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="vegetarian">Vegetarian</SelectItem>
+                              <SelectItem value="vegan">Vegan</SelectItem>
+                              <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
+                              <SelectItem value="eggetarian">Eggetarian</SelectItem>
+                              <SelectItem value="jain">Jain</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cuisine *</Label>
+                          <Select value={audCuisine} onValueChange={setAudCuisine}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="indian">Indian</SelectItem>
+                              <SelectItem value="south_indian">South Indian</SelectItem>
+                              <SelectItem value="north_indian">North Indian</SelectItem>
+                              <SelectItem value="continental">Continental</SelectItem>
+                              <SelectItem value="mediterranean">Mediterranean</SelectItem>
+                              <SelectItem value="asian">Asian</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {type === 'workout' && (
+                      <div className="space-y-2">
+                        <Label>Equipment hint</Label>
+                        <Input
+                          placeholder="e.g. dumbbells + bench (or leave blank to use branch equipment)"
+                          value={audEquipmentHint}
+                          onChange={(e) => setAudEquipmentHint(e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    <p className="text-xs text-muted-foreground">
+                      This generates a reusable Common Plan. Save it as a template from the preview screen so the right
+                      members are auto-matched on their dashboard.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               <div className="space-y-2">
                 <Label>Plan Name *</Label>
