@@ -56,6 +56,9 @@ export async function fetchEquipment(branchId?: string) {
 export interface EquipmentLite {
   name: string;
   category: string | null;
+  primary_category: string | null;
+  muscle_groups: string[];
+  movement_pattern: string | null;
   brand: string | null;
   model: string | null;
 }
@@ -65,7 +68,7 @@ export async function fetchOperationalEquipmentLite(
 ): Promise<EquipmentLite[]> {
   let query = supabase
     .from('equipment')
-    .select('name, category, brand, model, status')
+    .select('name, category, primary_category, muscle_groups, movement_pattern, brand, model, status')
     .eq('status', 'operational')
     .order('name');
   if (branchId) query = query.eq('branch_id', branchId);
@@ -74,6 +77,9 @@ export async function fetchOperationalEquipmentLite(
   return (data || []).map((r: any) => ({
     name: r.name,
     category: r.category ?? null,
+    primary_category: r.primary_category ?? null,
+    muscle_groups: Array.isArray(r.muscle_groups) ? r.muscle_groups : [],
+    movement_pattern: r.movement_pattern ?? null,
     brand: r.brand ?? null,
     model: r.model ?? null,
   }));
