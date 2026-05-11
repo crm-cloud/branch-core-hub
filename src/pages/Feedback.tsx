@@ -41,6 +41,12 @@ export default function FeedbackPage() {
   const queryClient = useQueryClient();
   const { effectiveBranchId: branchId = '' } = useBranchContext();
 
+  useRealtimeInvalidate({
+    channel: 'page-feedback',
+    tables: ['feedback'],
+    invalidateKeys: [['feedback']],
+  });
+
   const { data: feedbackList = [], isLoading } = useQuery({
     queryKey: ['feedback', branchId, statusFilter, ratingFilter, requestFilter, reviewFilter, unresolvedLow],
     queryFn: async () => {
