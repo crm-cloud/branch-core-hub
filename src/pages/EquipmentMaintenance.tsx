@@ -38,9 +38,16 @@ export default function EquipmentMaintenancePage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [equipmentToEdit, setEquipmentToEdit] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const queryClient = useQueryClient();
   const { effectiveBranchId = '' } = useBranchContext();
   const currentBranchId = effectiveBranchId || undefined;
+  const { roles } = useAuth();
+  const roleNames = (roles || []).map((r) => r.role);
+  const canViewPrice = can.viewFinancials(roleNames);
+  const canDelete = roleNames.includes('owner') || roleNames.includes('admin');
 
   const { data: equipment = [], isLoading } = useQuery({
     queryKey: ['equipment-list', currentBranchId],
