@@ -330,9 +330,11 @@ export default function EquipmentMaintenancePage() {
           </Card>
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          YTD maintenance cost: <span className="font-semibold text-primary">₹{totalMonthlyCost.toLocaleString()}</span>
-        </div>
+        {canViewPrice && (
+          <div className="text-xs text-muted-foreground">
+            YTD maintenance cost: <span className="font-semibold text-primary">₹{totalMonthlyCost.toLocaleString()}</span>
+          </div>
+        )}
 
         <Tabs defaultValue="equipment">
           <TabsList>
