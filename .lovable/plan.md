@@ -1,92 +1,125 @@
-## Goal
 
-Backfill the 77 equipment rows with correct `primary_category`, `muscle_groups`, and `movement_pattern` based on a careful audit of each **machine name** (ignoring brand/model), and update the AI workout generator so it never references brand or model numbers — only the clean machine name.
+## 1. Equipment — Better strategy than blind deduplication
 
-Currently 71/77 rows are missing `movement_pattern` and 68/77 are missing `muscle_groups`. A few existing values are also wrong (e.g. Hip Thrust tagged as `hip_adductors push` instead of `glutes hinge`).
+### The problem with merging duplicates
+Each treadmill / bench is a **physical asset** with its own:
+- Serial number, purchase date, warranty
+- Maintenance history (one treadmill might be broken, the others fine)
+- Status (operational / maintenance / out-of-order)
+- QR code for member check-in / fault reporting
 
-## Part 1 — DB backfill (single migration)
+If we collapse "Treadmill ×4" into one row with `quantity=4`, we lose **per-unit maintenance tracking, per-unit status, and per-unit warranty** — which defeats the purpose of an equipment register.
 
-Updates by `id` so duplicate-name rows are safe. Accessories (benches, racks, plate trees) intentionally keep `muscle_groups=[]` and `movement_pattern=NULL` — they don't train muscles directly. Categories will also be corrected where wrong (e.g. Lat Pulldown was `accessory` → `strength_machine`).
+### Recommended approach (keep granularity, fix the noise)
 
-Audited mapping (taxonomy values from `src/lib/equipment/taxonomy.ts`):
+**A. Keep one row per physical unit** (no destructive merge).
 
-```text
-4 Stack Multi Wrist Curl        strength_machine  [forearms]                    isolation
-Altnerate Bicep Curling         strength_machine  [biceps]                      pull
-Alternate leg curling           strength_machine  [hamstrings]                  isolation
-Alternate leg extension         strength_machine  [quads]                       isolation
-BB 3D Multi Abductor            strength_machine  [hip_abductors]               isolation
-BB Platinum V4 Hip Thrust       strength_machine  [glutes]                      hinge   (fix)
-BB Reverse Lunge Machine        strength_machine  [glutes,quads,hamstrings]     lunge
-BB Selectorized Back Extension  strength_machine  [lower_back,glutes]           hinge   (fix)
-BB Selectorized Hip Abductor    strength_machine  [hip_abductors]               isolation
-BB Split Squat & Deadlift       strength_machine  [glutes,quads,hamstrings]     squat
-Cable Crossover                 cable             [chest]                       push
-CHEST FLY & PEC DECK COMBO      strength_machine  [chest]                       isolation (fix cat)
-CHEST FLY PANATTA               strength_machine  [chest]                       isolation
-Chin and dip counterbalanced    strength_machine  [back_lats,chest,triceps]     pull    (fix cat)
-Curve treadmills                cardio            [cardio_lower]                gait
-Dips press dual system          strength_machine  [chest,triceps,shoulders]     push    (fix cat)
-FRONT DORSY BAR                 strength_machine  [back_lats]                   pull    (fix cat)
-Hack Squat                      strength_machine  [quads,glutes]                squat
-Lat pulldown                    strength_machine  [back_lats,biceps]            pull    (fix cat)
-LCD Climber                     cardio            [cardio_lower]                gait
-LCD Elliptical                  cardio            [full_body]                   gait
-LED Elliptical                  cardio            [full_body]                   gait
-Leg extension                   strength_machine  [quads]                       isolation (fix cat)
-Panatta Back 2 Deltoids         strength_machine  [shoulders]                   pull    (fix cat)
-PANATTA BACK DELTOIDS           strength_machine  [shoulders]                   pull
-Panatta Super Lower Chest Flight strength_machine [chest]                       push    (fix cat)
-Peck back (Pec deck rear)       strength_machine  [shoulders,back_traps]        pull    (fix cat)
-Power Smith Machine Dual        functional        [full_body]                   squat   (fix cat)
-Pulley row                      cable             [back_lats,back_traps]        pull    (fix cat)
-Roman Chair                     accessory         [lower_back,core_abs]         hinge
-Single Twister                  accessory         [core_obliques]               rotation
-Skiing machine                  cardio            [full_body]                   pull
-Smith Machine                   functional        [full_body]                   squat   (keep)
-Spinning Bike (x4)              cardio            [cardio_lower]                gait
-Stair Master                    cardio            [cardio_lower]                gait
-Standing Bentover Row           strength_machine  [back_lats,back_traps]        pull    (fix cat)
-Standing Total Arms             strength_machine  [biceps,triceps,forearms]     isolation (fix pattern)
-Super declined chest press      strength_machine  [chest,triceps]               push    (fix cat)
-SUPER DELTOID PRESS             strength_machine  [shoulders,triceps]           push    (fix cat)
-SUPER HORIZONTAL MULTI PRESS    strength_machine  [chest,triceps]               push    (fix cat)
-Super inclined bench press      strength_machine  [chest,shoulders,triceps]     push    (fix cat)
-SUPER LAT MACHINE CONVERGENT    strength_machine  [back_lats]                   pull    (fix cat)
-SUPER LAT PULLDOWN CIRCULAR     strength_machine  [back_lats]                   pull    (fix cat)
-SUPER LEG PRESS 45°             strength_machine  [quads,glutes,hamstrings]     squat   (fix cat)
-SUPER PULLOVER MACHINE          strength_machine  [back_lats,chest]             pull    (fix cat)
-SUPER ROWING CIRCULAR           strength_machine  [back_lats,back_traps]        pull    (fix cat)
-Super seated calf               strength_machine  [calves]                      isolation (fix cat)
-T-BAR ROW                       strength_machine  [back_lats,back_traps]        pull    (fix cat)
-Total core crunch machine       strength_machine  [core_abs]                    isolation (fix cat)
-Treadmill (x4)                  cardio            [cardio_lower]                gait
-Vertical Knee Raise             strength_machine  [core_abs]                    isolation (fix pattern)
-VERTICAL LEG PRESS              strength_machine  [quads,glutes]                squat   (fix cat)
-Wind resistance rowing machine  cardio            [full_body]                   pull    (fix cat)
-Functional Trainer              functional        [full_body]                   carry
-```
+**B. Add an auto-numbered display name** so the list reads cleanly:
+- Show as `Treadmill #1, Treadmill #2, Treadmill #3, Treadmill #4` in the table
+- Computed client-side from `name + row_number() over (partition by name)` — no schema change
+- AI prompt for plan generation already de-dupes by name, so this stays correct
 
-Pure accessories (no muscle/pattern, just confirm `accessory`):
-Adjustable Bench (×3), Adjustable Web Board, Dumbell Rack-3 Tier (×2), Olympic Decline/Flat/Incline Bench, Power rack, Rotating dumbbell rack (×2), Scott Bench (×2), Utility Bench, Weight Plate Tree (×2).
+**C. Add a "Group by model" toggle** on the All Equipment tab:
+- Default: flat list
+- Grouped: one card per name showing `4 units · 3 operational · 1 in maintenance` with expandable sub-rows
+- Pure UI — no DB change
 
-## Part 2 — AI prompt cleanup
+**D. Add Delete + Bulk actions** (currently missing):
+- Per-row `Delete` in the actions column (soft-delete via `status='retired'` is already supported; add a true delete with confirm dialog for owners only)
+- Row checkboxes + bulk bar: Set Status / Delete (owner only)
+- New `deleteEquipment(id)` in `equipmentService.ts` with FK-safe handling (block delete if maintenance records exist → suggest "Retire" instead)
 
-`supabase/functions/generate-fitness-plan/index.ts` line ~196–205: the equipment list currently appends `— {brand} {model}` to each line, which leaks brand/model into the AI's context and into generated exercise names. 
+**E. (Optional, future) Asset tag column** — short code like `TRD-01` printed on the QR sticker so staff know exactly which unit needs service.
 
-Change:
-- Drop the `brand`/`model` suffix entirely.
-- Strengthen the instruction: *"Use ONLY the clean machine name in the `exercise` field — never include brand names, model codes, SKUs, or numbers like FW2035 / PT-101 / 1FW044."*
-- Bump version comment to `// v1.1.0 — equipment prompt: machine name only`.
+### Why this is better than `quantity`
+| Concern | `quantity` field | One row per unit (recommended) |
+|---|---|---|
+| Maintenance per unit | ❌ Lost | ✅ Preserved |
+| Per-unit status | ❌ Lost | ✅ Preserved |
+| Warranty/serial tracking | ❌ Lost | ✅ Preserved |
+| Cleaner list | ✅ | ✅ (via group toggle) |
+| AI plan generator correctness | ✅ | ✅ (already de-dupes by name) |
 
-No other files need to change — the `Exercises` UI already displays the user-entered equipment name only.
+---
 
-## Files
+## 2. RBAC — Hide Purchase Price from Staff & Manager
 
-- `supabase/migrations/<new>.sql` — one UPDATE per audited row, keyed by id
-- `supabase/functions/generate-fitness-plan/index.ts` — strip brand/model from prompt, tighten instruction
+**Rule:** Purchase price + total asset value = **Owner only** (financial data).
 
-## Out of scope
+Changes in `EquipmentMaintenance.tsx` + `AddEquipmentDrawer.tsx`:
+- Wrap the `Purchase Price` table column, the `Purchase Price` form field, and the `Total Value` KPI tile with `can.viewFinancials(roles)` (owner-only capability)
+- Manager/Staff see the table without that column; the KPI row collapses gracefully
+- The `purchase_price` column is also masked at the API layer for non-owners (RLS check via `has_capability('view_equipment_cost')`) — defence in depth
 
-- Renaming equipment rows (names like "Altnerate Bicep Curling" with typos). Not requested; user only asked for category/movement backfill + AI naming hygiene.
-- Deduplicating obvious duplicates (4× Treadmill, 3× Adjustable Bench). Likely intentional (one row per physical unit for maintenance).
+This matches the existing pattern documented in `mem://architecture/p4-app-layer-hardening` (capability-based access via `can.X`).
+
+---
+
+## 3. Workout & Diet PDFs — premium redesign
+
+The current PDFs (in `src/utils/pdfGenerator.ts`) are plain HTML with an indigo accent — not on-brand and not visually engaging. Reference images show bold typographic headers, day-grid cards, motivational hero blocks, and a footer band.
+
+### New design language (matches Incline brand, inspired by uploaded references)
+
+**Cover/Header band**
+- Full-width dark hero: `#0F172A` background, Incline logo (top-left, from `public/incline-logo.png` or branch logo via `useBrandContext`)
+- Big display title: **"YOUR 7-DAY WORKOUT PLAN"** / **"YOUR PERSONALIZED DIET PLAN"** in Inter Black, white, with an orange/violet accent bar
+- Sub-line: member name · plan duration · trainer name (if assigned)
+
+**Motivational quote strip** (just under hero)
+- Italic pull-quote in a soft gradient band (violet→indigo for workout, emerald→teal for diet)
+- Rotating pool of ~10 curated quotes per type, picked deterministically from `plan.id` so the same plan always shows the same quote
+
+**Body — Workout**
+- Day cards in a 2-column grid (Mon–Sun), each card:
+  - Bold day label on a dark chip (matches reference image #1)
+  - Mini table: `EXERCISE · SETS · REPS · REST` with zebra rows
+  - Equipment name only (no brand/model — already enforced by `generate-fitness-plan` v1.1.0)
+- Section header bars with the orange accent line (reference #1)
+
+**Body — Diet**
+- Daily calorie target chip + macro split (P / C / F) bar
+- Meal cards (Breakfast, Mid-Morning, Lunch, Snack, Dinner) with portion + kcal
+- Hydration & supplements row at the end
+
+**Do's and Don'ts panel** (both PDF types)
+- Two side-by-side cards on the last content page:
+  - ✅ **DO** — green tint, list of 6 items (warm up, hydrate, log progress, sleep 7-8h, progressive overload, ask trainer)
+  - ⛔ **DON'T** — red tint, list of 6 items (skip warm-up, ego-lift, train through sharp pain, crash diet, etc.)
+- Diet variant gets diet-specific items (don't skip meals, avoid late-night carbs, etc.)
+
+**Pro Tips strip**
+- 3-tip horizontal card row with lucide-style icons rendered as inline SVG
+- Workout tips: form > weight, track sessions, deload weekly
+- Diet tips: prep meals Sunday, eat protein at every meal, sleep matters
+
+**Footer band**
+- Dark band with: Incline logo + "The Incline Life by Incline" (legal name per brand memory) · branch address · contact · plan generated date
+- Page number + "Personalized for {member_name}" watermark
+
+### Implementation
+- Refactor `generatePlanPDF` in `src/utils/pdfGenerator.ts`:
+  - Split into `renderWorkoutPdfHtml(plan, brand)` and `renderDietPdfHtml(plan, brand)`
+  - New shared partials: `renderHero`, `renderQuoteStrip`, `renderDosAndDonts`, `renderTipsStrip`, `renderFooter`
+  - Pull `brand.logoUrl` + `brand.companyName` from `useBrandContext` (caller passes it in — keeps the util pure)
+  - Inline base64 fallback for the default logo so the PDF renders even when the user prints without internet
+- New module `src/utils/pdfContent.ts`:
+  - `WORKOUT_QUOTES`, `DIET_QUOTES`, `WORKOUT_DOS`, `WORKOUT_DONTS`, `DIET_DOS`, `DIET_DONTS`, `WORKOUT_TIPS`, `DIET_TIPS`
+- Print stylesheet tuned for A4, page-break-inside: avoid on every card, hero only on first page
+
+### Files touched
+- `src/utils/pdfGenerator.ts` — full rewrite of plan PDF section (contract PDF untouched)
+- `src/utils/pdfContent.ts` — new (quotes / dos / donts / tips)
+- `src/pages/MyWorkout.tsx`, `src/pages/MyDiet.tsx`, `src/utils/sendPlanToMember.ts` — pass brand context into `generatePlanPDF`
+- `src/services/equipmentService.ts` — add `deleteEquipment`, capability-aware `fetchEquipment` projection
+- `src/pages/EquipmentMaintenance.tsx` — auto-numbered display names, group-by-name toggle, delete + bulk actions, hide price column for non-owners
+- `src/components/equipment/AddEquipmentDrawer.tsx` — hide Purchase Price field for non-owners
+- `supabase/migrations/<new>.sql` — `view_equipment_cost` capability + grant to owner role; RLS column-level guard via SECURITY DEFINER view (optional, defence-in-depth)
+
+### QA
+- Generate one workout + one diet PDF, render to images via the pdf skill, inspect for: overflow, missing logo, broken page breaks, contrast.
+- Manually test as Staff and Manager logins: confirm Purchase Price column + field + Total Value tile are absent.
+- Test delete flow: with maintenance records present (should block + offer Retire), without (should hard-delete).
+
+### Open question
+Do you want a single delete action (hard delete + cascade maintenance), or **soft-retire by default + hard-delete only when no history exists**? I recommend the latter — it preserves the audit trail.
