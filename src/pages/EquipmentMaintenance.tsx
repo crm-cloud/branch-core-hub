@@ -458,7 +458,9 @@ export default function EquipmentMaintenancePage() {
                             </div>
                           </TableCell>
                           <TableCell>{item.location || '-'}</TableCell>
-                          <TableCell>₹{(item.purchase_price || 0).toLocaleString()}</TableCell>
+                          {canViewPrice && (
+                            <TableCell>₹{(item.purchase_price || 0).toLocaleString()}</TableCell>
+                          )}
                           <TableCell>
                             {item.warranty_expiry ? (
                               new Date(item.warranty_expiry) > new Date() ? (
