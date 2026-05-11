@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { getNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Zap } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Zap, UserCircle } from 'lucide-react';
 import { AutomationsControlRoom } from '@/components/settings/AutomationsControlRoom';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
 import { BackupRestore } from '@/components/settings/BackupRestore';
@@ -66,12 +67,30 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   howbody: <HowbodySettings />,
 };
 
+const PERSONAL_TABS = new Set(['appearance', 'notifications']);
+const ADMIN_ROLES = new Set(['owner', 'admin', 'manager']);
+
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'organization';
   const [navMode, setNavModeState] = useState<NavMode>(getNavMode);
+  const { roles } = useAuth();
 
   useEffect(() => subscribeNavMode(setNavModeState), []);
+
+  const isAdminLike = useMemo(
+    () => roles.some((r) => ADMIN_ROLES.has(r.role)),
+    [roles]
+  );
+
+  const visibleMenu = useMemo(
+    () => (isAdminLike ? SETTINGS_MENU : SETTINGS_MENU.filter((m) => PERSONAL_TABS.has(m.value))),
+    [isAdminLike]
+  );
+
+  const defaultTab = isAdminLike ? 'organization' : 'appearance';
+  const requestedTab = searchParams.get('tab') || defaultTab;
+  // Out-of-scope tabs for non-admin → bounce to default
+  const activeTab = visibleMenu.some((m) => m.value === requestedTab) ? requestedTab : defaultTab;
 
   const handleTabChange = (value: string) => {
     setSearchParams({ tab: value });
@@ -83,13 +102,15 @@ export default function SettingsPage() {
     <div className="flex items-center gap-3">
       <SettingsIcon className="h-8 w-8 text-primary" />
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your organization settings</p>
+        <h1 className="text-2xl font-bold">{isAdminLike ? 'Settings' : 'Preferences'}</h1>
+        <p className="text-muted-foreground">
+          {isAdminLike ? 'Manage your organization settings' : 'Personalize your experience'}
+        </p>
       </div>
     </div>
   );
 
-  const content = SETTINGS_CONTENT[activeTab] || <OrganizationSettings />;
+  const content = SETTINGS_CONTENT[activeTab] || (isAdminLike ? <OrganizationSettings /> : <ThemePicker />);
 
   if (isHorizontalStacked) {
     return (
@@ -99,7 +120,7 @@ export default function SettingsPage() {
           <div className="rounded-2xl bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70 shadow-sm">
             <ScrollArea className="w-full">
               <nav className="flex items-center gap-1 px-2 py-2 lg:justify-center">
-                {SETTINGS_MENU.map((item) => {
+                {visibleMenu.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.value;
                   return (
@@ -144,7 +165,7 @@ export default function SettingsPage() {
           {/* Sidebar Navigation */}
           <nav className="w-full md:w-60 shrink-0">
             <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
-              {SETTINGS_MENU.map((item) => {
+              {visibleMenu.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.value;
                 return (
