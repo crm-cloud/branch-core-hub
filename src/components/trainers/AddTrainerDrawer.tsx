@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +41,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState('');
   const createTrainer = useCreateTrainer();
+  const queryClient = useQueryClient();
 
   // Form data for linking existing user
   const [linkFormData, setLinkFormData] = useState({
@@ -154,6 +156,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
       });
 
       toast.success('Trainer profile created');
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
       onOpenChange(false);
       resetForms();
     } catch (error) {
@@ -197,6 +200,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
         duration: 12000,
         action: { label: 'Copy', onClick: () => navigator.clipboard.writeText(DEFAULT_TEMP_PASSWORD) },
       });
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
       onOpenChange(false);
       resetForms();
     } catch (error: any) {
