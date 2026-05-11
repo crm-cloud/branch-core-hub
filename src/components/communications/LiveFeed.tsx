@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { DeliveryTimeline } from './DeliveryTimeline';
 import { KpiStrip, type KpiCounts } from './KpiStrip';
+import { formatPhoneDisplay, phoneVariants } from '@/lib/contacts/phone';
 
 type ChannelKey = 'all' | 'whatsapp' | 'sms' | 'email' | 'in_app';
 
