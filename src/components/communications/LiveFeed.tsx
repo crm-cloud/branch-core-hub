@@ -86,6 +86,114 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
 
   const [livePulse, setLivePulse] = useState(0);
 
+  // Batched name lookup keyed by member_id and by normalized phone/email.
+  const { data: nameMap = {} } = useQuery({
+    queryKey: ['comm-live-feed-names', logs.map((l: any) => l.id).join(',')],
+    enabled: logs.length > 0,
+    queryFn: async () => {
+      const memberIds = Array.from(new Set((logs as any[]).map((l) => l.member_id).filter(Boolean)));
+      const phones = new Set<string>();
+      const emails = new Set<string>();
+      for (const l of logs as any[]) {
+        if (l.member_id) continue;
+        if (l.type === 'whatsapp' || l.type === 'sms') {
+          for (const v of phoneVariants(l.recipient)) phones.add(v);
+        } else if (l.type === 'email' && l.recipient) {
+          emails.add(String(l.recipient).toLowerCase());
+        }
+      }
+
+      const map: Record<string, string> = {};
+      const setName = (key: string | null | undefined, name: string | null | undefined) => {
+        if (!key || !name) return;
+        const k = key.toLowerCase();
+        if (!map[k]) map[k] = name;
+      };
+
+      const tasks: Promise<unknown>[] = [];
+      if (memberIds.length) {
+        tasks.push(
+          supabase
+            .from('members')
+            .select('id, full_name, phone_number, email')
+            .in('id', memberIds)
+            .then(({ data }) => {
+              for (const m of data || []) {
+                setName(m.id, m.full_name);
+                for (const v of phoneVariants(m.phone_number)) setName(v, m.full_name);
+                if (m.email) setName(m.email, m.full_name);
+              }
+            }),
+        );
+      }
+      if (phones.size) {
+        const phoneList = Array.from(phones);
+        tasks.push(
+          supabase
+            .from('members')
+            .select('full_name, phone_number')
+            .in('phone_number', phoneList)
+            .then(({ data }) => {
+              for (const m of data || []) {
+                for (const v of phoneVariants(m.phone_number)) setName(v, m.full_name);
+              }
+            }),
+        );
+        tasks.push(
+          supabase
+            .from('leads')
+            .select('full_name, phone')
+            .in('phone', phoneList)
+            .then(({ data }) => {
+              for (const l of data || []) {
+                for (const v of phoneVariants(l.phone)) setName(v, l.full_name);
+              }
+            }),
+        );
+        tasks.push(
+          supabase
+            .from('whatsapp_chat_settings')
+            .select('contact_name, phone_number')
+            .in('phone_number', phoneList)
+            .then(({ data }) => {
+              for (const c of data || []) {
+                for (const v of phoneVariants(c.phone_number)) setName(v, c.contact_name);
+              }
+            }),
+        );
+      }
+      if (emails.size) {
+        const emailList = Array.from(emails);
+        tasks.push(
+          supabase
+            .from('members')
+            .select('full_name, email')
+            .in('email', emailList)
+            .then(({ data }) => {
+              for (const m of data || []) setName(m.email, m.full_name);
+            }),
+        );
+      }
+      await Promise.all(tasks);
+      return map;
+    },
+    staleTime: 60_000,
+  });
+
+  function resolveName(log: any): string | null {
+    if (log.member_id && nameMap[log.member_id.toLowerCase()]) return nameMap[log.member_id.toLowerCase()];
+    if (log.type === 'whatsapp' || log.type === 'sms') {
+      for (const v of phoneVariants(log.recipient)) {
+        const n = nameMap[v.toLowerCase()];
+        if (n) return n;
+      }
+    }
+    if (log.recipient && nameMap[String(log.recipient).toLowerCase()]) {
+      return nameMap[String(log.recipient).toLowerCase()];
+    }
+    return null;
+  }
+
   useEffect(() => {
     const invalidate = () => {
       qc.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'comm-live-feed' });
