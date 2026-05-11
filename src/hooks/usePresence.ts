@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -146,24 +147,59 @@ export function usePresenceHeartbeat() {
   }, [user?.id]);
 }
 
-/** Subscribes to the shared channel and returns the deduped list of online users. */
+/**
+ * Returns the merged list of online users:
+ * - Realtime presence (currently joined to the `presence:app` channel), AND
+ * - Anyone whose `profiles.last_seen_at` is within the last 5 minutes (DB fallback).
+ *
+ * This guarantees that a freshly-logged-in user (e.g. a member on a slow tab,
+ * or someone whose realtime join hasn't propagated yet) still appears in
+ * "Online Now", regardless of role.
+ */
 export function useOnlineUsers(): OnlineUser[] {
   const { user } = useAuth();
-  const [users, setUsers] = useState<OnlineUser[]>(state.users);
+  const [realtimeUsers, setRealtimeUsers] = useState<OnlineUser[]>(state.users);
 
   useEffect(() => {
-    if (!user) { setUsers([]); return; }
+    if (!user) { setRealtimeUsers([]); return; }
     state.refCount++;
     ensureChannel(user.id);
-    const cb = (u: OnlineUser[]) => setUsers(u);
+    const cb = (u: OnlineUser[]) => setRealtimeUsers(u);
     state.listeners.add(cb);
-    // Push current snapshot immediately.
-    setUsers(state.users);
+    setRealtimeUsers(state.users);
     return () => {
       state.listeners.delete(cb);
       releaseChannel();
     };
   }, [user?.id]);
 
-  return users;
+  // DB-backed fallback — polls every 30s. Works for every role (RPC is SECURITY DEFINER).
+  const { data: dbUsers } = useQuery({
+    queryKey: ['online-users-db'],
+    enabled: !!user,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+    queryFn: async (): Promise<OnlineUser[]> => {
+      const { data, error } = await supabase.rpc('get_online_users', { stale_minutes: 5 });
+      if (error) throw error;
+      return (data ?? []).map((r: any) => ({
+        user_id: r.user_id,
+        full_name: r.full_name ?? null,
+        avatar_url: r.avatar_url ?? null,
+        roles: r.roles ?? [],
+        online_at: r.last_seen_at,
+      }));
+    },
+  });
+
+  return useMemo(() => {
+    const map = new Map<string, OnlineUser>();
+    for (const u of dbUsers ?? []) map.set(u.user_id, u);
+    // Realtime takes precedence (fresher metadata, definitely live).
+    for (const u of realtimeUsers) map.set(u.user_id, u);
+    return Array.from(map.values()).sort((a, b) =>
+      (a.full_name ?? '').localeCompare(b.full_name ?? '')
+    );
+  }, [dbUsers, realtimeUsers]);
 }
