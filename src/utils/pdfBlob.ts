@@ -585,9 +585,12 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
   dos.forEach((item, i) => {
-    doc.setTextColor(16, 185, 129);
-    doc.text('✓', 19, py + 18 + i * 12);
+    // Filled circle as a "do" marker — safe in built-in Helvetica.
+    doc.setFillColor(16, 185, 129);
+    doc.circle(20.5, py + 16 + i * 12, 1.4, 'F');
     doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     const lines = doc.splitTextToSize(item, 76);
     doc.text(lines, 25, py + 18 + i * 12);
   });
@@ -604,9 +607,15 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   donts.forEach((item, i) => {
-    doc.setTextColor(239, 68, 68);
-    doc.text('✕', 113, py + 18 + i * 12);
+    // Two diagonal strokes form a clean "x" — safe in built-in Helvetica.
+    doc.setDrawColor(239, 68, 68);
+    doc.setLineWidth(0.6);
+    const cx = 114, cy = py + 16 + i * 12, r = 1.6;
+    doc.line(cx - r, cy - r, cx + r, cy + r);
+    doc.line(cx - r, cy + r, cx + r, cy - r);
     doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     const lines = doc.splitTextToSize(item, 76);
     doc.text(lines, 119, py + 18 + i * 12);
   });
