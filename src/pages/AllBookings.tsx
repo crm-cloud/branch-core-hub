@@ -37,6 +37,16 @@ export default function AllBookingsPage() {
 
   // Cmd+K: ?facility=1 / ?class=1 open the concierge drawer; ?focus handled by useHighlightRow
   useHighlightRow();
+  useRealtimeInvalidate({
+    channel: 'page-all-bookings',
+    tables: ['class_bookings', 'benefit_bookings', 'pt_sessions'],
+    invalidateKeys: [
+      ['all-class-bookings'],
+      ['all-benefit-bookings'],
+      ['all-pt-sessions'],
+      ['monthly-bookings-calendar'],
+    ],
+  });
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.get('facility') === '1' || url.searchParams.get('class') === '1') {
