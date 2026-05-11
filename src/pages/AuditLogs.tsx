@@ -224,18 +224,51 @@ export default function AuditLogsPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2"><Filter className="h-4 w-4" /><CardTitle className="text-base">Filters</CardTitle></div>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-5">
-              <div className="space-y-2">
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground mr-1">Quick range:</span>
+              {[
+                { label: 'Today', d: 0 },
+                { label: '7d', d: 7 },
+                { label: '30d', d: 30 },
+                { label: '90d', d: 90 },
+              ].map(r => (
+                <Button key={r.label} variant="outline" size="sm" className="h-7 px-3 text-xs" onClick={() => setQuickRange(r.d)}>
+                  {r.label}
+                </Button>
+              ))}
+            </div>
+            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+              <div className="space-y-2 lg:col-span-2">
                 <Label>Search</Label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Actor, table, record..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} className="pl-9" />
+                  <Input placeholder="Actor, target, table, ID..." value={filters.search} onChange={(e) => { setFilters({ ...filters, search: e.target.value }); setCurrentPage(1); }} className="pl-9" />
                 </div>
               </div>
               <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={filters.category} onValueChange={(v) => { setFilters({ ...filters, category: v as any, table: 'all' }); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {Object.entries(CATEGORY_LABEL).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Actor</Label>
+                <Select value={filters.actor} onValueChange={(v) => { setFilters({ ...filters, actor: v }); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Actors</SelectItem>
+                    {actorNames.map((n: string) => (<SelectItem key={n} value={n}>{n}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Action</Label>
-                <Select value={filters.action} onValueChange={(v) => setFilters({ ...filters, action: v })}>
+                <Select value={filters.action} onValueChange={(v) => { setFilters({ ...filters, action: v }); setCurrentPage(1); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Actions</SelectItem>
@@ -247,21 +280,23 @@ export default function AuditLogsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Table</Label>
-                <Select value={filters.table} onValueChange={(v) => setFilters({ ...filters, table: v })}>
+                <Select value={filters.table} onValueChange={(v) => { setFilters({ ...filters, table: v }); setCurrentPage(1); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Tables</SelectItem>
-                    {tableNames.map((t) => (<SelectItem key={t} value={t}>{formatTableName(t)}</SelectItem>))}
+                    {tableNames
+                      .filter(t => filters.category === 'all' || categoryOf(t) === filters.category)
+                      .map((t) => (<SelectItem key={t} value={t}>{formatTableName(t)}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>From</Label>
-                <Input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} />
+                <Input type="date" value={filters.dateFrom} onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setCurrentPage(1); }} />
               </div>
               <div className="space-y-2">
                 <Label>To</Label>
-                <Input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} />
+                <Input type="date" value={filters.dateTo} onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setCurrentPage(1); }} />
               </div>
             </div>
           </CardContent>
