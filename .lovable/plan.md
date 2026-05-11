@@ -1,103 +1,58 @@
-## Goal
+## Audit findings (recap)
 
-Audit and make the following pages **truly real-time** — data updates the moment something changes in the database, no manual refresh required:
+The hardware-failure fallback exists — it's the **"Staff Check-in" tab** in `/attendance-dashboard`, backed by atomic `staff_check_in` / `staff_check_out` RPCs. Data path is healthy. The screenshots show "0" because:
+1. The big top search bar is **member-only** — typing a staff name ("Ritesh Sharma", "Bhagirath") returns "No members found", so users assume the system is broken.
+2. Self-check-in is (correctly) disabled, but there is no clear hierarchy UI telling a manager / admin where to record the punch.
+3. `/staff-attendance` redirects to `/attendance-dashboard`, so the deprecated self-service page is no longer reachable (good — matches your policy).
 
-- `/attendance-dashboard` (Members / Staff Check-in / Staff Log / History tabs)
-- `/classes`
-- `/feedback`
-- `/all-bookings`
-- `/store`
-- `/finance`
-- `/payments`
-- `/approvals`
+---
 
-## Audit findings
+## Hierarchy policy (locked in, per your direction)
 
-| Page | Current behaviour | Gap |
-|---|---|---|
-| Attendance Dashboard | TanStack Query, invalidates only after own mutations | No DB push → tab opened on Page A doesn't update when Page B / hardware writes |
-| Classes | Plain queries, no realtime | Same |
-| Feedback | Queries + own-mutation invalidation | No realtime when a member submits feedback |
-| All Bookings | Queries + own-mutation invalidation | New bookings from members/portal don't appear |
-| Store | Queries only | New POS sale, member order, stock change → invisible |
-| Finance | Queries + own invalidation | New payment / POS sale / expense from other users → invisible |
-| Payments | Queries + own invalidation | New invoice / payment from billing → invisible |
-| Approvals | Has `postgres_changes` on `approval_requests` | Subscription works but `approval_requests` is **not in `supabase_realtime` publication**, so events never arrive |
+**Nobody marks their own attendance. Everyone — including owner/admin — must pass the turnstile (biometric).**
+The manual flow on `/attendance-dashboard` is a **biometric-failure fallback only**, and it must enforce a strict "punch up" rule:
 
-Underlying issue: only ~21 tables are members of the `supabase_realtime` publication. Most operational tables (`staff_attendance`, `feedback`, `class_bookings`, `benefit_bookings`, `pt_sessions`, `classes`, `products`, `pos_sales`, `expenses`, `payments`, `approval_requests`, …) are **not**, so any postgres_changes subscription on them silently no-ops.
+| Actor (logged-in user) | Can manually check in / out |
+|---|---|
+| Owner | Admin · Manager · Staff · Trainer (NOT self) |
+| Admin | Manager · Staff · Trainer (NOT self, NOT other admins, NOT owner) |
+| Manager | Staff · Trainer in same branch (NOT self, NOT other managers, NOT admin/owner) |
+| Staff / Trainer | nobody (no access to this tab) |
+
+Self-row is always disabled with helper text "Your attendance must be recorded by a higher authority."
+Owner's row is only actionable by another owner (effectively requires a second owner present).
+
+---
 
 ## Plan
 
-### 1. Database migration — enable change streams
+### A. Fix the misleading top search bar
+- Add a **mode toggle** above the search input: `Members` ⇄ `Staff` (drives `activeTab`).
+- Placeholder + empty-state copy switch with the mode ("Search staff by name or code…" / "No staff found for '<query>'").
+- Staff mode is only shown to roles that can record staff attendance (owner / admin / manager).
 
-Add the missing tables to the `supabase_realtime` publication and set `REPLICA IDENTITY FULL` so payloads include the full row (needed for filters / row-level diffs):
+### B. Enforce the hierarchy in the Staff Check-in tab
+- Replace the current single guard (`canRecordStaff` + manager-self block) with a per-row `canRecordFor(actorRoles, targetRoles, isSelf)` helper.
+- Implement the matrix above. Disabled rows show the reason inline ("Only an owner can record this", "Self-attendance not allowed", etc.).
+- Add a small **"Hierarchy"** info chip at the top of the tab that opens a popover explaining who-can-punch-whom, so the rule is discoverable.
+- Each manual entry continues to write through `staff_check_in` RPC and is tagged `Manual` in the source column (already audited).
 
-```text
-approval_requests, staff_attendance, feedback,
-class_bookings, benefit_bookings, pt_sessions, classes, class_waitlist,
-products, pos_sales, inventory,
-expenses, expense_categories, payments
-```
+### C. Banner on the Staff Check-in tab
+> "Use only when the biometric turnstile is offline. Every entry is audited and tied to your user."
 
-(Already in publication: `invoices`, `member_attendance`, `members`, `notifications`, `tasks`, `whatsapp_messages`, etc.)
+### D. Optional hardening (recommend, ask before building)
+- Require a short **reason** (free text, ≥ 5 chars) when manually checking someone in — stored in `staff_attendance.notes`. Forces accountability.
+- Auto-notification (in-app / WhatsApp) to the target user "Your attendance was recorded by <actor> at <time>" so any misuse surfaces immediately.
 
-### 2. New shared hook — `src/hooks/useRealtimeInvalidate.ts`
+### Not building
+- Self check-in for any role (per your direction).
+- Any change to `MyAttendance` / member-side flows.
 
-Tiny utility so every page wires realtime in 3 lines instead of repeating channel boilerplate. Filters by `branch_id` when a branch is selected (defense-in-depth via RLS already in place).
+### Files to edit
+- `src/pages/AttendanceDashboard.tsx` — mode toggle, copy fixes, hierarchy matrix, info popover, banner, optional reason field.
+- `src/lib/auth/permissions.ts` — add `canRecordAttendanceFor(actorRoles, targetRoles)` helper so the rule is reusable and testable.
 
-```text
-useRealtimeInvalidate({
-  channel: 'page-attendance',
-  tables: ['member_attendance', 'staff_attendance'],
-  invalidateKeys: [
-    ['member-attendance-dashboard'],
-    ['staff-attendance-log'],
-    ['attendance-history'],
-  ],
-})
-```
+No DB migration. No RPC change. No new dependencies.
 
-Internals:
-- One Supabase channel per page, `event:'*'`, `schema:'public'`, one subscription per table
-- On any event → `queryClient.invalidateQueries({ queryKey })` for each listed key (prefix match)
-- Light debounce (250 ms) to coalesce bursts (e.g. bulk POS imports)
-- Auto-cleanup on unmount; safe to re-mount (channel name is per-page)
-
-### 3. Wire each page
-
-Add **one** hook call per page, listing only the tables/queries that page actually shows:
-
-| Page | Tables subscribed | Queries invalidated |
-|---|---|---|
-| AttendanceDashboard | `member_attendance`, `staff_attendance`, `members`, `profiles` | dashboard, staff-log, history, weekly-trends, force-entry |
-| Classes | `classes`, `class_bookings`, `class_waitlist` | all class-listing & booking-count queries |
-| Feedback | `feedback` | `feedback` |
-| AllBookings | `class_bookings`, `benefit_bookings`, `pt_sessions` | all-class-bookings, all-benefit-bookings, all-pt-sessions, monthly-bookings |
-| Store | `products`, `inventory`, `invoices`, `pos_sales` | store-products, member-store-orders, store-pos-sales, store-inventory-stats |
-| Finance | `payments`, `pos_sales`, `expenses`, `invoices` | finance-income, finance-pos-sales, finance-expenses, pending-expenses, gst-invoices, monthly-report |
-| Payments | `payments`, `invoices`, `payment_transactions` | payments, invoices, all-overdue-invoices, member-overdue-invoices |
-| Approvals | already has its own subscription → migrate to shared hook for consistency, now actually fires once table is in publication |
-
-### 4. Small UX touch
-
-Add a subtle "Live" pill (green pulsing dot) in each page header so the user can see realtime is active. No more confusion about whether to refresh.
-
-## Out of scope
-
-- No business-logic changes; only realtime wiring.
-- No manual refresh buttons removed (kept as a fallback) — just no longer required.
-- Member-facing pages (MyBookings etc.) — separate audit if you want.
-
-## Files touched
-
-- **New migration** — alter publication + replica identity for ~14 tables
-- **New** `src/hooks/useRealtimeInvalidate.ts`
-- **Edit** `src/pages/AttendanceDashboard.tsx`, `Classes.tsx`, `Feedback.tsx`, `AllBookings.tsx`, `Store.tsx`, `Finance.tsx`, `Payments.tsx`, `ApprovalQueue.tsx` (one hook call each + optional Live pill)
-
-## Verification
-
-1. Open `/feedback` in tab A, submit feedback as a member from tab B → row appears in A within ~500 ms with no refresh.
-2. Open `/attendance-dashboard` and trigger a MIPS check-in → member appears instantly in the Members tab.
-3. Open `/approvals`; create an approval request from another window → counter and list update live (this fixes the silently-broken existing subscription).
-4. `/store`: create a POS sale → POS Sales tab updates instantly.
-5. `/payments` / `/finance`: record a payment → both pages reflect it without refresh.
+### Open question
+Do you want the optional **reason field + target-user notification** (section D) included now, or keep the change scoped to A-B-C only?
