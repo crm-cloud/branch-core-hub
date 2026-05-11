@@ -137,6 +137,7 @@ serve(async (req) => {
            "notes": "General advice and precautions"
          }`
       : `You are an expert nutritionist creating personalized diet plans. Generate detailed, balanced, and practical meal plans.
+         For EACH meal, return: meal name, a TIME RANGE (e.g. "8:00–9:00 AM" — eating times vary per person), calories, and macros (protein/carbs/fat in grams). When possible also include micros: fiber, sodium (mg), sugar (g).
          Return a JSON object with the following structure:
          {
            "name": "Diet plan name",
@@ -147,11 +148,11 @@ serve(async (req) => {
            "meals": [
              {
                "day": "Monday",
-               "breakfast": {"meal": "Oatmeal with berries", "calories": 350, "protein": 12, "carbs": 55, "fat": 8},
-               "snack1": {"meal": "Greek yogurt", "calories": 150},
-               "lunch": {"meal": "Grilled chicken salad", "calories": 450},
-               "snack2": {"meal": "Almonds", "calories": 160},
-               "dinner": {"meal": "Salmon with vegetables", "calories": 550}
+               "breakfast": {"meal": "Oatmeal with berries", "time": "8:00–9:00 AM", "calories": 350, "protein": 12, "carbs": 55, "fat": 8, "fiber": 6, "sodium": 120, "sugar": 10},
+               "snack1":    {"meal": "Greek yogurt",         "time": "11:00–11:30 AM", "calories": 150, "protein": 15, "carbs": 12, "fat": 4, "fiber": 0, "sodium": 60, "sugar": 8},
+               "lunch":     {"meal": "Grilled chicken salad","time": "1:00–2:00 PM",  "calories": 450, "protein": 38, "carbs": 30, "fat": 18, "fiber": 7, "sodium": 480, "sugar": 6},
+               "snack2":    {"meal": "Almonds",              "time": "4:30–5:00 PM",  "calories": 160, "protein": 6,  "carbs": 6,  "fat": 14, "fiber": 3, "sodium": 0,  "sugar": 1},
+               "dinner":    {"meal": "Salmon with vegetables","time": "8:00–9:00 PM", "calories": 550, "protein": 40, "carbs": 35, "fat": 22, "fiber": 8, "sodium": 380, "sugar": 4}
              }
            ],
            "hydration": "8-10 glasses of water daily",
