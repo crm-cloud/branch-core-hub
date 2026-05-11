@@ -91,6 +91,12 @@ export const trainerMenuConfig: MenuSection[] = [
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['trainer'] },
     ],
   },
+  {
+    title: 'Account',
+    items: [
+      { label: 'Preferences', href: '/settings?tab=appearance', icon: Settings, roles: ['trainer'] },
+    ],
+  },
 ];
 
 // Staff-specific menu
@@ -143,6 +149,12 @@ export const staffMenuConfig: MenuSection[] = [
     title: 'Work',
     items: [
       { label: 'My Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['staff'] },
+    ],
+  },
+  {
+    title: 'Account',
+    items: [
+      { label: 'Preferences', href: '/settings?tab=appearance', icon: Settings, roles: ['staff'] },
     ],
   },
 ];
@@ -289,6 +301,7 @@ export const managerMenuConfig: MenuSection[] = [
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['manager'] },
+      { label: 'Preferences', href: '/settings?tab=appearance', icon: Settings, roles: ['manager'] },
     ],
   },
 ];
