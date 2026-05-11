@@ -241,19 +241,37 @@ export default function AttendanceDashboard() {
       const { data: trainers } = await supabase.from('trainers').select('id, user_id, weekly_off').eq('branch_id', effectiveBranchId!).eq('is_active', true);
       const allUserIds = [...(emps?.map(e => e.user_id) || []), ...(trainers?.map(t => t.user_id) || [])].filter(Boolean);
       let profiles: any[] = [];
+      let userRoles: any[] = [];
       if (allUserIds.length > 0) {
-        const { data: pData } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allUserIds);
+        const [{ data: pData }, { data: rData }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name, avatar_url').in('id', allUserIds),
+          supabase.from('user_roles').select('user_id, role').in('user_id', allUserIds),
+        ]);
         profiles = pData || [];
+        userRoles = rData || [];
       }
+      const rolesByUser = new Map<string, string[]>();
+      userRoles.forEach((r: any) => {
+        const list = rolesByUser.get(r.user_id) || [];
+        list.push(r.role);
+        rolesByUser.set(r.user_id, list);
+      });
       const empUserIds = new Set(emps?.map(e => e.user_id) || []);
       const staffList: any[] = [];
       (emps || []).forEach(emp => {
         const p = profiles.find(pr => pr.id === emp.user_id);
-        staffList.push({ user_id: emp.user_id, name: p?.full_name || 'Unknown', code: emp.employee_code, type: emp.department === 'Management' ? 'Manager' : 'Staff', position: emp.position, avatar_url: p?.avatar_url, weekly_off: (emp as any).weekly_off || 'sunday' });
+        const userRoleList = rolesByUser.get(emp.user_id) || [];
+        const isManagerRole = userRoleList.includes('manager') || userRoleList.includes('admin') || userRoleList.includes('owner');
+        const typeLabel = userRoleList.includes('owner') ? 'Owner'
+          : userRoleList.includes('admin') ? 'Admin'
+          : userRoleList.includes('manager') || emp.department === 'Management' ? 'Manager'
+          : 'Staff';
+        staffList.push({ user_id: emp.user_id, name: p?.full_name || 'Unknown', code: emp.employee_code, type: typeLabel, position: emp.position, avatar_url: p?.avatar_url, weekly_off: (emp as any).weekly_off || 'sunday', roles: userRoleList.length ? userRoleList : ['staff'] });
       });
       (trainers || []).filter(t => !empUserIds.has(t.user_id)).forEach(t => {
         const p = profiles.find(pr => pr.id === t.user_id);
-        staffList.push({ user_id: t.user_id, name: p?.full_name || 'Unknown', code: 'Trainer', type: 'Trainer', position: 'Trainer', avatar_url: p?.avatar_url, weekly_off: (t as any).weekly_off || 'sunday' });
+        const userRoleList = rolesByUser.get(t.user_id) || ['trainer'];
+        staffList.push({ user_id: t.user_id, name: p?.full_name || 'Unknown', code: 'Trainer', type: 'Trainer', position: 'Trainer', avatar_url: p?.avatar_url, weekly_off: (t as any).weekly_off || 'sunday', roles: userRoleList });
       });
       return staffList;
     },
