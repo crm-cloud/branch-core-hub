@@ -9,6 +9,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>');
 (globalThis as any).HTMLCanvasElement = dom.window.HTMLCanvasElement;
 (globalThis as any).Image = dom.window.Image;
 (globalThis as any).FileReader = dom.window.FileReader;
+(globalThis as any).localStorage = dom.window.localStorage;
 (globalThis as any).fetch = async () => ({ ok: false } as any);
 
 const { buildPlanPdf } = await import('../src/utils/pdfBlob');
