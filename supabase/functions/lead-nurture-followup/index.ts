@@ -1,3 +1,7 @@
+// v3.4.0 — Enforce Meta 24h customer-service window. If the lead has not
+//          replied within 24h, do NOT send a freeform AI nudge (Meta rejects
+//          with 131047). Instead, send the approved `lead_nurture_followup`
+//          WhatsApp template via dispatch-communication, or skip & cool down.
 // v3.3.0 — Move chatPlatform decl above use; nurture inbound-only chats too.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
