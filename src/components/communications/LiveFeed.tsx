@@ -325,6 +325,9 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
                   const Icon = ch.icon;
                   const status = normalizeStatus(log);
                   const isOpen = expanded === log.id;
+                  const name = resolveName(log);
+                  const isPhone = log.type === 'whatsapp' || log.type === 'sms';
+                  const recipientDisplay = isPhone ? formatPhoneDisplay(log.recipient) || log.recipient : log.recipient;
                   return (
                     <div key={log.id} style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }} className="animate-fade-in">
                       <button
@@ -335,8 +338,11 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
                           <Icon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground truncate">{log.recipient}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-foreground truncate">
+                              {name || <span className="text-muted-foreground italic">Unknown</span>}
+                            </span>
+                            <span className="text-xs text-muted-foreground tabular-nums">{recipientDisplay}</span>
                             <Badge variant="outline" className="rounded-full text-[10px] capitalize">{ch.label}</Badge>
                           </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">
