@@ -20,6 +20,8 @@ export default function AuditLogsPage() {
   const [filters, setFilters] = useState({
     action: 'all',
     table: 'all',
+    category: 'all' as 'all' | AuditCategory,
+    actor: 'all',
     search: '',
     dateFrom: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
     dateTo: format(new Date(), 'yyyy-MM-dd'),
@@ -27,6 +29,15 @@ export default function AuditLogsPage() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+
+  const setQuickRange = (days: number) => {
+    setFilters(f => ({
+      ...f,
+      dateFrom: format(subDays(new Date(), days), 'yyyy-MM-dd'),
+      dateTo: format(new Date(), 'yyyy-MM-dd'),
+    }));
+    setCurrentPage(1);
+  };
 
   const { data: logsResult, isLoading, refetch } = useQuery({
     queryKey: ['audit-logs', filters, currentPage],
@@ -40,8 +51,13 @@ export default function AuditLogsPage() {
 
       if (filters.action !== 'all') query = query.eq('action', filters.action);
       if (filters.table !== 'all') query = query.eq('table_name', filters.table);
+      if (filters.actor !== 'all') query = query.eq('actor_name', filters.actor);
+      if (filters.category !== 'all') {
+        const tables = Object.entries(TABLE_CATEGORY).filter(([, c]) => c === filters.category).map(([t]) => t);
+        if (tables.length) query = query.in('table_name', tables);
+      }
       if (filters.search) {
-        query = query.or(`record_id.ilike.%${filters.search}%,table_name.ilike.%${filters.search}%,actor_name.ilike.%${filters.search}%`);
+        query = query.or(`record_id.ilike.%${filters.search}%,table_name.ilike.%${filters.search}%,actor_name.ilike.%${filters.search}%,target_name.ilike.%${filters.search}%`);
       }
       query = query.range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
 
