@@ -11,6 +11,8 @@ import { useEffect, useState } from 'react';
 import { PRIMARY_CATEGORIES, MUSCLE_GROUPS, MOVEMENT_PATTERNS } from '@/lib/equipment/taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { can } from '@/lib/auth/permissions';
 
 interface AddEquipmentDrawerProps {
   open: boolean;
@@ -38,6 +40,8 @@ const getInitialFormData = (equipment?: Equipment | null) => ({
 export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEdit }: AddEquipmentDrawerProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState(getInitialFormData(equipmentToEdit));
+  const { roles } = useAuth();
+  const canViewPrice = can.viewFinancials((roles || []).map((r) => r.role));
 
   const invalidateEquipmentQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['equipment', branchId] });
@@ -306,16 +310,18 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEd
                 onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="purchasePrice">Purchase Price (₹)</Label>
-              <Input
-                id="purchasePrice"
-                type="number"
-                value={formData.purchasePrice}
-                onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
-                placeholder="0"
-              />
-            </div>
+            {canViewPrice && (
+              <div className="space-y-2">
+                <Label htmlFor="purchasePrice">Purchase Price (₹)</Label>
+                <Input
+                  id="purchasePrice"
+                  type="number"
+                  value={formData.purchasePrice}
+                  onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

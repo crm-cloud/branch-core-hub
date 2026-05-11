@@ -9,15 +9,28 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy, Calendar, ShieldCheck, QrCode, ListTodo, Search } from 'lucide-react';
+import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy, Calendar, ShieldCheck, QrCode, ListTodo, Search, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth } from '@/services/equipmentService';
+import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth, deleteEquipment, bulkDeleteEquipment } from '@/services/equipmentService';
 import QRCode from 'qrcode';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { muscleGroupLabel, primaryCategoryLabel } from '@/lib/equipment/taxonomy';
+import { useAuth } from '@/contexts/AuthContext';
+import { can } from '@/lib/auth/permissions';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function EquipmentMaintenancePage() {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
@@ -25,9 +38,16 @@ export default function EquipmentMaintenancePage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [equipmentToEdit, setEquipmentToEdit] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const queryClient = useQueryClient();
   const { effectiveBranchId = '' } = useBranchContext();
   const currentBranchId = effectiveBranchId || undefined;
+  const { roles } = useAuth();
+  const roleNames = (roles || []).map((r) => r.role);
+  const canViewPrice = can.viewFinancials(roleNames);
+  const canDelete = roleNames.includes('owner') || roleNames.includes('admin');
 
   const { data: equipment = [], isLoading } = useQuery({
     queryKey: ['equipment-list', currentBranchId],
@@ -70,6 +90,39 @@ export default function EquipmentMaintenancePage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteEquipment(id),
+    onSuccess: () => {
+      toast.success('Equipment deleted');
+      queryClient.invalidateQueries({ queryKey: ['equipment-list'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment-stats'] });
+      setConfirmDelete(null);
+    },
+    onError: (error: any) => {
+      if (error?.code === 'HAS_MAINTENANCE_HISTORY') {
+        toast.error(`Cannot delete — ${error.maintenanceCount} maintenance record(s) exist. Use "Retire" to keep the audit trail.`);
+        setConfirmDelete(null);
+      } else {
+        toast.error('Delete failed: ' + (error?.message || 'Unknown'));
+      }
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => bulkDeleteEquipment(ids),
+    onSuccess: (res) => {
+      if (res.failed.length > 0) {
+        toast.warning(`Deleted ${res.ok}, skipped ${res.failed.length} (have maintenance history — retire instead)`);
+      } else {
+        toast.success(`Deleted ${res.ok} equipment`);
+      }
+      setSelectedIds(new Set());
+      setConfirmBulkDelete(false);
+      queryClient.invalidateQueries({ queryKey: ['equipment-list'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment-stats'] });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       operational: 'bg-green-500/10 text-green-500',
@@ -91,11 +144,25 @@ export default function EquipmentMaintenancePage() {
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
 
+  // Auto-number duplicates so list reads "Treadmill #1, #2" instead of "Treadmill, Treadmill"
+  const numberedEquipment = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const totals: Record<string, number> = {};
+    (equipment as any[]).forEach((e) => {
+      totals[e.name] = (totals[e.name] || 0) + 1;
+    });
+    return (equipment as any[]).map((e) => {
+      counts[e.name] = (counts[e.name] || 0) + 1;
+      const displayName = totals[e.name] > 1 ? `${e.name} #${counts[e.name]}` : e.name;
+      return { ...e, _displayName: displayName, _unitCount: totals[e.name] };
+    });
+  }, [equipment]);
+
   // Search filter (name, brand, model, serial, category, location)
   const filteredEquipment = (() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return equipment as any[];
-    return (equipment as any[]).filter((e) => {
+    if (!q) return numberedEquipment;
+    return numberedEquipment.filter((e) => {
       const haystack = [e.name, e.brand, e.model, e.serial_number, e.category, e.location]
         .filter(Boolean)
         .join(' ')
@@ -103,6 +170,17 @@ export default function EquipmentMaintenancePage() {
       return haystack.includes(q);
     });
   })();
+
+  const allSelected = filteredEquipment.length > 0 && filteredEquipment.every((e) => selectedIds.has(e.id));
+  const toggleAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredEquipment.map((e) => e.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
 
   // Derived: due / overdue / warranty signals
   const today = new Date();
@@ -252,9 +330,11 @@ export default function EquipmentMaintenancePage() {
           </Card>
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          YTD maintenance cost: <span className="font-semibold text-primary">₹{totalMonthlyCost.toLocaleString()}</span>
-        </div>
+        {canViewPrice && (
+          <div className="text-xs text-muted-foreground">
+            YTD maintenance cost: <span className="font-semibold text-primary">₹{totalMonthlyCost.toLocaleString()}</span>
+          </div>
+        )}
 
         <Tabs defaultValue="equipment">
           <TabsList>
@@ -265,17 +345,34 @@ export default function EquipmentMaintenancePage() {
           <TabsContent value="equipment" className="mt-4">
             <Card>
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>All Equipment</CardTitle>
-                <div className="relative w-full sm:w-80">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by name, brand, model, serial, category, or location…"
-                    className="pl-9"
-                    aria-label="Search equipment"
-                  />
+                <div className="flex items-center gap-3">
+                  <CardTitle>All Equipment</CardTitle>
+                  {selectedIds.size > 0 && (
+                    <Badge variant="secondary" className="rounded-full">{selectedIds.size} selected</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {selectedIds.size > 0 && canDelete && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setConfirmBulkDelete(true)}
+                      className="gap-1.5"
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete ({selectedIds.size})
+                    </Button>
+                  )}
+                  <div className="relative w-full sm:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search by name, brand, model, serial, category, or location…"
+                      className="pl-9"
+                      aria-label="Search equipment"
+                    />
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -287,11 +384,16 @@ export default function EquipmentMaintenancePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        {canDelete && (
+                          <TableHead className="w-10">
+                            <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
+                          </TableHead>
+                        )}
                         <TableHead>Name</TableHead>
                         <TableHead>Model Number</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Location</TableHead>
-                        <TableHead>Purchase Price</TableHead>
+                        {canViewPrice && <TableHead>Purchase Price</TableHead>}
                         <TableHead>Warranty</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Actions</TableHead>
@@ -299,15 +401,26 @@ export default function EquipmentMaintenancePage() {
                     </TableHeader>
                     <TableBody>
                       {filteredEquipment.map((item: any) => (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} data-state={selectedIds.has(item.id) ? 'selected' : undefined}>
+                          {canDelete && (
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedIds.has(item.id)}
+                                onCheckedChange={() => toggleOne(item.id)}
+                                aria-label={`Select ${item._displayName}`}
+                              />
+                            </TableCell>
+                          )}
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center">
                                 {getStatusIcon(item.status)}
                               </div>
                               <div>
-                                <div className="font-medium">{item.name}</div>
-                                <div className="text-sm text-muted-foreground">{item.brand || '-'}</div>
+                                <div className="font-medium">{item._displayName}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {item.brand || (item._unitCount > 1 ? `${item._unitCount} units` : '-')}
+                                </div>
                               </div>
                             </div>
                           </TableCell>
@@ -347,7 +460,9 @@ export default function EquipmentMaintenancePage() {
                             </div>
                           </TableCell>
                           <TableCell>{item.location || '-'}</TableCell>
-                          <TableCell>₹{(item.purchase_price || 0).toLocaleString()}</TableCell>
+                          {canViewPrice && (
+                            <TableCell>₹{(item.purchase_price || 0).toLocaleString()}</TableCell>
+                          )}
                           <TableCell>
                             {item.warranty_expiry ? (
                               new Date(item.warranty_expiry) > new Date() ? (
@@ -467,13 +582,25 @@ export default function EquipmentMaintenancePage() {
                                   </form>
                                 </SheetContent>
                               </Sheet>
+                              {canDelete && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => setConfirmDelete({ id: item.id, name: item._displayName })}
+                                  title="Delete equipment"
+                                  aria-label="Delete equipment"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
                       ))}
                       {filteredEquipment.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={canViewPrice ? (canDelete ? 9 : 8) : (canDelete ? 8 : 7)} className="text-center py-8 text-muted-foreground">
                             {searchQuery.trim()
                               ? `No equipment matches "${searchQuery}"`
                               : 'No equipment found'}
@@ -550,6 +677,51 @@ export default function EquipmentMaintenancePage() {
           branchId={effectiveBranchId}
           equipmentToEdit={equipmentToEdit}
         />
+
+        <AlertDialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {confirmDelete?.name}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently removes the equipment record. If maintenance history exists,
+                deletion will be blocked — use the status selector to set it to <strong>Retired</strong> instead,
+                which preserves the audit trail.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {selectedIds.size} equipment item(s)?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Items with maintenance history will be skipped (retire them instead).
+                The rest will be permanently removed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+                disabled={bulkDeleteMutation.isPending}
+              >
+                {bulkDeleteMutation.isPending ? 'Deleting…' : `Delete ${selectedIds.size}`}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );
