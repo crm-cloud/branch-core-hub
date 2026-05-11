@@ -241,12 +241,25 @@ export default function AuditLogsPage() {
           <StatCard title="Total Logs" value={stats?.total || 0} icon={Database} variant="default" />
           <StatCard title="Today's Activity" value={stats?.today || 0} icon={Activity} variant="info" />
           <StatCard title="Most Active" value={stats?.mostActiveTable ? formatTableName(stats.mostActiveTable) : 'N/A'} icon={ClipboardList} variant="accent" />
-          <StatCard title="Page" value={`${currentPage} / ${totalPages || 1}`} icon={AlertCircle} variant="warning" />
+          <StatCard title="Online Now" value={onlineUsers.length} icon={Users} variant="success" />
         </div>
 
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Audit Logs</h1>
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Audit Logs</h1>
+            <OnlinePresencePill />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center rounded-lg border bg-background p-0.5">
+              <button
+                onClick={() => setDensity('comfortable')}
+                className={`px-2.5 py-1 text-xs rounded-md transition ${density === 'comfortable' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'}`}
+              >Comfortable</button>
+              <button
+                onClick={() => setDensity('compact')}
+                className={`px-2.5 py-1 text-xs rounded-md transition ${density === 'compact' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'}`}
+              >Compact</button>
+            </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="h-4 w-4 mr-2" />Refresh</Button>
             <Button variant="outline" size="sm" onClick={exportToCSV}><Download className="h-4 w-4 mr-2" />Export</Button>
           </div>
