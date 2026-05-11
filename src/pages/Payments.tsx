@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { recordPayment as unifiedRecordPayment, voidPayment as unifiedVoidPayment } from '@/services/billingService';
 import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 import { useState, useMemo, useEffect } from 'react';
