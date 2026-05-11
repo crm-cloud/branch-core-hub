@@ -62,13 +62,13 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
   const channels: PlanSendResult['channels'] = {};
 
   // 1. Always build the PDF (cheap, all paths need it).
-  const pdfBlob = buildPlanPdf({
+  const pdfBlob = await buildPlanPdf({
     name: input.plan.name,
     type: input.plan.type,
     description: input.plan.description ?? undefined,
     member_name: input.member.full_name,
-    validFrom: input.plan.valid_from ?? undefined,
-    validUntil: input.plan.valid_until ?? undefined,
+    trainer_name: input.plan.trainer_name ?? undefined,
+    branch_id: input.branchId ?? undefined,
     data: input.plan.data,
   });
   const filename = safeFilename(input.plan);
