@@ -1,81 +1,71 @@
-## Goals
+## Scope
 
-1. Make the global loader feel premium and on-brand (no static blue dumbbell look).
-2. Redesign the Set Password screen so it matches the rest of the app theme (right now it's a generic white card on a dark navy gradient that doesn't feel like Incline).
-3. Let **staff and trainers** open a Settings/Preferences area — today only owner/admin/manager see it, so they have no way to change theme, density, notifications, or update their own password.
+Three things on `/announcements` Live Feed + one backend fix:
+
+1. Recipient row should show **Name + Number**, not just the digits.
+2. The inline **Queued · Sent · Delivered · Read** progress pill is too plain — make it premium and on-brand.
+3. Audit why the AI-generated lead nudge ("Hey Jawahar! 👋 Just checking in…") was sent **outside Meta's 24h customer-service window** (Meta error 131047 territory).
 
 ---
 
-## 1. Loader redesign (`src/components/ui/gym-loader.tsx`)
+## 1. Live Feed — Name + Number on each row
 
-Replace the flat SVG dumbbell with a more polished, theme-aware loader:
+`communication_logs` only stores `recipient` (phone/email) and an optional `member_id`. To show a friendly name without N+1 queries:
 
-- Soft circular orbit: a faint primary-tinted ring + a smaller arc spinning on top using `border-t-primary border-transparent` and `animate-spin`.
-- Inside the ring: a small dumbbell glyph that gently bounces (keep the dumbbell identity, but smaller and centered).
-- Use semantic tokens only (`primary`, `accent`, `muted-foreground`, `card`) — no hardcoded blue/orange.
-- Add a subtle pulsing glow behind the ring using `bg-primary/10 blur-2xl`.
-- Text: keep `animate-pulse`, but switch to `text-foreground/70`, tighter letter spacing.
-- Sizes (`sm`/`md`/`lg`) and the existing `text` prop stay backwards compatible.
+- In `LiveFeed.tsx`, after fetching the latest 200 logs, build a single batched lookup:
+  - Collect distinct `member_id`s → one query against `members(id, full_name)`.
+  - For rows without `member_id` and `type` ∈ {whatsapp, sms}, collect normalized phone variants (using existing `phoneVariants` helper) and look up names from `whatsapp_chat_settings.contact_name`, then `leads(full_name, phone)`, then `members(full_name, phone_number)` as fallbacks.
+  - For email rows, look up `profiles(full_name, email)` / `members(email)`.
+- Render row header as:
+  ```
+  <Name>          <Badge>WhatsApp</Badge>
+  <muted>+91 94626 79897</muted>
+  ```
+  Falls back to just the recipient when no name is found ("Unknown · +91…").
+- Pretty-print Indian numbers (`+91 94626 79897`) using a small util in `src/lib/contacts/phone.ts` (already used elsewhere — reuse if a formatter exists, otherwise add `formatIndianPhone()`).
 
-Side effect: every full-page loader (`DashboardRedirect`, `SetPassword`, `ProtectedRoute`, etc.) automatically picks up the new look.
+## 2. Polish the Delivery Timeline pill (`DeliveryTimeline.tsx`)
 
-## 2. Set Password screen redesign
+Today it's 4 grey circles + plain labels on a thin track. Redesign while keeping the same data model:
 
-`src/pages/SetPassword.tsx`:
-- Drop the dark navy `--gradient-hero` background. Use the same soft, themed background pattern as `Auth.tsx` (split layout or subtle ambient gradient using `from-background via-background to-primary/5`) with a couple of blurred primary/accent blobs for depth.
-- Two-column layout on desktop (`lg:grid-cols-2`): left side = Incline brand panel with gradient, tagline ("Welcome to Incline. Let's secure your account."), and a small marketing illustration; right side = the form card. On mobile: single column, brand collapses to a header.
-- Replace the standalone `<h1>Incline</h1>` above the card with the brand panel.
+- Wrap the track in a soft card: `rounded-2xl bg-gradient-to-br from-muted/40 via-card to-muted/20 border border-border/40 shadow-sm` (rose-tinted variant on failure stays).
+- Replace the thin 0.5px line with a 2px capsule track (`bg-border/60`) and an animated gradient fill (`bg-gradient-to-r from-sky-500 via-emerald-500 to-violet-500`) that grows to the latest reached stage; animate width with `transition-all duration-700 ease-out`.
+- Stage dots become 8×8 with a subtle outer glow ring on the *active* stage (`shadow-[0_0_0_6px_hsl(var(--primary)/0.12)]`) plus a slow pulse halo. Reached dots get a soft check-mark inside; unreached dots show a hollow ring (no icon).
+- Labels: smaller, semibold, `text-[11px] uppercase tracking-wide`, with timestamp underneath in `tabular-nums text-[10px] text-muted-foreground/70`. Center each label under its dot.
+- Failure mode: track turns rose, last dot becomes a filled `XCircle` with a gentle shake-once animation, error card below stays as-is but uses `rounded-xl shadow-sm shadow-rose-500/10`.
+- Add subtle `from-card to-muted/10` background panel inside the row's expanded area so the timeline visually separates from the list.
 
-`src/components/auth/SetPasswordForm.tsx`:
-- Card: `rounded-2xl border-0 shadow-xl shadow-primary/5 bg-card` (kill the green lock badge).
-- Lock badge: `bg-primary/10 text-primary` (theme token), not raw green.
-- Password requirements block: switch from green `text-success` ticks to a checklist where unmet items use `text-muted-foreground` + outline circle, met items use `text-primary` + filled `CheckCircle2`. Reorganize into a 2-col grid on `sm+` so it doesn't feel tall.
-- Password strength meter: add a 4-segment bar above the requirements that fills based on how many rules pass (uses `bg-primary` / `bg-emerald-500` / `bg-amber-500` semantic mapping but driven by tokens).
-- Inputs: keep shadcn defaults, add show/hide toggle to confirm field too.
-- Submit button: `bg-primary` (not green), with the existing loader.
+No data/query changes — purely presentational.
 
-Verification: open `/set-password` route in the preview after the change to confirm parity with `/auth`.
+## 3. 24h-window leak in `lead-nurture-followup`
 
-## 3. Settings access for staff & trainer
+**Root cause:** `supabase/functions/lead-nurture-followup/index.ts` sends nudges by calling `send-whatsapp` directly (lines ~207–214). It bypasses `dispatch-communication`, which is the only place that enforces the **24h customer-service window pre-flight guard** (see `dispatch-communication/index.ts` v1.7.0, lines 520–551). So nudges go out as freeform text even when the last *inbound* message from the lead is older than 24h, and Meta accepts them only if they happen to fall inside a still-open session — otherwise it rejects with 131047, or worse, the message is delivered as a policy-violating freeform.
 
-Today, the only entry point for Settings is the admin nav item that points to `/settings` (owner/admin only). Staff/trainer have no way to change theme or notification preferences.
+**Fix:**
 
-**Approach:** keep the full Settings page admin-only, but expose a **scoped personal preferences subset** to staff/trainer/manager.
+- In `lead-nurture-followup`, before composing the nudge, look up the most recent *inbound* `whatsapp_messages` row for `phone_number` and skip the nudge entirely if it's older than 24h **unless** an approved Meta template is configured for `re_engagement`/`lead_nurture` events.
+- Resolve that template via existing `whatsapp_triggers` registry (event key `lead_nurture` — add the row if missing) → if found, route the send through `dispatch-communication` with `template_id` set so the canonical pre-flight + template path runs.
+- If no template and outside window → mark `last_nurture_at` so we don't loop, log a single info row (`reason: 'outside_24h_no_template'`) and `continue`.
+- Bump version comment to `v3.4.0` and update the function's purpose header.
 
-Changes:
+Optional hardening (still in this task):
 
-- **`src/config/menu.ts`**
-  - Add a "Preferences" item to `staffMenuConfig`, `trainerMenuConfig`, and `managerMenuConfig` (under a "Account" / "Work" section): `{ label: 'Preferences', href: '/settings?tab=appearance', icon: Settings, roles: [...] }`.
-  - Adjust admin "Settings" entry to keep current behaviour.
+- Add the same pre-send 24h check to any other edge functions that call `send-whatsapp` directly. Quick `rg "functions/v1/send-whatsapp"` audit; route stragglers through `dispatch-communication`.
 
-- **`src/pages/Settings.tsx`**
-  - Read current user roles via `useAuth()`.
-  - Define a `PERSONAL_TABS` whitelist: `appearance`, `notifications`, plus a new `profile` tab pointing to a lightweight "My Profile & Password" component (reuse existing `Profile.tsx` building blocks or a minimal change-password card).
-  - If the user is NOT owner/admin/manager, filter `SETTINGS_MENU` down to `PERSONAL_TABS` and force the default tab to `appearance` when an out-of-scope tab is requested.
-  - Update the page header copy: show "Preferences" instead of "Settings" for non-admin roles.
+No DB schema change required — `whatsapp_triggers` already exists. We only insert a default `lead_nurture` row if absent.
 
-- **`src/components/auth/ProtectedRoute.tsx` (or wherever `/settings` is gated)**
-  - Allow `staff` and `trainer` (in addition to admin/owner/manager) to reach `/settings`. Server-side data is already RLS-scoped, and the page-level filter above prevents them from seeing admin tabs.
+---
 
-- **`src/components/settings/ThemePicker.tsx` & `NotificationSettings.tsx`** — quick audit only: confirm they don't make any admin-only API calls. If they do, add a role guard and hide the offending controls (e.g., notification rules) for non-admins, leaving only personal preferences (own email/sms/whatsapp toggles).
+## Files to change
 
-## 4. Verification
+- `src/components/communications/LiveFeed.tsx` — batched name lookup + new row layout.
+- `src/components/communications/DeliveryTimeline.tsx` — visual redesign only.
+- `src/lib/contacts/phone.ts` — add `formatIndianPhone()` if not present.
+- `supabase/functions/lead-nurture-followup/index.ts` — 24h guard + template path.
+- (Optional audit) any other edge fn calling `send-whatsapp` directly.
 
-After implementation:
-- Load `/set-password` (when `mustSetPassword=true`) and `/auth` side-by-side — visual language should match.
-- Trigger `isLoading` (e.g., reload `/dashboard`) — confirm new loader animates smoothly in light + dark themes.
-- Log in as a staff user → sidebar shows "Preferences" → `/settings?tab=appearance` opens with Appearance / Notifications / Profile only, no admin tabs leaked.
-- Log in as a trainer → same scoped Preferences experience.
-- Log in as owner → full Settings menu unchanged.
+## Out of scope
 
-## Files touched
-
-- `src/components/ui/gym-loader.tsx` (rewrite visuals)
-- `src/pages/SetPassword.tsx` (layout + background)
-- `src/components/auth/SetPasswordForm.tsx` (card, badge, checklist, strength meter, confirm toggle)
-- `src/config/menu.ts` (add Preferences to staff/trainer/manager menus)
-- `src/pages/Settings.tsx` (role-based tab filtering + header copy + Profile tab)
-- `src/components/auth/ProtectedRoute.tsx` (allow staff/trainer on `/settings`)
-- `src/components/settings/NotificationSettings.tsx` (role-aware hide of admin-only sections, only if needed)
-
-No DB migrations, no business-logic changes.
+- KPI strip, channel tabs, search bar — already look fine.
+- Composer / inbox UI on the second screenshot.
+- DB schema changes.
