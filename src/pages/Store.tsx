@@ -12,9 +12,20 @@ import { format } from 'date-fns';
 import { ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { AdBannerManager } from '@/components/banners/AdBannerManager';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 
 export default function StorePage() {
   const { selectedBranch } = useBranchContext();
+  useRealtimeInvalidate({
+    channel: 'page-store',
+    tables: ['products', 'inventory', 'invoices', 'pos_sales'],
+    invalidateKeys: [
+      ['store-products'],
+      ['member-store-orders'],
+      ['store-pos-sales'],
+      ['store-inventory-stats'],
+    ],
+  });
   const BannerManager = () => selectedBranch && selectedBranch !== 'all' ? <AdBannerManager branchId={selectedBranch} /> : <p className="text-center text-muted-foreground py-8">Select a branch to manage banners</p>;
 
   const { data: products = [], isLoading: productsLoading } = useQuery({
