@@ -45,6 +45,17 @@ export default function PaymentsPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [duesOpen, setDuesOpen] = useState(true);
 
+  useRealtimeInvalidate({
+    channel: 'page-payments',
+    tables: ['payments', 'invoices', 'payment_transactions'],
+    invalidateKeys: [
+      ['payments'],
+      ['invoices'],
+      ['all-overdue-invoices'],
+      ['member-overdue-invoices'],
+    ],
+  });
+
   // Cmd+K: ?new=1 opens Record Payment
   useEffect(() => {
     const url = new URL(window.location.href);
