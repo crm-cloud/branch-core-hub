@@ -332,13 +332,14 @@ export default function AuditLogsPage() {
                       {group.logs.map((log: any) => {
                         const style = getActionStyle(log.action);
                         const ActionIcon = style.icon;
-                        const actorDisplay = log.actor_name || (log.user_id ? 'Staff' : 'System');
+                        const actorDisplay = log.actor_name || (log.user_id ? 'Unknown user' : 'System');
                         const changedCount = log.action === 'UPDATE' ? getChangedFieldsCount(log.old_data, log.new_data) : 0;
+                        const target = log.target_name || (log.record_id ? log.record_id.substring(0, 8) : '—');
+                        const route = deepLinkFor(log.table_name, log.record_id);
 
                         return (
                           <Collapsible key={log.id} open={expandedRows.has(log.id)}>
                             <div className="relative">
-                              {/* Timeline dot */}
                               <div className={`absolute -left-6 top-4 h-[22px] w-[22px] rounded-full border-2 border-background flex items-center justify-center ${
                                 log.action === 'INSERT' ? 'bg-emerald-500' : log.action === 'DELETE' ? 'bg-red-500' : 'bg-blue-500'
                               }`}>
@@ -353,9 +354,13 @@ export default function AuditLogsPage() {
                                   <div className="flex items-start justify-between p-3 gap-3">
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                                        <span className="font-semibold text-sm text-foreground">{actorDisplay}</span>
-                                        <span className="text-sm text-muted-foreground">{style.label.toLowerCase()}</span>
-                                        <Badge variant="outline" className="text-xs font-normal px-1.5 py-0">{formatTableName(log.table_name)}</Badge>
+                                        <span className="text-sm text-foreground">
+                                          <span className="font-semibold">{actorDisplay}</span>
+                                          <span className="text-muted-foreground"> {style.label.toLowerCase()} </span>
+                                          <span className="font-medium">{target}</span>
+                                        </span>
+                                        <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0 capitalize">{CATEGORY_LABEL[categoryOf(log.table_name)]}</Badge>
+                                        <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">{formatTableName(log.table_name)}</Badge>
                                         {changedCount > 0 && (
                                           <span className="text-xs text-muted-foreground">({changedCount} field{changedCount !== 1 ? 's' : ''})</span>
                                         )}
@@ -365,6 +370,16 @@ export default function AuditLogsPage() {
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
+                                      {route && (
+                                        <Link
+                                          to={route}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                          title="Open record"
+                                        >
+                                          Open <ExternalLink className="h-3 w-3" />
+                                        </Link>
+                                      )}
                                       <span className="text-xs text-muted-foreground whitespace-nowrap" title={format(new Date(log.created_at), 'PPpp')}>
                                         {format(new Date(log.created_at), 'h:mm a')}
                                       </span>
