@@ -8,16 +8,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { StatCard } from '@/components/ui/stat-card';
-import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, AlertCircle, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight } from 'lucide-react';
+import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, AlertCircle, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow, subDays, isToday, isYesterday } from 'date-fns';
+import { format, subDays, isToday, isYesterday } from 'date-fns';
+import { Link } from 'react-router-dom';
+import { CATEGORY_LABEL, TABLE_CATEGORY, categoryOf, deepLinkFor, type AuditCategory } from '@/lib/audit/auditMeta';
 
 export default function AuditLogsPage() {
   const [filters, setFilters] = useState({
     action: 'all',
     table: 'all',
+    category: 'all' as 'all' | AuditCategory,
+    actor: 'all',
     search: '',
     dateFrom: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
     dateTo: format(new Date(), 'yyyy-MM-dd'),
@@ -25,6 +29,15 @@ export default function AuditLogsPage() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+
+  const setQuickRange = (days: number) => {
+    setFilters(f => ({
+      ...f,
+      dateFrom: format(subDays(new Date(), days), 'yyyy-MM-dd'),
+      dateTo: format(new Date(), 'yyyy-MM-dd'),
+    }));
+    setCurrentPage(1);
+  };
 
   const { data: logsResult, isLoading, refetch } = useQuery({
     queryKey: ['audit-logs', filters, currentPage],
@@ -38,8 +51,13 @@ export default function AuditLogsPage() {
 
       if (filters.action !== 'all') query = query.eq('action', filters.action);
       if (filters.table !== 'all') query = query.eq('table_name', filters.table);
+      if (filters.actor !== 'all') query = query.eq('actor_name', filters.actor);
+      if (filters.category !== 'all') {
+        const tables = Object.entries(TABLE_CATEGORY).filter(([, c]) => c === filters.category).map(([t]) => t);
+        if (tables.length) query = query.in('table_name', tables);
+      }
       if (filters.search) {
-        query = query.or(`record_id.ilike.%${filters.search}%,table_name.ilike.%${filters.search}%,actor_name.ilike.%${filters.search}%`);
+        query = query.or(`record_id.ilike.%${filters.search}%,table_name.ilike.%${filters.search}%,actor_name.ilike.%${filters.search}%,target_name.ilike.%${filters.search}%`);
       }
       query = query.range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
 
@@ -52,8 +70,21 @@ export default function AuditLogsPage() {
   const { data: tableNames = [] } = useQuery({
     queryKey: ['audit-log-tables'],
     queryFn: async () => {
-      const { data } = await supabase.from('audit_logs').select('table_name').limit(100);
+      const { data } = await supabase.from('audit_logs').select('table_name').limit(500);
       return [...new Set(data?.map(d => d.table_name) || [])].sort();
+    },
+  });
+
+  const { data: actorNames = [] } = useQuery({
+    queryKey: ['audit-log-actors'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('audit_logs')
+        .select('actor_name')
+        .not('actor_name', 'is', null)
+        .gte('created_at', format(subDays(new Date(), 90), 'yyyy-MM-dd'))
+        .limit(2000);
+      return [...new Set((data || []).map((d: any) => d.actor_name).filter(Boolean))].sort();
     },
   });
 
@@ -107,13 +138,18 @@ export default function AuditLogsPage() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Time', 'Action', 'Table', 'Actor', 'Description', 'Record ID'];
+    const headers = ['Time', 'Action', 'Category', 'Table', 'Actor', 'Target', 'Description', 'Record ID'];
     const rows = logs.data.map((log: any) => [
       format(new Date(log.created_at), 'yyyy-MM-dd HH:mm:ss'),
-      log.action, log.table_name, log.actor_name || 'System',
-      log.action_description || '', log.record_id || '',
+      log.action,
+      CATEGORY_LABEL[categoryOf(log.table_name)],
+      log.table_name,
+      log.actor_name || 'System',
+      log.target_name || '',
+      log.action_description || '',
+      log.record_id || '',
     ]);
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -188,18 +224,51 @@ export default function AuditLogsPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2"><Filter className="h-4 w-4" /><CardTitle className="text-base">Filters</CardTitle></div>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-5">
-              <div className="space-y-2">
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground mr-1">Quick range:</span>
+              {[
+                { label: 'Today', d: 0 },
+                { label: '7d', d: 7 },
+                { label: '30d', d: 30 },
+                { label: '90d', d: 90 },
+              ].map(r => (
+                <Button key={r.label} variant="outline" size="sm" className="h-7 px-3 text-xs" onClick={() => setQuickRange(r.d)}>
+                  {r.label}
+                </Button>
+              ))}
+            </div>
+            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+              <div className="space-y-2 lg:col-span-2">
                 <Label>Search</Label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Actor, table, record..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} className="pl-9" />
+                  <Input placeholder="Actor, target, table, ID..." value={filters.search} onChange={(e) => { setFilters({ ...filters, search: e.target.value }); setCurrentPage(1); }} className="pl-9" />
                 </div>
               </div>
               <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={filters.category} onValueChange={(v) => { setFilters({ ...filters, category: v as any, table: 'all' }); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {Object.entries(CATEGORY_LABEL).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Actor</Label>
+                <Select value={filters.actor} onValueChange={(v) => { setFilters({ ...filters, actor: v }); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Actors</SelectItem>
+                    {actorNames.map((n: string) => (<SelectItem key={n} value={n}>{n}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Action</Label>
-                <Select value={filters.action} onValueChange={(v) => setFilters({ ...filters, action: v })}>
+                <Select value={filters.action} onValueChange={(v) => { setFilters({ ...filters, action: v }); setCurrentPage(1); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Actions</SelectItem>
@@ -211,21 +280,23 @@ export default function AuditLogsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Table</Label>
-                <Select value={filters.table} onValueChange={(v) => setFilters({ ...filters, table: v })}>
+                <Select value={filters.table} onValueChange={(v) => { setFilters({ ...filters, table: v }); setCurrentPage(1); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Tables</SelectItem>
-                    {tableNames.map((t) => (<SelectItem key={t} value={t}>{formatTableName(t)}</SelectItem>))}
+                    {tableNames
+                      .filter(t => filters.category === 'all' || categoryOf(t) === filters.category)
+                      .map((t) => (<SelectItem key={t} value={t}>{formatTableName(t)}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>From</Label>
-                <Input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} />
+                <Input type="date" value={filters.dateFrom} onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setCurrentPage(1); }} />
               </div>
               <div className="space-y-2">
                 <Label>To</Label>
-                <Input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} />
+                <Input type="date" value={filters.dateTo} onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setCurrentPage(1); }} />
               </div>
             </div>
           </CardContent>
@@ -261,13 +332,14 @@ export default function AuditLogsPage() {
                       {group.logs.map((log: any) => {
                         const style = getActionStyle(log.action);
                         const ActionIcon = style.icon;
-                        const actorDisplay = log.actor_name || (log.user_id ? 'Staff' : 'System');
+                        const actorDisplay = log.actor_name || (log.user_id ? 'Unknown user' : 'System');
                         const changedCount = log.action === 'UPDATE' ? getChangedFieldsCount(log.old_data, log.new_data) : 0;
+                        const target = log.target_name || (log.record_id ? log.record_id.substring(0, 8) : '—');
+                        const route = deepLinkFor(log.table_name, log.record_id);
 
                         return (
                           <Collapsible key={log.id} open={expandedRows.has(log.id)}>
                             <div className="relative">
-                              {/* Timeline dot */}
                               <div className={`absolute -left-6 top-4 h-[22px] w-[22px] rounded-full border-2 border-background flex items-center justify-center ${
                                 log.action === 'INSERT' ? 'bg-emerald-500' : log.action === 'DELETE' ? 'bg-red-500' : 'bg-blue-500'
                               }`}>
@@ -282,9 +354,13 @@ export default function AuditLogsPage() {
                                   <div className="flex items-start justify-between p-3 gap-3">
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                                        <span className="font-semibold text-sm text-foreground">{actorDisplay}</span>
-                                        <span className="text-sm text-muted-foreground">{style.label.toLowerCase()}</span>
-                                        <Badge variant="outline" className="text-xs font-normal px-1.5 py-0">{formatTableName(log.table_name)}</Badge>
+                                        <span className="text-sm text-foreground">
+                                          <span className="font-semibold">{actorDisplay}</span>
+                                          <span className="text-muted-foreground"> {style.label.toLowerCase()} </span>
+                                          <span className="font-medium">{target}</span>
+                                        </span>
+                                        <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0 capitalize">{CATEGORY_LABEL[categoryOf(log.table_name)]}</Badge>
+                                        <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">{formatTableName(log.table_name)}</Badge>
                                         {changedCount > 0 && (
                                           <span className="text-xs text-muted-foreground">({changedCount} field{changedCount !== 1 ? 's' : ''})</span>
                                         )}
@@ -294,6 +370,16 @@ export default function AuditLogsPage() {
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
+                                      {route && (
+                                        <Link
+                                          to={route}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                          title="Open record"
+                                        >
+                                          Open <ExternalLink className="h-3 w-3" />
+                                        </Link>
+                                      )}
                                       <span className="text-xs text-muted-foreground whitespace-nowrap" title={format(new Date(log.created_at), 'PPpp')}>
                                         {format(new Date(log.created_at), 'h:mm a')}
                                       </span>
