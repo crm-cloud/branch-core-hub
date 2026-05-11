@@ -4,7 +4,9 @@ import createGlobe, { type COBEOptions } from "cobe";
 import { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
-const GLOBE_CONFIG: COBEOptions = {
+type COBEOptionsExt = COBEOptions & { onRender?: (state: Record<string, number>) => void };
+
+const GLOBE_CONFIG: COBEOptionsExt = {
   width: 600,
   height: 600,
   onRender: () => {},
@@ -29,7 +31,7 @@ const GLOBE_CONFIG: COBEOptions = {
 
 export interface GlobeProps {
   className?: string;
-  config?: COBEOptions;
+  config?: COBEOptionsExt;
 }
 
 export function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
@@ -60,7 +62,7 @@ export function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
       width: widthRef.current * 2,
       height: widthRef.current * 2,
       onRender,
-    });
+    } as COBEOptions);
 
     return () => {
       globe.destroy();
