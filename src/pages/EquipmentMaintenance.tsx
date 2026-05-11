@@ -90,6 +90,39 @@ export default function EquipmentMaintenancePage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteEquipment(id),
+    onSuccess: () => {
+      toast.success('Equipment deleted');
+      queryClient.invalidateQueries({ queryKey: ['equipment-list'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment-stats'] });
+      setConfirmDelete(null);
+    },
+    onError: (error: any) => {
+      if (error?.code === 'HAS_MAINTENANCE_HISTORY') {
+        toast.error(`Cannot delete — ${error.maintenanceCount} maintenance record(s) exist. Use "Retire" to keep the audit trail.`);
+        setConfirmDelete(null);
+      } else {
+        toast.error('Delete failed: ' + (error?.message || 'Unknown'));
+      }
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => bulkDeleteEquipment(ids),
+    onSuccess: (res) => {
+      if (res.failed.length > 0) {
+        toast.warning(`Deleted ${res.ok}, skipped ${res.failed.length} (have maintenance history — retire instead)`);
+      } else {
+        toast.success(`Deleted ${res.ok} equipment`);
+      }
+      setSelectedIds(new Set());
+      setConfirmBulkDelete(false);
+      queryClient.invalidateQueries({ queryKey: ['equipment-list'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment-stats'] });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       operational: 'bg-green-500/10 text-green-500',
@@ -111,11 +144,25 @@ export default function EquipmentMaintenancePage() {
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
 
+  // Auto-number duplicates so list reads "Treadmill #1, #2" instead of "Treadmill, Treadmill"
+  const numberedEquipment = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const totals: Record<string, number> = {};
+    (equipment as any[]).forEach((e) => {
+      totals[e.name] = (totals[e.name] || 0) + 1;
+    });
+    return (equipment as any[]).map((e) => {
+      counts[e.name] = (counts[e.name] || 0) + 1;
+      const displayName = totals[e.name] > 1 ? `${e.name} #${counts[e.name]}` : e.name;
+      return { ...e, _displayName: displayName, _unitCount: totals[e.name] };
+    });
+  }, [equipment]);
+
   // Search filter (name, brand, model, serial, category, location)
   const filteredEquipment = (() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return equipment as any[];
-    return (equipment as any[]).filter((e) => {
+    if (!q) return numberedEquipment;
+    return numberedEquipment.filter((e) => {
       const haystack = [e.name, e.brand, e.model, e.serial_number, e.category, e.location]
         .filter(Boolean)
         .join(' ')
@@ -123,6 +170,17 @@ export default function EquipmentMaintenancePage() {
       return haystack.includes(q);
     });
   })();
+
+  const allSelected = filteredEquipment.length > 0 && filteredEquipment.every((e) => selectedIds.has(e.id));
+  const toggleAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredEquipment.map((e) => e.id)));
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
 
   // Derived: due / overdue / warranty signals
   const today = new Date();
