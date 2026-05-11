@@ -199,6 +199,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
         duration: 12000,
         action: { label: 'Copy', onClick: () => navigator.clipboard.writeText(DEFAULT_TEMP_PASSWORD) },
       });
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
       onOpenChange(false);
       resetForms();
     } catch (error: any) {
