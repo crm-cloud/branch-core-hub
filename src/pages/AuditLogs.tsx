@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,27 +8,58 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { StatCard } from '@/components/ui/stat-card';
-import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, AlertCircle, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, Users, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink, User as UserIcon } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format, subDays, isToday, isYesterday } from 'date-fns';
+import { format, subDays, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { CATEGORY_LABEL, TABLE_CATEGORY, categoryOf, deepLinkFor, type AuditCategory } from '@/lib/audit/auditMeta';
+import { useOnlineUsers } from '@/hooks/usePresence';
+import { OnlinePresencePill } from '@/components/presence/OnlinePresencePill';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuditLogsPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const onlineUsers = useOnlineUsers();
+  const onlineIds = useMemo(() => new Set(onlineUsers.map(u => u.user_id)), [onlineUsers]);
+  const [density, setDensity] = useState<'comfortable' | 'compact'>(
+    () => (typeof window !== 'undefined' && (localStorage.getItem('auditDensity') as any)) || 'comfortable'
+  );
+  useEffect(() => { localStorage.setItem('auditDensity', density); }, [density]);
+
   const [filters, setFilters] = useState({
     action: 'all',
     table: 'all',
     category: 'all' as 'all' | AuditCategory,
     actor: 'all',
+    onlyMe: false,
     search: '',
     dateFrom: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
     dateTo: format(new Date(), 'yyyy-MM-dd'),
   });
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [newRowIds, setNewRowIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+
+  // Realtime tail — softly highlight any new audit row
+  useEffect(() => {
+    const ch = supabase
+      .channel('audit-logs-tail')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, (payload) => {
+        const id = (payload.new as any)?.id;
+        if (id) {
+          setNewRowIds(prev => new Set(prev).add(id));
+          setTimeout(() => setNewRowIds(prev => { const n = new Set(prev); n.delete(id); return n; }), 4000);
+        }
+        queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
 
   const setQuickRange = (days: number) => {
     setFilters(f => ({
@@ -52,6 +83,7 @@ export default function AuditLogsPage() {
       if (filters.action !== 'all') query = query.eq('action', filters.action);
       if (filters.table !== 'all') query = query.eq('table_name', filters.table);
       if (filters.actor !== 'all') query = query.eq('actor_name', filters.actor);
+      if (filters.onlyMe && user?.id) query = query.eq('user_id', user.id);
       if (filters.category !== 'all') {
         const tables = Object.entries(TABLE_CATEGORY).filter(([, c]) => c === filters.category).map(([t]) => t);
         if (tables.length) query = query.in('table_name', tables);
@@ -209,12 +241,25 @@ export default function AuditLogsPage() {
           <StatCard title="Total Logs" value={stats?.total || 0} icon={Database} variant="default" />
           <StatCard title="Today's Activity" value={stats?.today || 0} icon={Activity} variant="info" />
           <StatCard title="Most Active" value={stats?.mostActiveTable ? formatTableName(stats.mostActiveTable) : 'N/A'} icon={ClipboardList} variant="accent" />
-          <StatCard title="Page" value={`${currentPage} / ${totalPages || 1}`} icon={AlertCircle} variant="warning" />
+          <StatCard title="Online Now" value={onlineUsers.length} icon={Users} variant="success" />
         </div>
 
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Audit Logs</h1>
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Audit Logs</h1>
+            <OnlinePresencePill />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center rounded-lg border bg-background p-0.5">
+              <button
+                onClick={() => setDensity('comfortable')}
+                className={`px-2.5 py-1 text-xs rounded-md transition ${density === 'comfortable' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'}`}
+              >Comfortable</button>
+              <button
+                onClick={() => setDensity('compact')}
+                className={`px-2.5 py-1 text-xs rounded-md transition ${density === 'compact' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'}`}
+              >Compact</button>
+            </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="h-4 w-4 mr-2" />Refresh</Button>
             <Button variant="outline" size="sm" onClick={exportToCSV}><Download className="h-4 w-4 mr-2" />Export</Button>
           </div>
@@ -237,6 +282,17 @@ export default function AuditLogsPage() {
                   {r.label}
                 </Button>
               ))}
+              <div className="flex-1" />
+              {user && (
+                <Button
+                  variant={filters.onlyMe ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 px-3 text-xs"
+                  onClick={() => { setFilters(f => ({ ...f, onlyMe: !f.onlyMe })); setCurrentPage(1); }}
+                >
+                  <UserIcon className="h-3 w-3 mr-1.5" /> My activity
+                </Button>
+              )}
             </div>
             <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
               <div className="space-y-2 lg:col-span-2">
@@ -312,15 +368,17 @@ export default function AuditLogsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : logs.data.length === 0 ? (
-              <div className="text-center py-12">
-                <ClipboardList className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="text-muted-foreground">No audit logs found</p>
+              <div className="text-center py-16">
+                <ClipboardList className="h-14 w-14 mx-auto mb-4 text-muted-foreground/40" />
+                <p className="text-base font-medium text-foreground mb-1">No audit logs match these filters</p>
+                <p className="text-sm text-muted-foreground mb-4">Try widening the date range or clearing filters.</p>
+                <Button variant="outline" size="sm" onClick={() => { setFilters({ action: 'all', table: 'all', category: 'all', actor: 'all', onlyMe: false, search: '', dateFrom: format(subDays(new Date(), 30), 'yyyy-MM-dd'), dateTo: format(new Date(), 'yyyy-MM-dd') }); setCurrentPage(1); }}>Reset filters</Button>
               </div>
             ) : (
               <div className="space-y-6">
                 {groupedLogs.map(group => (
                   <div key={group.date}>
-                    <div className="flex items-center gap-3 mb-3">
+                    <div className="sticky top-0 z-[5] -mx-2 px-2 py-1 mb-3 flex items-center gap-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
                       <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
                       <div className="flex-1 h-px bg-border" />
                       <span className="text-xs text-muted-foreground">{group.logs.length} events</span>
@@ -333,9 +391,14 @@ export default function AuditLogsPage() {
                         const style = getActionStyle(log.action);
                         const ActionIcon = style.icon;
                         const actorDisplay = log.actor_name || (log.user_id ? 'Unknown user' : 'System');
+                        const isOnline = log.user_id && onlineIds.has(log.user_id);
+                        const initials = (actorDisplay || '?').split(' ').map((s: string) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
                         const changedCount = log.action === 'UPDATE' ? getChangedFieldsCount(log.old_data, log.new_data) : 0;
                         const target = log.target_name || (log.record_id ? log.record_id.substring(0, 8) : '—');
                         const route = deepLinkFor(log.table_name, log.record_id);
+                        const isNew = newRowIds.has(log.id);
+                        const accent = log.action === 'DELETE' ? 'border-l-2 border-l-red-500' : log.action === 'INSERT' ? 'border-l-2 border-l-emerald-500' : 'border-l-2 border-l-blue-500';
+                        const padY = density === 'compact' ? 'p-2' : 'p-3';
 
                         return (
                           <Collapsible key={log.id} open={expandedRows.has(log.id)}>
@@ -348,26 +411,40 @@ export default function AuditLogsPage() {
 
                               <CollapsibleTrigger asChild>
                                 <div
-                                  className="ml-2 border rounded-lg mb-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                                  className={`ml-2 border ${accent} rounded-lg mb-2 cursor-pointer transition-all hover:bg-muted/50 hover:shadow-sm ${isNew ? 'ring-2 ring-emerald-400/60 animate-in fade-in' : ''}`}
                                   onClick={() => toggleRow(log.id)}
                                 >
-                                  <div className="flex items-start justify-between p-3 gap-3">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                                        <span className="text-sm text-foreground">
-                                          <span className="font-semibold">{actorDisplay}</span>
-                                          <span className="text-muted-foreground"> {style.label.toLowerCase()} </span>
-                                          <span className="font-medium">{target}</span>
-                                        </span>
-                                        <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0 capitalize">{CATEGORY_LABEL[categoryOf(log.table_name)]}</Badge>
-                                        <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">{formatTableName(log.table_name)}</Badge>
-                                        {changedCount > 0 && (
-                                          <span className="text-xs text-muted-foreground">({changedCount} field{changedCount !== 1 ? 's' : ''})</span>
+                                  <div className={`flex items-start justify-between ${padY} gap-3`}>
+                                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                                      <div className="relative shrink-0">
+                                        <Avatar className={density === 'compact' ? 'h-7 w-7' : 'h-9 w-9'}>
+                                          <AvatarImage src={undefined} />
+                                          <AvatarFallback className="text-[10px] bg-muted text-muted-foreground">{initials}</AvatarFallback>
+                                        </Avatar>
+                                        {isOnline && (
+                                          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-emerald-500" title="Online now" />
                                         )}
                                       </div>
-                                      {log.action_description && (
-                                        <p className="text-xs text-muted-foreground truncate">{log.action_description}</p>
-                                      )}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-sm text-foreground">
+                                            <span className="font-semibold">{actorDisplay}</span>
+                                            <span className="text-muted-foreground"> {style.label.toLowerCase()} </span>
+                                            <span className="font-medium">{target}</span>
+                                          </span>
+                                          {isNew && <Badge className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-700 border-emerald-500/20">New</Badge>}
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                                          <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0 capitalize">{CATEGORY_LABEL[categoryOf(log.table_name)]}</Badge>
+                                          <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">{formatTableName(log.table_name)}</Badge>
+                                          {changedCount > 0 && (
+                                            <span className="text-xs text-muted-foreground">{changedCount} field{changedCount !== 1 ? 's' : ''} changed</span>
+                                          )}
+                                          {log.action_description && density !== 'compact' && (
+                                            <span className="text-xs text-muted-foreground truncate">· {log.action_description}</span>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                       {route && (
@@ -381,7 +458,7 @@ export default function AuditLogsPage() {
                                         </Link>
                                       )}
                                       <span className="text-xs text-muted-foreground whitespace-nowrap" title={format(new Date(log.created_at), 'PPpp')}>
-                                        {format(new Date(log.created_at), 'h:mm a')}
+                                        {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
                                       </span>
                                       {expandedRows.has(log.id) ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                                     </div>

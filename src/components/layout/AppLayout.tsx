@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getNavMode, setNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
 import { getMenuForRole } from '@/config/menu';
 import { groupMenuIntoModules, findActiveModuleId } from '@/config/navModules';
+import { usePresenceHeartbeat } from '@/hooks/usePresence';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -25,6 +26,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { profile, roles } = useAuth();
   const { branchStatus, retryBranchFetch } = useBranchContext();
   const location = useLocation();
+
+  // Live presence heartbeat (mounted once globally)
+  usePresenceHeartbeat();
 
   const [navMode, setNavModeState] = useState<NavMode>(getNavMode);
   useEffect(() => subscribeNavMode(setNavModeState), []);
