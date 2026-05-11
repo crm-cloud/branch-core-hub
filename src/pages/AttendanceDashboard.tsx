@@ -22,6 +22,8 @@ import { format, startOfDay, endOfDay } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { toast } from 'sonner';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
+import { LivePill } from '@/components/ui/live-pill';
 
 type FlashState = {
   type: 'success' | 'denied';
@@ -38,6 +40,19 @@ export default function AttendanceDashboard() {
   const isManager = hasAnyRole(['manager']);
   const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
   const canRecordStaff = hasAnyRole(['owner', 'admin', 'manager']);
+
+  // Realtime: refresh on any attendance / member change.
+  useRealtimeInvalidate({
+    channel: 'page-attendance-dashboard',
+    tables: ['member_attendance', 'staff_attendance', 'members'],
+    invalidateKeys: [
+      ['member-attendance-dashboard'],
+      ['staff-attendance-dashboard'],
+      ['staff-attendance-history'],
+      ['attendance-trends'],
+      ['all-staff-profiles'],
+    ],
+  });
 
   // Rapid-entry member search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -418,7 +433,10 @@ export default function AttendanceDashboard() {
               <Activity className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Attendance Command Center</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">Attendance Command Center</h1>
+                <LivePill />
+              </div>
               <p className="text-sm text-muted-foreground">Unified member & staff attendance</p>
             </div>
           </div>

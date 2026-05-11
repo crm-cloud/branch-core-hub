@@ -10,6 +10,7 @@ import { DateRangeFilter } from '@/components/ui/date-range-filter';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { 
   TrendingUp, TrendingDown, Wallet, 
   ArrowUpRight, ArrowDownRight, Plus, Clock, CheckCircle, XCircle, Download,
@@ -28,6 +29,19 @@ export default function FinancePage() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
+  });
+
+  useRealtimeInvalidate({
+    channel: 'page-finance',
+    tables: ['payments', 'pos_sales', 'expenses', 'invoices'],
+    invalidateKeys: [
+      ['finance-income'],
+      ['finance-pos-sales'],
+      ['finance-expenses'],
+      ['pending-expenses'],
+      ['finance-gst-invoices'],
+      ['finance-monthly-report'],
+    ],
   });
 
   // Fetch income data (payments)

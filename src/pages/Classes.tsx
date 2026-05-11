@@ -20,6 +20,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AddClassDrawer } from "@/components/classes/AddClassDrawer";
 import { EditClassDrawer } from "@/components/classes/EditClassDrawer";
 import type { ClassWithDetails } from "@/services/classService";
+import { useRealtimeInvalidate } from "@/hooks/useRealtimeInvalidate";
+import { LivePill } from "@/components/ui/live-pill";
 
 type TimeFilter = "upcoming" | "past" | "all";
 
@@ -42,6 +44,12 @@ export default function ClassesPage() {
   const { data: rosterBookings } = useClassBookings(rosterClassId || "");
   const markAttendance = useMarkAttendance();
   const cancelBooking = useCancelBooking();
+
+  useRealtimeInvalidate({
+    channel: 'page-classes',
+    tables: ['classes', 'class_bookings', 'class_waitlist'],
+    invalidateKeys: [['classes'], ['class-bookings'], ['class-waitlist']],
+  });
 
   const handleMarkAttendance = async (bookingId: string, attended: boolean) => {
     try {
@@ -181,7 +189,10 @@ export default function ClassesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Classes</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold tracking-tight">Classes</h1>
+              <LivePill />
+            </div>
             <p className="text-muted-foreground">Manage group classes and bookings</p>
           </div>
           <div className="flex items-center gap-4">

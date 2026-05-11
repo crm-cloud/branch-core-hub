@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { recordPayment as unifiedRecordPayment, voidPayment as unifiedVoidPayment } from '@/services/billingService';
 import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 import { useState, useMemo, useEffect } from 'react';
@@ -43,6 +44,17 @@ export default function PaymentsPage() {
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [duesOpen, setDuesOpen] = useState(true);
+
+  useRealtimeInvalidate({
+    channel: 'page-payments',
+    tables: ['payments', 'invoices', 'payment_transactions'],
+    invalidateKeys: [
+      ['payments'],
+      ['invoices'],
+      ['all-overdue-invoices'],
+      ['member-overdue-invoices'],
+    ],
+  });
 
   // Cmd+K: ?new=1 opens Record Payment
   useEffect(() => {

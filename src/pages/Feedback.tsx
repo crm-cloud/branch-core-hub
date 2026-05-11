@@ -19,6 +19,8 @@ import { toast } from 'sonner';
 import { format, subDays } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
 import ExternalReviewsTab from '@/components/feedback/ExternalReviewsTab';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
+import { LivePill } from '@/components/ui/live-pill';
 
 type RequestStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'failed';
 
@@ -38,6 +40,12 @@ export default function FeedbackPage() {
   const [unresolvedLow, setUnresolvedLow] = useState<boolean>(false);
   const queryClient = useQueryClient();
   const { effectiveBranchId: branchId = '' } = useBranchContext();
+
+  useRealtimeInvalidate({
+    channel: 'page-feedback',
+    tables: ['feedback'],
+    invalidateKeys: [['feedback']],
+  });
 
   const { data: feedbackList = [], isLoading } = useQuery({
     queryKey: ['feedback', branchId, statusFilter, ratingFilter, requestFilter, reviewFilter, unresolvedLow],
@@ -159,7 +167,10 @@ export default function FeedbackPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Feedback & Reviews</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold">Feedback & Reviews</h1>
+              <LivePill />
+            </div>
             <p className="text-muted-foreground">Member feedback in-app, plus inbound Google reviews with AI triage.</p>
           </div>
         </div>
