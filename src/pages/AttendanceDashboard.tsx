@@ -363,18 +363,25 @@ export default function AttendanceDashboard() {
 
   const checkedInUserIds = new Set((checkedInStaff.data || []).map((a: any) => a.user_id));
 
-  const handleStaffCheckIn = (userId: string) => {
-    if (!canRecordStaff) return;
-    if (isManager && !isAdmin && userId === user?.id) {
-      toast.error('Your attendance must be recorded by an admin');
+  const decisionFor = (staff: any) =>
+    canRecordAttendanceFor(actorRoles, staff?.roles, staff?.user_id === user?.id);
+
+  const handleStaffCheckIn = (staff: any) => {
+    const decision = decisionFor(staff);
+    if (!decision.allowed) {
+      toast.error(decision.reason || 'Not allowed');
       return;
     }
-    staffCheckIn({ userId });
+    staffCheckIn({ userId: staff.user_id });
   };
 
-  const handleStaffCheckOut = (userId: string) => {
-    if (!canRecordStaff) return;
-    staffCheckOut(userId);
+  const handleStaffCheckOut = (staff: any) => {
+    const decision = decisionFor(staff);
+    if (!decision.allowed) {
+      toast.error(decision.reason || 'Not allowed');
+      return;
+    }
+    staffCheckOut(staff.user_id);
   };
 
   const filteredMemberAttendance = memberAttendance.filter((a: any) => {
