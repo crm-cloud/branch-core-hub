@@ -524,22 +524,42 @@ export default function AttendanceDashboard() {
         )}
 
         {/* Rapid-Entry Search Bar */}
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Scan className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              placeholder={activeTab === 'staff-record' ? "Search staff by name or code..." : "Scan barcode or type member code / name / phone..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              className="pl-12 h-14 text-lg border-2 focus:border-primary transition-colors"
-            />
+        <div className="space-y-2">
+          {canRecordStaff && (
+            <div className="inline-flex items-center gap-1 p-1 rounded-full bg-muted/60 border">
+              <button
+                type="button"
+                onClick={() => { setActiveTab('members'); setSearchQuery(''); }}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${activeTab !== 'staff-record' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Users className="inline h-3.5 w-3.5 mr-1" />Members
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('staff-record'); setSearchQuery(''); }}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${activeTab === 'staff-record' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <UserCheck className="inline h-3.5 w-3.5 mr-1" />Staff
+              </button>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Scan className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder={activeTab === 'staff-record' ? "Search staff by name or employee code…" : "Scan barcode or type member code / name / phone…"}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                className="pl-12 h-14 text-lg border-2 focus:border-primary transition-colors"
+              />
+            </div>
+            <Button onClick={handleMemberSearch} disabled={isSearching || activeTab === 'staff-record'} className="h-14 px-6" size="lg">
+              <Search className="w-5 h-5 mr-2" />
+              {isSearching ? 'Searching…' : 'Search'}
+            </Button>
           </div>
-          <Button onClick={handleMemberSearch} disabled={isSearching || activeTab === 'staff-record'} className="h-14 px-6" size="lg">
-            <Search className="w-5 h-5 mr-2" />
-            {isSearching ? 'Searching...' : 'Search'}
-          </Button>
         </div>
 
         {/* Staff Search Results from top bar */}
