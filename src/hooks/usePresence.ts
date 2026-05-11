@@ -12,46 +12,124 @@ export type OnlineUser = {
 
 const CHANNEL = 'presence:app';
 
+// Singleton channel + listeners so the heartbeat (which tracks) and any
+// number of `useOnlineUsers` consumers share a single realtime subscription
+// and a single source of truth.
+type State = {
+  channel: ReturnType<typeof supabase.channel> | null;
+  users: OnlineUser[];
+  listeners: Set<(u: OnlineUser[]) => void>;
+  refCount: number;
+  currentKey: string | null;
+};
+
+const state: State = {
+  channel: null,
+  users: [],
+  listeners: new Set(),
+  refCount: 0,
+  currentKey: null,
+};
+
+function emit() {
+  for (const cb of state.listeners) cb(state.users);
+}
+
+function syncFromChannel() {
+  if (!state.channel) return;
+  const presenceState = state.channel.presenceState() as Record<string, OnlineUser[]>;
+  const flat: OnlineUser[] = [];
+  const seen = new Set<string>();
+  for (const arr of Object.values(presenceState)) {
+    for (const p of arr) {
+      if (!p?.user_id || seen.has(p.user_id)) continue;
+      seen.add(p.user_id);
+      flat.push(p);
+    }
+  }
+  state.users = flat;
+  emit();
+}
+
+function ensureChannel(userId: string, track?: () => Promise<void> | void) {
+  // If user changed (rare), tear down and rebuild.
+  if (state.channel && state.currentKey !== userId) {
+    try { supabase.removeChannel(state.channel); } catch { /* ignore */ }
+    state.channel = null;
+    state.currentKey = null;
+    state.users = [];
+  }
+
+  if (!state.channel) {
+    state.currentKey = userId;
+    const ch = supabase.channel(CHANNEL, { config: { presence: { key: userId } } });
+    ch.on('presence', { event: 'sync' }, syncFromChannel)
+      .on('presence', { event: 'join' }, syncFromChannel)
+      .on('presence', { event: 'leave' }, syncFromChannel)
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && track) {
+          try { await track(); } catch { /* ignore */ }
+          syncFromChannel();
+        }
+      });
+    state.channel = ch;
+  }
+  return state.channel;
+}
+
+function releaseChannel() {
+  state.refCount = Math.max(0, state.refCount - 1);
+  if (state.refCount === 0 && state.channel) {
+    try { supabase.removeChannel(state.channel); } catch { /* ignore */ }
+    state.channel = null;
+    state.currentKey = null;
+    state.users = [];
+    emit();
+  }
+}
+
 /**
  * Mounts a global presence heartbeat. Joins the realtime presence channel and
  * pings touch_presence() RPC every 60s so we have a server-side fallback.
  */
 export function usePresenceHeartbeat() {
   const { user, profile, roles } = useAuth();
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const trackedRef = useRef(false);
 
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase.channel(CHANNEL, {
-      config: { presence: { key: user.id } },
-    });
-
-    channel
-      .on('presence', { event: 'sync' }, () => {})
-      .subscribe(async (status) => {
-        if (status !== 'SUBSCRIBED') return;
-        await channel.track({
-          user_id: user.id,
-          full_name: profile?.full_name ?? null,
-          avatar_url: profile?.avatar_url ?? null,
-          roles: (roles || []).map((r: any) => r.role),
-          online_at: new Date().toISOString(),
-        });
+    const track = async () => {
+      const ch = state.channel;
+      if (!ch) return;
+      await ch.track({
+        user_id: user.id,
+        full_name: profile?.full_name ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        roles: (roles || []).map((r: any) => r.role),
+        online_at: new Date().toISOString(),
       });
+      trackedRef.current = true;
+    };
 
-    channelRef.current = channel;
+    state.refCount++;
+    ensureChannel(user.id, track);
 
-    // Heartbeat to DB — swallow any auth/network errors so an expired session
-    // can never bubble up into the global ErrorBoundary.
+    // If channel was already up (another consumer mounted first), track now.
+    if (state.channel && !trackedRef.current) {
+      // Best-effort track — channel.subscribe may already be SUBSCRIBED.
+      track().catch(() => {});
+    }
+
+    // Heartbeat to DB — best effort.
     const ping = async () => {
       try {
         const { data: sess } = await supabase.auth.getSession();
         if (!sess.session) return;
         await supabase.rpc('touch_presence');
-      } catch {
-        // ignore — presence is best-effort
-      }
+        // Re-track to refresh online_at and metadata.
+        await track();
+      } catch { /* ignore */ }
     };
     ping();
     const interval = setInterval(ping, 60_000);
@@ -61,45 +139,30 @@ export function usePresenceHeartbeat() {
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
-      try { supabase.removeChannel(channel); } catch { /* ignore */ }
-      channelRef.current = null;
+      trackedRef.current = false;
+      releaseChannel();
     };
-    // Intentionally only depend on user.id — profile/roles changes shouldn't
-    // tear down and re-create the realtime channel every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 }
 
-/** Subscribes to the same channel and returns the deduped list of online users. */
+/** Subscribes to the shared channel and returns the deduped list of online users. */
 export function useOnlineUsers(): OnlineUser[] {
   const { user } = useAuth();
-  const [users, setUsers] = useState<OnlineUser[]>([]);
+  const [users, setUsers] = useState<OnlineUser[]>(state.users);
 
   useEffect(() => {
     if (!user) { setUsers([]); return; }
-    const channel = supabase.channel(CHANNEL, { config: { presence: { key: user.id } } });
-
-    const sync = () => {
-      const state = channel.presenceState() as Record<string, OnlineUser[]>;
-      const flat: OnlineUser[] = [];
-      const seen = new Set<string>();
-      for (const arr of Object.values(state)) {
-        for (const p of arr) {
-          if (!p?.user_id || seen.has(p.user_id)) continue;
-          seen.add(p.user_id);
-          flat.push(p);
-        }
-      }
-      setUsers(flat);
+    state.refCount++;
+    ensureChannel(user.id);
+    const cb = (u: OnlineUser[]) => setUsers(u);
+    state.listeners.add(cb);
+    // Push current snapshot immediately.
+    setUsers(state.users);
+    return () => {
+      state.listeners.delete(cb);
+      releaseChannel();
     };
-
-    channel
-      .on('presence', { event: 'sync' }, sync)
-      .on('presence', { event: 'join' }, sync)
-      .on('presence', { event: 'leave' }, sync)
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
   }, [user?.id]);
 
   return users;
