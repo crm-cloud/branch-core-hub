@@ -20,6 +20,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AddClassDrawer } from "@/components/classes/AddClassDrawer";
 import { EditClassDrawer } from "@/components/classes/EditClassDrawer";
 import type { ClassWithDetails } from "@/services/classService";
+import { useRealtimeInvalidate } from "@/hooks/useRealtimeInvalidate";
+import { LivePill } from "@/components/ui/live-pill";
 
 type TimeFilter = "upcoming" | "past" | "all";
 
