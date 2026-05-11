@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { DeliveryTimeline } from './DeliveryTimeline';
 import { KpiStrip, type KpiCounts } from './KpiStrip';
+import { formatPhoneDisplay, phoneVariants } from '@/lib/contacts/phone';
 
 type ChannelKey = 'all' | 'whatsapp' | 'sms' | 'email' | 'in_app';
 
@@ -84,6 +85,124 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
   });
 
   const [livePulse, setLivePulse] = useState(0);
+
+  // Batched name lookup keyed by member_id and by normalized phone/email.
+  const logIdsKey = (logs as any[]).map((l) => l.id).join(',');
+  const { data: nameMap = {} } = useQuery<Record<string, string>>({
+    queryKey: ['comm-live-feed-names', logIdsKey],
+    enabled: logs.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const memberIds = Array.from(new Set((logs as any[]).map((l) => l.member_id).filter(Boolean))) as string[];
+      const phoneSet = new Set<string>();
+      const emailSet = new Set<string>();
+      for (const l of logs as any[]) {
+        if (l.member_id) continue;
+        if (l.type === 'whatsapp' || l.type === 'sms') {
+          for (const v of phoneVariants(l.recipient)) phoneSet.add(v);
+        } else if (l.type === 'email' && l.recipient) {
+          emailSet.add(String(l.recipient).toLowerCase());
+        }
+      }
+      const phones = Array.from(phoneSet);
+      const emails = Array.from(emailSet);
+
+      const map: Record<string, string> = {};
+      const setName = (key: string | null | undefined, name: string | null | undefined) => {
+        if (!key || !name) return;
+        const k = String(key).toLowerCase();
+        if (!map[k]) map[k] = name;
+      };
+
+      // 1. Members → profiles via user_id
+      if (memberIds.length) {
+        const { data: members } = await (supabase as any)
+          .from('members')
+          .select('id, user_id')
+          .in('id', memberIds);
+        const userIds = (members || []).map((m: any) => m.user_id).filter(Boolean);
+        if (userIds.length) {
+          const { data: profs } = await (supabase as any)
+            .from('profiles')
+            .select('id, full_name, phone, email')
+            .in('id', userIds);
+          const byUser: Record<string, any> = {};
+          for (const p of profs || []) byUser[p.id] = p;
+          for (const m of members || []) {
+            const p = byUser[m.user_id];
+            if (!p) continue;
+            setName(m.id, p.full_name);
+            for (const v of phoneVariants(p.phone)) setName(v, p.full_name);
+            if (p.email) setName(p.email, p.full_name);
+          }
+        }
+      }
+
+      // 2. Phone-based fallbacks: profiles, leads, whatsapp_messages.contact_name
+      if (phones.length) {
+        await Promise.all([
+          (supabase as any)
+            .from('profiles')
+            .select('full_name, phone')
+            .in('phone', phones)
+            .then(({ data }: any) => {
+              for (const p of data || []) {
+                for (const v of phoneVariants(p.phone)) setName(v, p.full_name);
+              }
+            }),
+          (supabase as any)
+            .from('leads')
+            .select('full_name, phone')
+            .in('phone', phones)
+            .then(({ data }: any) => {
+              for (const l of data || []) {
+                for (const v of phoneVariants(l.phone)) setName(v, l.full_name);
+              }
+            }),
+          (supabase as any)
+            .from('whatsapp_messages')
+            .select('contact_name, phone_number')
+            .in('phone_number', phones)
+            .not('contact_name', 'is', null)
+            .limit(500)
+            .then(({ data }: any) => {
+              for (const c of data || []) {
+                for (const v of phoneVariants(c.phone_number)) setName(v, c.contact_name);
+              }
+            }),
+        ]);
+      }
+
+      // 3. Email-based fallback
+      if (emails.length) {
+        const { data } = await (supabase as any)
+          .from('profiles')
+          .select('full_name, email')
+          .in('email', emails);
+        for (const p of data || []) setName(p.email, p.full_name);
+      }
+
+      return map;
+    },
+  });
+
+  function resolveName(log: any): string | null {
+    if (log.member_id) {
+      const n = nameMap[String(log.member_id).toLowerCase()];
+      if (n) return n;
+    }
+    if (log.type === 'whatsapp' || log.type === 'sms') {
+      for (const v of phoneVariants(log.recipient)) {
+        const n = nameMap[v.toLowerCase()];
+        if (n) return n;
+      }
+    }
+    if (log.recipient) {
+      const n = nameMap[String(log.recipient).toLowerCase()];
+      if (n) return n;
+    }
+    return null;
+  }
 
   useEffect(() => {
     const invalidate = () => {
@@ -206,6 +325,9 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
                   const Icon = ch.icon;
                   const status = normalizeStatus(log);
                   const isOpen = expanded === log.id;
+                  const name = resolveName(log);
+                  const isPhone = log.type === 'whatsapp' || log.type === 'sms';
+                  const recipientDisplay = isPhone ? formatPhoneDisplay(log.recipient) || log.recipient : log.recipient;
                   return (
                     <div key={log.id} style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }} className="animate-fade-in">
                       <button
@@ -216,8 +338,11 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
                           <Icon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground truncate">{log.recipient}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-foreground truncate">
+                              {name || <span className="text-muted-foreground italic">Unknown</span>}
+                            </span>
+                            <span className="text-xs text-muted-foreground tabular-nums">{recipientDisplay}</span>
                             <Badge variant="outline" className="rounded-full text-[10px] capitalize">{ch.label}</Badge>
                           </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">

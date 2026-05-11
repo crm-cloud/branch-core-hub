@@ -100,29 +100,29 @@ export function DeliveryTimeline({ logId }: { logId: string }) {
     ? (lastReachedIdx / (visibleStages.length - 1)) * 100
     : 0;
 
-  // Pick the connector colour from the latest reached stage
-  const trackColour = hasFailure
-    ? 'bg-rose-500'
-    : (activeStage && stageMeta[activeStage]?.dotBg) || 'bg-emerald-500';
-
   const errorInfo = hasFailure ? explainError(failureEvent?.error_message) : null;
 
   return (
     <div
       className={cn(
-        'rounded-xl border px-4 py-3 transition-colors',
+        'mx-4 my-3 rounded-2xl border px-5 py-4 transition-colors',
         hasFailure
-          ? 'bg-rose-50/60 dark:bg-rose-500/5 border-rose-200/70 dark:border-rose-500/20'
-          : 'bg-muted/30 border-border/50',
+          ? 'bg-gradient-to-br from-rose-50/80 via-card to-rose-50/40 dark:from-rose-500/10 dark:via-card dark:to-rose-500/5 border-rose-200/70 dark:border-rose-500/20 shadow-sm shadow-rose-500/10'
+          : 'bg-gradient-to-br from-muted/40 via-card to-muted/20 border-border/40 shadow-sm',
       )}
     >
-      <div className="relative w-full">
-        {/* Track (background) */}
-        <div className="absolute left-4 right-4 top-3.5 h-0.5 bg-border rounded-full" />
-        {/* Track (filled portion) */}
+      <div className="relative w-full px-2">
+        {/* Track (background capsule) */}
+        <div className="absolute left-5 right-5 top-4 h-1 bg-border/60 rounded-full" />
+        {/* Track (animated gradient fill) */}
         <div
-          className={cn('absolute left-4 top-3.5 h-0.5 rounded-full transition-all duration-500', trackColour)}
-          style={{ width: `calc((100% - 2rem) * ${fillPct / 100})` }}
+          className={cn(
+            'absolute left-5 top-4 h-1 rounded-full transition-all duration-700 ease-out',
+            hasFailure
+              ? 'bg-gradient-to-r from-sky-500 via-emerald-500 to-rose-500'
+              : 'bg-gradient-to-r from-sky-500 via-emerald-500 to-violet-500',
+          )}
+          style={{ width: `calc((100% - 2.5rem) * ${fillPct / 100})` }}
         />
 
         <div className="relative flex items-start justify-between">
@@ -137,25 +137,29 @@ export function DeliveryTimeline({ logId }: { logId: string }) {
               <div key={stage} className="flex flex-col items-center min-w-0 flex-1" aria-label={meta.label}>
                 <div
                   className={cn(
-                    'relative z-10 h-7 w-7 rounded-full flex items-center justify-center transition-all duration-300 shrink-0',
+                    'relative z-10 h-9 w-9 rounded-full flex items-center justify-center transition-all duration-300 shrink-0 ring-4 ring-background',
                     reached
-                      ? `${meta.dotBg} text-white shadow-sm shadow-black/5`
-                      : 'bg-background text-muted-foreground/40 border border-border',
-                    reached && isActive && !isFailureStage ? `ring-4 ${meta.dotRing} animate-pulse` : '',
-                    isFailureStage ? `ring-4 ${meta.dotRing}` : '',
+                      ? `${meta.dotBg} text-white shadow-lg shadow-black/10`
+                      : 'bg-background text-muted-foreground/40 border-2 border-dashed border-border',
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  <Icon className="h-4 w-4" strokeWidth={2.5} />
+                  {reached && isActive && !isFailureStage && (
+                    <span className={cn('absolute inset-0 rounded-full opacity-60 animate-ping', meta.dotBg)} />
+                  )}
+                  {isFailureStage && (
+                    <span className="absolute inset-0 rounded-full opacity-50 animate-ping bg-rose-500" />
+                  )}
                 </div>
-                <div className="mt-1.5 text-center leading-tight">
+                <div className="mt-2 text-center leading-tight">
                   <div className={cn(
-                    'text-[10px] font-semibold tracking-wide uppercase',
+                    'text-[10px] font-bold tracking-wide uppercase',
                     reached ? meta.text : 'text-muted-foreground/50',
                   )}>
                     {meta.label}
                   </div>
                   {event && (
-                    <div className="text-[9px] text-muted-foreground/70 tabular-nums mt-0.5">
+                    <div className="text-[10px] text-muted-foreground/70 tabular-nums mt-0.5 font-medium">
                       {format(new Date(event.created_at), 'HH:mm:ss')}
                     </div>
                   )}

@@ -1,3 +1,7 @@
+// v3.4.0 — Enforce Meta 24h customer-service window. If the lead has not
+//          replied within 24h, do NOT send a freeform AI nudge (Meta rejects
+//          with 131047). Instead, send the approved `lead_nurture_followup`
+//          WhatsApp template via dispatch-communication, or skip & cool down.
 // v3.3.0 — Move chatPlatform decl above use; nurture inbound-only chats too.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
@@ -121,17 +125,64 @@ serve(async (req) => {
         .maybeSingle();
       if (linkedMember?.id) continue;
 
-      // v3.3.0: Allow nurture for bare inbound chats too — a "Hi" with no
-      // lead/partial data should still get one re-engagement nudge.
-
       // Determine platform for send routing (must be defined BEFORE we insert
       // the outbound row that references it — earlier versions had a TDZ bug).
       const chatPlatform = chat.platform || "whatsapp";
 
+      // ── Meta 24h customer-service window guard (WhatsApp only) ──
+      // If the most recent INBOUND WhatsApp message from this number is older
+      // than 24h, freeform messages will be rejected (Meta 131047). In that
+      // case, route through dispatch-communication with the approved
+      // `lead_nurture_followup` template — or skip the nudge and cool down.
+      let outsideWindow = false;
+      let templateRow: { id: string; meta_template_name: string | null } | null = null;
+      if (chatPlatform === "whatsapp") {
+        const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const recipientDigits = chat.phone_number.replace(/\D/g, "");
+        const { data: lastInbound } = await supabase
+          .from("whatsapp_messages")
+          .select("id")
+          .eq("direction", "inbound")
+          .eq("phone_number", recipientDigits)
+          .gte("created_at", sinceIso)
+          .limit(1)
+          .maybeSingle();
+        outsideWindow = !lastInbound;
+
+        if (outsideWindow) {
+          // Look up the configured template for this branch (or global fallback).
+          const { data: trig } = await supabase
+            .from("whatsapp_triggers")
+            .select("template_id, templates:template_id(id, meta_template_name)")
+            .or(`branch_id.eq.${chat.branch_id},branch_id.is.null`)
+            .eq("event_name", "lead_nurture_followup")
+            .eq("is_active", true)
+            .order("branch_id", { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+          const tpl = Array.isArray((trig as any)?.templates)
+            ? (trig as any).templates[0]
+            : (trig as any)?.templates;
+          if (tpl?.meta_template_name) {
+            templateRow = { id: tpl.id, meta_template_name: tpl.meta_template_name };
+          } else {
+            // No template available → cool down and skip to avoid Meta rejection.
+            console.warn(
+              `lead-nurture: skipping ${chat.phone_number} — outside 24h window and no approved template configured.`,
+            );
+            await supabase
+              .from("whatsapp_chat_settings")
+              .update({ last_nurture_at: new Date().toISOString() })
+              .eq("id", chat.id);
+            continue;
+          }
+        }
+      }
+
       // Generate contextual nudge message
       let nudgeMessage: string | undefined;
 
-      if (LOVABLE_API_KEY && (partialData || lead)) {
+      if (LOVABLE_API_KEY && (partialData || lead) && !outsideWindow) {
         const missingFields: string[] = [];
         if (!partialData?.email && !lead) missingFields.push("email address");
         if (!partialData?.name && !lead?.full_name) missingFields.push("full name");
@@ -175,51 +226,81 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
         }
       }
 
-      // Fallback message
-      if (!nudgeMessage) {
-        const name = lead?.full_name || partialData?.name || partialData?.whatsapp_name || "there";
-        nudgeMessage = `Hi ${name}! 👋 Just checking in — we'd love to help you get started on your fitness journey at Incline Fitness. Feel free to reply anytime with your questions! 💪`;
-      }
-
       const contactName = lead?.full_name || partialData?.name || partialData?.whatsapp_name || null;
+      const prospectName = contactName || "there";
 
-      const { data: msgData, error: msgErr } = await supabase
-        .from("whatsapp_messages")
-        .insert({
-          branch_id: chat.branch_id,
-          phone_number: chat.phone_number,
-          contact_name: contactName,
-          content: nudgeMessage,
-          direction: "outbound",
-          status: "pending",
-          message_type: "text",
-          platform: chatPlatform,
-        })
-        .select()
-        .single();
-
-      if (msgErr) {
-        console.error(`Failed to insert nudge for ${chat.phone_number}:`, msgErr);
-        continue;
+      // Fallback message (also used as the rendered body when sending the
+      // approved template — dispatcher infers variable values from this).
+      if (!nudgeMessage) {
+        nudgeMessage = `Hi ${prospectName}! 👋 Just checking in — we'd love to help you get started on your fitness journey at Incline Fitness. Feel free to reply anytime with your questions! 💪`;
       }
 
-      // (chatPlatform is defined above, before the message insert)
       try {
-        if (chatPlatform === "whatsapp") {
-          const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+        if (chatPlatform === "whatsapp" && outsideWindow && templateRow) {
+          // ── Approved-template path via dispatch-communication ──
+          const dedupeKey = `lead_nurture:${chat.id}:${Date.now()}`;
+          const dispatchRes = await fetch(`${supabaseUrl}/functions/v1/dispatch-communication`, {
             method: "POST",
             headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ message_id: msgData.id, phone_number: chat.phone_number, content: nudgeMessage, branch_id: chat.branch_id }),
+            body: JSON.stringify({
+              branch_id: chat.branch_id,
+              channel: "whatsapp",
+              category: "retention_nudge",
+              recipient: chat.phone_number,
+              template_id: templateRow.id,
+              payload: {
+                body: nudgeMessage,
+                variables: {
+                  prospect_name: prospectName,
+                  popular_feature_1: "personal training",
+                  popular_feature_2: "recovery zone",
+                },
+              },
+              dedupe_key: dedupeKey,
+              force: true,
+            }),
           });
-          if (!sendRes.ok) console.error(`Send failed for ${chat.phone_number}: ${sendRes.status}`);
+          if (!dispatchRes.ok) {
+            console.error(`Dispatch (template) failed for ${chat.phone_number}: ${dispatchRes.status}`);
+          }
         } else {
-          // Instagram or Messenger — use unified send-message
-          const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-message`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ message_id: msgData.id, recipient_id: chat.phone_number, content: nudgeMessage, branch_id: chat.branch_id, platform: chatPlatform }),
-          });
-          if (!sendRes.ok) console.error(`Send (${chatPlatform}) failed for ${chat.phone_number}: ${sendRes.status}`);
+          // ── Inside 24h window: legacy freeform path is safe ──
+          const { data: msgData, error: msgErr } = await supabase
+            .from("whatsapp_messages")
+            .insert({
+              branch_id: chat.branch_id,
+              phone_number: chat.phone_number,
+              contact_name: contactName,
+              content: nudgeMessage,
+              direction: "outbound",
+              status: "pending",
+              message_type: "text",
+              platform: chatPlatform,
+            })
+            .select()
+            .single();
+
+          if (msgErr) {
+            console.error(`Failed to insert nudge for ${chat.phone_number}:`, msgErr);
+            continue;
+          }
+
+          if (chatPlatform === "whatsapp") {
+            const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ message_id: msgData.id, phone_number: chat.phone_number, content: nudgeMessage, branch_id: chat.branch_id }),
+            });
+            if (!sendRes.ok) console.error(`Send failed for ${chat.phone_number}: ${sendRes.status}`);
+          } else {
+            // Instagram or Messenger — use unified send-message
+            const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-message`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ message_id: msgData.id, recipient_id: chat.phone_number, content: nudgeMessage, branch_id: chat.branch_id, platform: chatPlatform }),
+            });
+            if (!sendRes.ok) console.error(`Send (${chatPlatform}) failed for ${chat.phone_number}: ${sendRes.status}`);
+          }
         }
       } catch (sendErr) {
         console.error(`Send error for ${chat.phone_number}:`, sendErr);
