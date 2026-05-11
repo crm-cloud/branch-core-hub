@@ -16,7 +16,7 @@ import { useAttendance } from '@/hooks/useAttendance';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download, DoorOpen } from 'lucide-react';
+import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download, DoorOpen, Info } from 'lucide-react';
 import { remoteOpenDoorByBranch } from '@/services/mipsService';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
@@ -24,6 +24,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { toast } from 'sonner';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { LivePill } from '@/components/ui/live-pill';
+import { canRecordAttendanceFor } from '@/lib/auth/permissions';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 type FlashState = {
   type: 'success' | 'denied';
