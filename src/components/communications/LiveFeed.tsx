@@ -87,109 +87,119 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
   const [livePulse, setLivePulse] = useState(0);
 
   // Batched name lookup keyed by member_id and by normalized phone/email.
-  const { data: nameMap = {} } = useQuery({
-    queryKey: ['comm-live-feed-names', logs.map((l: any) => l.id).join(',')],
+  const logIdsKey = (logs as any[]).map((l) => l.id).join(',');
+  const { data: nameMap = {} } = useQuery<Record<string, string>>({
+    queryKey: ['comm-live-feed-names', logIdsKey],
     enabled: logs.length > 0,
+    staleTime: 60_000,
     queryFn: async () => {
-      const memberIds = Array.from(new Set((logs as any[]).map((l) => l.member_id).filter(Boolean)));
-      const phones = new Set<string>();
-      const emails = new Set<string>();
+      const memberIds = Array.from(new Set((logs as any[]).map((l) => l.member_id).filter(Boolean))) as string[];
+      const phoneSet = new Set<string>();
+      const emailSet = new Set<string>();
       for (const l of logs as any[]) {
         if (l.member_id) continue;
         if (l.type === 'whatsapp' || l.type === 'sms') {
-          for (const v of phoneVariants(l.recipient)) phones.add(v);
+          for (const v of phoneVariants(l.recipient)) phoneSet.add(v);
         } else if (l.type === 'email' && l.recipient) {
-          emails.add(String(l.recipient).toLowerCase());
+          emailSet.add(String(l.recipient).toLowerCase());
         }
       }
+      const phones = Array.from(phoneSet);
+      const emails = Array.from(emailSet);
 
       const map: Record<string, string> = {};
       const setName = (key: string | null | undefined, name: string | null | undefined) => {
         if (!key || !name) return;
-        const k = key.toLowerCase();
+        const k = String(key).toLowerCase();
         if (!map[k]) map[k] = name;
       };
 
-      const tasks: Promise<unknown>[] = [];
+      // 1. Members → profiles via user_id
       if (memberIds.length) {
-        tasks.push(
-          supabase
-            .from('members')
-            .select('id, full_name, phone_number, email')
-            .in('id', memberIds)
-            .then(({ data }) => {
-              for (const m of data || []) {
-                setName(m.id, m.full_name);
-                for (const v of phoneVariants(m.phone_number)) setName(v, m.full_name);
-                if (m.email) setName(m.email, m.full_name);
-              }
-            }),
-        );
+        const { data: members } = await (supabase as any)
+          .from('members')
+          .select('id, user_id')
+          .in('id', memberIds);
+        const userIds = (members || []).map((m: any) => m.user_id).filter(Boolean);
+        if (userIds.length) {
+          const { data: profs } = await (supabase as any)
+            .from('profiles')
+            .select('id, full_name, phone, email')
+            .in('id', userIds);
+          const byUser: Record<string, any> = {};
+          for (const p of profs || []) byUser[p.id] = p;
+          for (const m of members || []) {
+            const p = byUser[m.user_id];
+            if (!p) continue;
+            setName(m.id, p.full_name);
+            for (const v of phoneVariants(p.phone)) setName(v, p.full_name);
+            if (p.email) setName(p.email, p.full_name);
+          }
+        }
       }
-      if (phones.size) {
-        const phoneList = Array.from(phones);
-        tasks.push(
-          supabase
-            .from('members')
-            .select('full_name, phone_number')
-            .in('phone_number', phoneList)
-            .then(({ data }) => {
-              for (const m of data || []) {
-                for (const v of phoneVariants(m.phone_number)) setName(v, m.full_name);
+
+      // 2. Phone-based fallbacks: profiles, leads, whatsapp_messages.contact_name
+      if (phones.length) {
+        await Promise.all([
+          (supabase as any)
+            .from('profiles')
+            .select('full_name, phone')
+            .in('phone', phones)
+            .then(({ data }: any) => {
+              for (const p of data || []) {
+                for (const v of phoneVariants(p.phone)) setName(v, p.full_name);
               }
             }),
-        );
-        tasks.push(
-          supabase
+          (supabase as any)
             .from('leads')
             .select('full_name, phone')
-            .in('phone', phoneList)
-            .then(({ data }) => {
+            .in('phone', phones)
+            .then(({ data }: any) => {
               for (const l of data || []) {
                 for (const v of phoneVariants(l.phone)) setName(v, l.full_name);
               }
             }),
-        );
-        tasks.push(
-          supabase
-            .from('whatsapp_chat_settings')
+          (supabase as any)
+            .from('whatsapp_messages')
             .select('contact_name, phone_number')
-            .in('phone_number', phoneList)
-            .then(({ data }) => {
+            .in('phone_number', phones)
+            .not('contact_name', 'is', null)
+            .limit(500)
+            .then(({ data }: any) => {
               for (const c of data || []) {
                 for (const v of phoneVariants(c.phone_number)) setName(v, c.contact_name);
               }
             }),
-        );
+        ]);
       }
-      if (emails.size) {
-        const emailList = Array.from(emails);
-        tasks.push(
-          supabase
-            .from('members')
-            .select('full_name, email')
-            .in('email', emailList)
-            .then(({ data }) => {
-              for (const m of data || []) setName(m.email, m.full_name);
-            }),
-        );
+
+      // 3. Email-based fallback
+      if (emails.length) {
+        const { data } = await (supabase as any)
+          .from('profiles')
+          .select('full_name, email')
+          .in('email', emails);
+        for (const p of data || []) setName(p.email, p.full_name);
       }
-      await Promise.all(tasks);
+
       return map;
     },
-    staleTime: 60_000,
   });
 
   function resolveName(log: any): string | null {
-    if (log.member_id && nameMap[log.member_id.toLowerCase()]) return nameMap[log.member_id.toLowerCase()];
+    if (log.member_id) {
+      const n = nameMap[String(log.member_id).toLowerCase()];
+      if (n) return n;
+    }
     if (log.type === 'whatsapp' || log.type === 'sms') {
       for (const v of phoneVariants(log.recipient)) {
         const n = nameMap[v.toLowerCase()];
         if (n) return n;
       }
     }
-    if (log.recipient && nameMap[String(log.recipient).toLowerCase()]) {
-      return nameMap[String(log.recipient).toLowerCase()];
+    if (log.recipient) {
+      const n = nameMap[String(log.recipient).toLowerCase()];
+      if (n) return n;
     }
     return null;
   }
