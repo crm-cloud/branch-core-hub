@@ -245,10 +245,10 @@ export default function AttendanceDashboard() {
       if (allUserIds.length > 0) {
         const [{ data: pData }, { data: rData }] = await Promise.all([
           supabase.from('profiles').select('id, full_name, avatar_url').in('id', allUserIds),
-          supabase.from('user_roles').select('user_id, role').in('user_id', allUserIds),
+          supabase.rpc('get_staff_roles_for_branch', { p_branch_id: effectiveBranchId! }),
         ]);
         profiles = pData || [];
-        userRoles = rData || [];
+        userRoles = (rData as any[]) || [];
       }
       const rolesByUser = new Map<string, string[]>();
       userRoles.forEach((r: any) => {
