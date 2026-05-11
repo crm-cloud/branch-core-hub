@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { StatCard } from '@/components/ui/stat-card';
-import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, AlertCircle, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink, User } from 'lucide-react';
+import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, AlertCircle, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
