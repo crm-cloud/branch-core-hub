@@ -4,6 +4,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DEFAULT_BRAND, type BrandContext } from '@/lib/brand/useBrandContext';
+import { supabase } from '@/integrations/supabase/client';
 
 const BRAND = {
   primary: [99, 102, 241] as [number, number, number], // indigo
@@ -22,7 +23,54 @@ function inr(n: number) {
 }
 
 function fallbackBrand(branchName?: string): BrandContext {
-  return { ...DEFAULT_BRAND, branch: { name: branchName || 'Incline Fitness' } };
+  return { ...DEFAULT_BRAND, branch: { name: branchName || 'Incline' } };
+}
+
+// ---------- LOGO LOADER (cached per-URL) ----------
+const _logoCache = new Map<string, { dataUrl: string; w: number; h: number } | null>();
+async function loadLogoDataUrl(url?: string | null): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  if (!url) return null;
+  if (_logoCache.has(url)) return _logoCache.get(url)!;
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+    const dims: { w: number; h: number } = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+      img.onerror = () => resolve({ w: 1, h: 1 });
+      img.src = dataUrl;
+    });
+    const out = { dataUrl, w: dims.w, h: dims.h };
+    _logoCache.set(url, out);
+    return out;
+  } catch {
+    _logoCache.set(url, null);
+    return null;
+  }
+}
+
+// Resolve a BrandContext (with logoUrl) without React. Mirrors useBrandContext.
+async function resolveBrandAsync(branchId?: string | null, branchName?: string | null): Promise<BrandContext> {
+  let branch: BrandContext['branch'] = { name: branchName || 'Incline' };
+  if (branchId) {
+    const { data } = await supabase.from('branches').select('id,name,code,address,phone,email,gstin').eq('id', branchId).maybeSingle();
+    if (data) branch = { id: data.id, name: data.name, code: (data as any).code ?? null, address: data.address ?? null, phone: data.phone ?? null, email: data.email ?? null, gstin: (data as any).gstin ?? null };
+  }
+  let logoUrl: string | null = null;
+  const { data: globalRow } = await supabase.from('organization_settings').select('logo_url').is('branch_id', null).limit(1).maybeSingle();
+  if (globalRow?.logo_url) logoUrl = globalRow.logo_url;
+  if (branchId) {
+    const { data: branchRow } = await supabase.from('organization_settings').select('logo_url').eq('branch_id', branchId).limit(1).maybeSingle();
+    if (branchRow?.logo_url) logoUrl = branchRow.logo_url;
+  }
+  return { ...DEFAULT_BRAND, logoUrl, branch };
 }
 
 function header(
