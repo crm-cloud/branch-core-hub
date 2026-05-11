@@ -21,18 +21,45 @@ import { OnlinePresencePill } from '@/components/presence/OnlinePresencePill';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuditLogsPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const onlineUsers = useOnlineUsers();
+  const onlineIds = useMemo(() => new Set(onlineUsers.map(u => u.user_id)), [onlineUsers]);
+  const [density, setDensity] = useState<'comfortable' | 'compact'>(
+    () => (typeof window !== 'undefined' && (localStorage.getItem('auditDensity') as any)) || 'comfortable'
+  );
+  useEffect(() => { localStorage.setItem('auditDensity', density); }, [density]);
+
   const [filters, setFilters] = useState({
     action: 'all',
     table: 'all',
     category: 'all' as 'all' | AuditCategory,
     actor: 'all',
+    onlyMe: false,
     search: '',
     dateFrom: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
     dateTo: format(new Date(), 'yyyy-MM-dd'),
   });
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [newRowIds, setNewRowIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+
+  // Realtime tail — softly highlight any new audit row
+  useEffect(() => {
+    const ch = supabase
+      .channel('audit-logs-tail')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, (payload) => {
+        const id = (payload.new as any)?.id;
+        if (id) {
+          setNewRowIds(prev => new Set(prev).add(id));
+          setTimeout(() => setNewRowIds(prev => { const n = new Set(prev); n.delete(id); return n; }), 4000);
+        }
+        queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
 
   const setQuickRange = (days: number) => {
     setFilters(f => ({
