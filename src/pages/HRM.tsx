@@ -97,7 +97,7 @@ export default function HRMPage() {
   const [viewingSignedContract, setViewingSignedContract] = useState<any>(null);
   const queryClient = useQueryClient();
   const { data: brandData } = useBrandContext(null);
-  const brand = brandData || { companyName: 'Incline Fitness', legalName: 'The Incline Life by Incline', website: 'theincline.in', supportEmail: 'hello@theincline.in', branch: { name: 'Incline Fitness' } };
+  const brand = brandData || { companyName: 'Incline', tagline: 'Rise. Reflect. Repeat.', legalName: 'The Incline Life by Incline', website: 'theincline.in', supportEmail: 'hello@theincline.in', branch: { name: 'Incline' } };
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ['hrm-employees'],

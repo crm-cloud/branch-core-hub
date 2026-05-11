@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface BrandContext {
   companyName: string;        // Display brand
+  tagline: string;            // Brand tagline shown under wordmark
   legalName: string;          // Legal footer brand
   website: string;
   supportEmail: string;
@@ -22,7 +23,8 @@ export interface BrandContext {
 }
 
 export const DEFAULT_BRAND: Omit<BrandContext, 'branch'> = {
-  companyName: 'Incline Fitness',
+  companyName: 'Incline',
+  tagline: 'Rise. Reflect. Repeat.',
   legalName: 'The Incline Life by Incline',
   website: 'theincline.in',
   supportEmail: 'hello@theincline.in',
