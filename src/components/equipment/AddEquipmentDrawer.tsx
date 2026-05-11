@@ -40,6 +40,8 @@ const getInitialFormData = (equipment?: Equipment | null) => ({
 export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEdit }: AddEquipmentDrawerProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState(getInitialFormData(equipmentToEdit));
+  const { roles } = useAuth();
+  const canViewPrice = can.viewFinancials((roles || []).map((r) => r.role));
 
   const invalidateEquipmentQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['equipment', branchId] });
