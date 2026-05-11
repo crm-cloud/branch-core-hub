@@ -838,10 +838,35 @@ export default function AttendanceDashboard() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Record check-in/out for staff, trainers, and managers.
-                      {isManager && !isAdmin && ' Note: As a manager, you cannot check yourself in.'}
-                    </p>
+                    {/* Hardware-failure fallback banner */}
+                    <div className="flex items-start gap-3 p-3 rounded-lg border border-warning/30 bg-warning/5">
+                      <ShieldAlert className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 text-sm">
+                        <p className="font-medium text-foreground">Biometric-failure fallback only</p>
+                        <p className="text-muted-foreground text-xs mt-0.5">
+                          Use this only when the turnstile is offline. Every entry is audited and tied to your user. Self-attendance is never allowed — even for owners.
+                        </p>
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7">
+                            <Info className="h-3.5 w-3.5" />
+                            Hierarchy
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 text-xs space-y-2">
+                          <p className="font-semibold text-sm text-foreground">Who can record attendance for whom</p>
+                          <ul className="space-y-1 text-muted-foreground">
+                            <li><span className="font-medium text-foreground">Owner</span> → Admin, Manager, Staff, Trainer</li>
+                            <li><span className="font-medium text-foreground">Admin</span> → Manager, Staff, Trainer</li>
+                            <li><span className="font-medium text-foreground">Manager</span> → Staff, Trainer</li>
+                            <li><span className="font-medium text-foreground">Staff / Trainer</span> → no manual access</li>
+                          </ul>
+                          <p className="pt-1 border-t text-muted-foreground">Nobody — including the owner — can mark their own attendance. Owner-level entries require a second owner to be present.</p>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -859,7 +884,7 @@ export default function AttendanceDashboard() {
                         }).map((staff: any) => {
                           const isCheckedIn = checkedInUserIds.has(staff.user_id);
                           const isSelf = staff.user_id === user?.id;
-                          const cannotRecordSelf = isSelf && isManager && !isAdmin;
+                          const decision = decisionFor(staff);
                           return (
                             <TableRow key={staff.user_id}>
                               <TableCell>
@@ -875,7 +900,7 @@ export default function AttendanceDashboard() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge className={`border ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : staff.type === 'Manager' ? 'bg-accent/10 text-accent border-accent/20' : 'bg-muted text-muted-foreground border-border'}`}>
+                                <Badge className={`border ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : staff.type === 'Owner' ? 'bg-primary/10 text-primary border-primary/20' : staff.type === 'Admin' ? 'bg-warning/10 text-warning border-warning/20' : staff.type === 'Manager' ? 'bg-accent/10 text-accent border-accent/20' : 'bg-muted text-muted-foreground border-border'}`}>
                                   {staff.type}
                                 </Badge>
                               </TableCell>
@@ -888,14 +913,14 @@ export default function AttendanceDashboard() {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                {cannotRecordSelf ? (
-                                  <span className="text-xs text-muted-foreground italic">Admin records your attendance</span>
+                                {!decision.allowed ? (
+                                  <span className="text-xs text-muted-foreground italic" title={decision.reason}>{decision.reason}</span>
                                 ) : isCheckedIn ? (
-                                  <Button size="sm" variant="outline" className="gap-1.5" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff.user_id)}>
+                                  <Button size="sm" variant="outline" className="gap-1.5" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff)}>
                                     <LogOut className="h-3.5 w-3.5" />Check Out
                                   </Button>
                                 ) : (
-                                  <Button size="sm" className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff.user_id)}>
+                                  <Button size="sm" className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff)}>
                                     <LogIn className="h-3.5 w-3.5" />Check In
                                   </Button>
                                 )}
