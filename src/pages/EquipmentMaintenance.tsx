@@ -580,13 +580,25 @@ export default function EquipmentMaintenancePage() {
                                   </form>
                                 </SheetContent>
                               </Sheet>
+                              {canDelete && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => setConfirmDelete({ id: item.id, name: item._displayName })}
+                                  title="Delete equipment"
+                                  aria-label="Delete equipment"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
                       ))}
                       {filteredEquipment.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={canViewPrice ? (canDelete ? 9 : 8) : (canDelete ? 8 : 7)} className="text-center py-8 text-muted-foreground">
                             {searchQuery.trim()
                               ? `No equipment matches "${searchQuery}"`
                               : 'No equipment found'}
