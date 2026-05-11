@@ -11722,6 +11722,16 @@ export type Database = {
         }[]
       }
       get_member_id: { Args: { _user_id: string }; Returns: string }
+      get_online_users: {
+        Args: { stale_minutes?: number }
+        Returns: {
+          avatar_url: string
+          full_name: string
+          last_seen_at: string
+          roles: string[]
+          user_id: string
+        }[]
+      }
       get_setting_numeric: {
         Args: { p_branch_id: string; p_default: number; p_key: string }
         Returns: number
