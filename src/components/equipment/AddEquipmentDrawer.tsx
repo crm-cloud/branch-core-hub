@@ -310,16 +310,18 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEd
                 onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="purchasePrice">Purchase Price (₹)</Label>
-              <Input
-                id="purchasePrice"
-                type="number"
-                value={formData.purchasePrice}
-                onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
-                placeholder="0"
-              />
-            </div>
+            {canViewPrice && (
+              <div className="space-y-2">
+                <Label htmlFor="purchasePrice">Purchase Price (₹)</Label>
+                <Input
+                  id="purchasePrice"
+                  type="number"
+                  value={formData.purchasePrice}
+                  onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
