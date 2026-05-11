@@ -67,12 +67,30 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   howbody: <HowbodySettings />,
 };
 
+const PERSONAL_TABS = new Set(['appearance', 'notifications']);
+const ADMIN_ROLES = new Set(['owner', 'admin', 'manager']);
+
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'organization';
   const [navMode, setNavModeState] = useState<NavMode>(getNavMode);
+  const { roles } = useAuth();
 
   useEffect(() => subscribeNavMode(setNavModeState), []);
+
+  const isAdminLike = useMemo(
+    () => roles.some((r) => ADMIN_ROLES.has(r.role)),
+    [roles]
+  );
+
+  const visibleMenu = useMemo(
+    () => (isAdminLike ? SETTINGS_MENU : SETTINGS_MENU.filter((m) => PERSONAL_TABS.has(m.value))),
+    [isAdminLike]
+  );
+
+  const defaultTab = isAdminLike ? 'organization' : 'appearance';
+  const requestedTab = searchParams.get('tab') || defaultTab;
+  // Out-of-scope tabs for non-admin → bounce to default
+  const activeTab = visibleMenu.some((m) => m.value === requestedTab) ? requestedTab : defaultTab;
 
   const handleTabChange = (value: string) => {
     setSearchParams({ tab: value });
@@ -84,13 +102,15 @@ export default function SettingsPage() {
     <div className="flex items-center gap-3">
       <SettingsIcon className="h-8 w-8 text-primary" />
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your organization settings</p>
+        <h1 className="text-2xl font-bold">{isAdminLike ? 'Settings' : 'Preferences'}</h1>
+        <p className="text-muted-foreground">
+          {isAdminLike ? 'Manage your organization settings' : 'Personalize your experience'}
+        </p>
       </div>
     </div>
   );
 
-  const content = SETTINGS_CONTENT[activeTab] || <OrganizationSettings />;
+  const content = SETTINGS_CONTENT[activeTab] || (isAdminLike ? <OrganizationSettings /> : <ThemePicker />);
 
   if (isHorizontalStacked) {
     return (
