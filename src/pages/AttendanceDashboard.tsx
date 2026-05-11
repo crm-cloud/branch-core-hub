@@ -433,7 +433,10 @@ export default function AttendanceDashboard() {
               <Activity className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Attendance Command Center</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">Attendance Command Center</h1>
+                <LivePill />
+              </div>
               <p className="text-sm text-muted-foreground">Unified member & staff attendance</p>
             </div>
           </div>
