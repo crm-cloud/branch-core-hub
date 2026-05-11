@@ -10,6 +10,7 @@ import { DateRangeFilter } from '@/components/ui/date-range-filter';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { 
   TrendingUp, TrendingDown, Wallet, 
   ArrowUpRight, ArrowDownRight, Plus, Clock, CheckCircle, XCircle, Download,
