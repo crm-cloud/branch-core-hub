@@ -30,6 +30,19 @@ export default function FinancePage() {
     to: endOfMonth(new Date()),
   });
 
+  useRealtimeInvalidate({
+    channel: 'page-finance',
+    tables: ['payments', 'pos_sales', 'expenses', 'invoices'],
+    invalidateKeys: [
+      ['finance-income'],
+      ['finance-pos-sales'],
+      ['finance-expenses'],
+      ['pending-expenses'],
+      ['finance-gst-invoices'],
+      ['finance-monthly-report'],
+    ],
+  });
+
   // Fetch income data (payments)
   const { data: incomeData = [] } = useQuery({
     queryKey: ['finance-income', selectedBranch, dateRange],
