@@ -62,3 +62,71 @@ export const can = {
   viewReconciliation:(r?: string[]) => hasCapability(r, 'view_reconciliation'),
   bookFacility:      (r?: string[]) => hasCapability(r, 'book_facility'),
 };
+
+/**
+ * Strict "punch up" rule for manual staff attendance (biometric-failure fallback).
+ *
+ * Nobody marks their own attendance — even owners must pass the turnstile.
+ * The matrix here decides whether `actor` may record attendance for `target`.
+ *
+ * Matrix (actor → can record for):
+ *   Owner   → Admin · Manager · Staff · Trainer  (NOT self, NOT other owners by default)
+ *   Admin   → Manager · Staff · Trainer          (NOT self, NOT other admins, NOT owner)
+ *   Manager → Staff · Trainer                    (NOT self, NOT other managers, NOT admin/owner)
+ *   Staff/Trainer/Member → nobody
+ */
+export type AttendanceDecision = {
+  allowed: boolean;
+  reason?: string;
+};
+
+const RANK: Record<string, number> = {
+  owner: 5,
+  admin: 4,
+  manager: 3,
+  staff: 2,
+  trainer: 2,
+  member: 1,
+};
+
+function topRole(roles: string[] | undefined): string | null {
+  if (!roles || roles.length === 0) return null;
+  return roles.reduce<string | null>((best, r) => {
+    if (!best) return r;
+    return (RANK[r] ?? 0) > (RANK[best] ?? 0) ? r : best;
+  }, null);
+}
+
+export function canRecordAttendanceFor(
+  actorRoles: string[] | undefined,
+  targetRoles: string[] | undefined,
+  isSelf: boolean,
+): AttendanceDecision {
+  if (isSelf) {
+    return { allowed: false, reason: 'Self-attendance is not allowed — a higher authority must record it.' };
+  }
+  const actor = topRole(actorRoles);
+  const target = topRole(targetRoles) ?? 'staff'; // default unknown to staff-level
+  if (!actor) return { allowed: false, reason: 'You do not have permission to record attendance.' };
+
+  const actorRank = RANK[actor] ?? 0;
+  const targetRank = RANK[target] ?? 0;
+
+  // Only owner/admin/manager can record at all.
+  if (actorRank < RANK.manager) {
+    return { allowed: false, reason: 'Only managers, admins, or owners can record staff attendance.' };
+  }
+  // Manager cannot record other managers, admins or owners.
+  if (actor === 'manager' && targetRank >= RANK.manager) {
+    return { allowed: false, reason: 'Only an admin or owner can record this person.' };
+  }
+  // Admin cannot record other admins or owner.
+  if (actor === 'admin' && targetRank >= RANK.admin) {
+    return { allowed: false, reason: 'Only an owner can record this person.' };
+  }
+  // Owner cannot record another owner (effectively requires a second owner).
+  if (actor === 'owner' && target === 'owner') {
+    return { allowed: false, reason: 'Another owner must record this entry.' };
+  }
+  return { allowed: true };
+}
