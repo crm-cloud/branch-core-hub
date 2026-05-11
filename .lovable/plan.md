@@ -1,94 +1,48 @@
-## Goals
+## Goal
+Stop the recurring “Oops! Something went wrong” screen after inactivity, make recovery send authenticated users back to their dashboard instead of the public homepage, and replace the current route-revealing 404 page with a polished cosmic-style page.
 
-1. Show **who is online right now** (live presence) on the Audit Logs page (and reuse elsewhere).
-2. **Remove the "Page 1/3" stat card** — it's just pagination, not a metric.
-3. Refresh the Audit Logs page to a **2026-grade UI/UX** that makes "who did what, when, where" instantly scannable across the whole app.
+## Findings
+- The global `ErrorBoundary` currently uses `window.location.href = '/'`, so “Go Home” always opens the public landing page. If the session has expired, the user must manually go back to `/auth`.
+- The app has an inactivity sign-out timer in `AuthContext`. After timeout it calls `supabase.auth.signOut()` directly, which can leave parts of the UI reacting to a suddenly removed session.
+- The recently added presence heartbeat is mounted inside `AppLayout`. It tracks online state and calls `touch_presence()` every 60 seconds. This should be made defensive so failed/expired auth during inactivity cannot crash the app.
+- The current 404 page prints the invalid route (`/incline`) and shows admin quick links. That is not ideal for a public-facing error page.
+- `@radix-ui/react-slot` and `class-variance-authority` already exist. `cobe` and `framer-motion` are not installed yet, so they must be added if we implement the supplied cosmic 404 style.
 
-No business-logic changes. Audit triggers and `audit_logs` schema stay as-is (already cover 25+ tables with `actor_name` + `target_name`).
+## Implementation Plan
 
----
+### 1. Make the inactivity flow safe
+- Update `AuthContext` so the inactivity timeout uses the existing `signOut()` cleanup path rather than calling `supabase.auth.signOut()` directly.
+- Add a small “session expired / signed out” redirect state where appropriate so users land on `/auth` cleanly instead of triggering the generic error page.
+- Ensure query/cache cleanup happens consistently when the auth session becomes null.
 
-## Part A — Live Online Presence
+### 2. Harden presence tracking after inactivity
+- Update `usePresenceHeartbeat()` to:
+  - avoid reconnecting repeatedly when `roles` object identity changes,
+  - catch and ignore `touch_presence()` failures caused by expired sessions,
+  - only track presence when the auth user is valid,
+  - cleanly remove the realtime channel on logout/session expiry.
+- Update `useOnlineUsers()` to fail gracefully if realtime presence is unavailable.
 
-### Backend
-- Add `last_seen_at timestamptz` to `public.profiles` (nullable, indexed).
-- New RPC `touch_presence()` — `SECURITY DEFINER`, sets `profiles.last_seen_at = now()` for `auth.uid()`. RLS-safe.
-- New view `online_users_v` returning `user_id, full_name, role, last_seen_at` for users active in the last 5 minutes.
-- RLS: only authenticated staff (owner/admin/manager/staff) can read the view.
+### 3. Improve ErrorBoundary recovery UX
+- Replace the current “Go Home” behavior with role/session-aware navigation:
+  - authenticated users: reset error and navigate to `/home` so `DashboardRedirect` chooses the correct dashboard,
+  - unauthenticated users: go to `/auth`,
+  - public-only errors: optionally go to `/` only when already on a public path.
+- Keep “Try Again” but make it reset the boundary without changing route.
+- Add a less alarming message for session-expired/auth-related crashes if detected.
 
-### Frontend
-- New global hook `usePresenceHeartbeat()` mounted once in `AppLayout`:
-  - Joins a Supabase Realtime presence channel `presence:app` with `{ user_id, full_name, role }`.
-  - Calls `touch_presence()` every 60s and on `visibilitychange`.
-  - Leaves channel on unmount / sign-out.
-- New hook `useOnlineUsers()` — subscribes to the same channel, returns deduped `{ id, name, role }[]`.
-- New component `OnlinePresencePill` — green pulsing dot + count + hover popover listing avatars/names/roles. Drop-in for sidebar header and audit page.
+### 4. Redesign the 404 page
+- Add `src/components/ui/cosmic-404.tsx` based on the supplied `cobe` globe component, corrected for TypeScript (`Record<string, unknown>` / COBE render state typing) and proper JSX.
+- Add the required dependencies: `cobe` and `framer-motion`.
+- Replace `src/pages/NotFound.tsx` with a robust page that:
+  - does not display the invalid route path,
+  - uses the animated cosmic globe design,
+  - has “Go Back” and “Go to dashboard/home” actions,
+  - sends authenticated users to `/home` and unauthenticated users to `/`,
+  - avoids admin quick links on public 404s.
 
-### Audit page integration
-- Add `OnlinePresencePill` to the page header next to "Audit Logs".
-- Replace the removed "Page" KPI with a new **"Online Now"** stat card (live count from `useOnlineUsers`).
-
----
-
-## Part B — Remove the Page card
-
-- Drop the 4th `StatCard` ("Page 1 / 3") from `AuditLogs.tsx`.
-- Move pagination context ("Page X of Y") into the timeline card footer where it belongs.
-
----
-
-## Part C — 2026 Audit Logs UI/UX
-
-### Layout overhaul
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Audit Logs            🟢 4 online   [Refresh] [Export]     │
-├─────────────────────────────────────────────────────────────┤
-│  [Total 252] [Today 12] [Most Active: Members] [Online: 4]  │
-├─────────────────────────────────────────────────────────────┤
-│  Quick chips: [Today][24h][7d][30d][90d]  [All me] [Errors] │
-│  Search ▢   Category ▢  Actor ▢  Action ▢  Table ▢          │
-├─────────────────────────────────────────────────────────────┤
-│  TIMELINE (sticky date headers)                             │
-│   • 2:16 PM  🟢 Rajat Lekhari (Owner)                       │
-│              Updated trainer — Ritesh Sharma                 │
-│              Members · trainers · 3 fields changed           │
-│              [Open record →]   [▼ View diff]                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Concrete changes
-1. **Actor identity row (top of every entry)**
-   - Avatar circle with initials (color hashed from user_id).
-   - `Full Name` · role badge (Owner/Admin/Manager/Staff/Trainer/System).
-   - Live green dot if actor is currently in `useOnlineUsers()`.
-2. **Primary line**: action verb + resolved `target_name` ("Created invoice — INV-2026-0042").
-3. **Meta line**: `Category` · `table` · `N fields changed` · branch (when present) · relative time ("2 min ago"), absolute time on hover.
-4. **Right-side actions**: `Open record →` (deep link from `auditMeta`), copy ID, expand diff.
-5. **Diff view**: keep current red→green chips but collapse unchanged system fields (id, created_at, updated_at) by default with "Show all" toggle.
-6. **Sticky date headers** that stay visible while scrolling that group.
-7. **"My activity" toggle chip** that filters `actor = current user`.
-8. **Severity colors**: DELETE entries get a subtle left-border accent in destructive color so they stand out.
-9. **Empty / loading / error** states all redesigned with proper illustrations (lucide icon + helper copy + reset-filters CTA).
-10. **Density toggle** (Comfortable / Compact) persisted in localStorage.
-11. **Realtime tail**: subscribe to `audit_logs` INSERT and prepend new entries with a soft highlight pulse — no manual refresh needed.
-12. **Keyboard**: `/` focuses search, `r` refresh, `e` export, `j/k` navigate entries, `Enter` expands.
-
-### Files
-- New: `supabase/migrations/<ts>_presence.sql` (column, RPC, view, RLS).
-- New: `src/hooks/usePresence.ts` (heartbeat + online list).
-- New: `src/components/presence/OnlinePresencePill.tsx`.
-- New: `src/components/audit/AuditTimelineEntry.tsx` (extracted, redesigned).
-- Edit: `src/components/layout/AppLayout.tsx` (mount heartbeat + pill in header).
-- Edit: `src/pages/AuditLogs.tsx` (remove Page card, add Online card + pill, wire realtime tail, new layout, density toggle, hotkeys).
-- Edit: `src/lib/audit/auditMeta.ts` (small helpers: relative time formatter, system-field list).
-
----
-
-## Out of scope
-- Backfilling historical `actor_name` (already addressed previously).
-- Per-page analytics ("which screens users are on"). True page-presence would need route broadcasting — happy to add as a follow-up if you want it.
-- Mobile-specific redesign beyond responsive breakpoints already in use.
-
-## Open question
-Do you want the "online" indicator to show **just a count** (privacy-friendly) or **names + avatars in a popover** (more useful for ops)? Default in this plan = **count + popover with names/roles** visible to Owner/Admin/Manager only; Staff sees count only.
+### 5. Validate
+- Verify `/audit-logs` loads without console errors.
+- Verify logging out/inactivity-style unauthenticated access to `/audit-logs` redirects to `/auth` rather than crashing.
+- Verify unknown routes like `/incline` show the redesigned 404 and do not reveal the typed route.
+- Verify “Home” from error/404 sends logged-in users to their role dashboard and public visitors to the public homepage.
