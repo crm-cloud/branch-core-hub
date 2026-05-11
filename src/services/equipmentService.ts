@@ -152,6 +152,37 @@ export async function updateEquipmentStatus(id: string, status: Equipment['statu
   return updateEquipment(id, { status });
 }
 
+/**
+ * Hard-delete an equipment row.
+ * If maintenance history exists we abort and the caller should
+ * fall back to soft-retire (status='retired') to preserve the audit trail.
+ */
+export async function deleteEquipment(id: string) {
+  const { count, error: countErr } = await supabase
+    .from('equipment_maintenance')
+    .select('id', { count: 'exact', head: true })
+    .eq('equipment_id', id);
+  if (countErr) throw countErr;
+  if ((count ?? 0) > 0) {
+    const err: any = new Error('HAS_MAINTENANCE_HISTORY');
+    err.code = 'HAS_MAINTENANCE_HISTORY';
+    err.maintenanceCount = count;
+    throw err;
+  }
+  const { error } = await supabase.from('equipment').delete().eq('id', id);
+  if (error) throw error;
+  return { id };
+}
+
+export async function bulkDeleteEquipment(ids: string[]) {
+  const results = await Promise.allSettled(ids.map((id) => deleteEquipment(id)));
+  const ok = results.filter((r) => r.status === 'fulfilled').length;
+  const failed = results
+    .map((r, i) => (r.status === 'rejected' ? { id: ids[i], reason: (r.reason as any)?.code || (r.reason as any)?.message } : null))
+    .filter(Boolean) as Array<{ id: string; reason: string }>;
+  return { ok, failed };
+}
+
 export async function fetchMaintenanceRecords(equipmentId?: string, branchId?: string) {
   let query = supabase
     .from('equipment_maintenance')
