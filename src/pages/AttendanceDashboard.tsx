@@ -26,6 +26,7 @@ import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { LivePill } from '@/components/ui/live-pill';
 import { canRecordAttendanceFor } from '@/lib/auth/permissions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { notifyStaffAttendanceRecorded } from '@/lib/comms/staffAttendanceNotify';
 
 type FlashState = {
   type: 'success' | 'denied';
