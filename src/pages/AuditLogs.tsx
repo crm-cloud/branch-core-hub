@@ -83,6 +83,7 @@ export default function AuditLogsPage() {
       if (filters.action !== 'all') query = query.eq('action', filters.action);
       if (filters.table !== 'all') query = query.eq('table_name', filters.table);
       if (filters.actor !== 'all') query = query.eq('actor_name', filters.actor);
+      if (filters.onlyMe && user?.id) query = query.eq('user_id', user.id);
       if (filters.category !== 'all') {
         const tables = Object.entries(TABLE_CATEGORY).filter(([, c]) => c === filters.category).map(([t]) => t);
         if (tables.length) query = query.in('table_name', tables);
