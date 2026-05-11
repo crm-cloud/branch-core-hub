@@ -26,6 +26,7 @@ import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { LivePill } from '@/components/ui/live-pill';
 import { canRecordAttendanceFor } from '@/lib/auth/permissions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { notifyStaffAttendanceRecorded } from '@/lib/comms/staffAttendanceNotify';
 
 type FlashState = {
   type: 'success' | 'denied';
@@ -366,6 +367,21 @@ export default function AttendanceDashboard() {
   const decisionFor = (staff: any) =>
     canRecordAttendanceFor(actorRoles, staff?.roles, staff?.user_id === user?.id);
 
+  const fireAttendanceNotify = (staff: any, action: 'check_in' | 'check_out') => {
+    // Wired for future use — currently a no-op (flag off in staffAttendanceNotify.ts).
+    // When enabled, pings the target user via WhatsApp/Email so misuse surfaces immediately.
+    void notifyStaffAttendanceRecorded({
+      targetUserId: staff.user_id,
+      targetPhone: staff.phone || null,
+      targetEmail: staff.email || null,
+      action,
+      actorName: (user as any)?.user_metadata?.full_name || (user as any)?.email || 'Staff member',
+      occurredAt: new Date().toISOString(),
+      branchId: effectiveBranchId || '',
+      reason: undefined, // reason UI not yet exposed; will be plugged in when feature is enabled
+    });
+  };
+
   const handleStaffCheckIn = (staff: any) => {
     const decision = decisionFor(staff);
     if (!decision.allowed) {
@@ -373,6 +389,7 @@ export default function AttendanceDashboard() {
       return;
     }
     staffCheckIn({ userId: staff.user_id });
+    fireAttendanceNotify(staff, 'check_in');
   };
 
   const handleStaffCheckOut = (staff: any) => {
@@ -382,6 +399,7 @@ export default function AttendanceDashboard() {
       return;
     }
     staffCheckOut(staff.user_id);
+    fireAttendanceNotify(staff, 'check_out');
   };
 
   const filteredMemberAttendance = memberAttendance.filter((a: any) => {

@@ -36,6 +36,7 @@ export const SYSTEM_EVENTS: SystemEvent[] = [
   { event: 'membership_overdue', label: 'Membership Overdue', category: 'lifecycle', description: 'Past grace period without renewal', channels: ALL },
   { event: 'freeze_confirmed', label: 'Membership Frozen', category: 'lifecycle', description: 'Membership freeze confirmation', channels: ALL },
   { event: 'unfreeze_confirmed', label: 'Membership Unfrozen', category: 'lifecycle', description: 'Membership unfreeze confirmation', channels: ALL },
+  { event: 'staff_attendance_recorded', label: 'Staff Attendance Recorded (Manual)', category: 'lifecycle', description: 'Notify a staff member that someone with higher authority recorded their attendance manually (biometric-failure fallback). Vars: {{actor_name}} {{action}} {{time}} {{reason}}. Currently feature-flagged off.', channels: ['whatsapp', 'sms', 'email'] },
 
   // ── Billing & Documents ──────────────────────────────────────
   { event: 'payment_received', label: 'Payment Received', category: 'billing', description: 'A payment has been recorded', channels: ALL },
