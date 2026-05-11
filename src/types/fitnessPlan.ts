@@ -55,6 +55,8 @@ export interface MealItemEntry {
   carbs?: number;
   fats?: number;
   fiber?: number;
+  sodium?: number;
+  sugar?: number;
 }
 
 export interface MealEntry {
