@@ -70,8 +70,21 @@ export default function AuditLogsPage() {
   const { data: tableNames = [] } = useQuery({
     queryKey: ['audit-log-tables'],
     queryFn: async () => {
-      const { data } = await supabase.from('audit_logs').select('table_name').limit(100);
+      const { data } = await supabase.from('audit_logs').select('table_name').limit(500);
       return [...new Set(data?.map(d => d.table_name) || [])].sort();
+    },
+  });
+
+  const { data: actorNames = [] } = useQuery({
+    queryKey: ['audit-log-actors'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('audit_logs')
+        .select('actor_name')
+        .not('actor_name', 'is', null)
+        .gte('created_at', format(subDays(new Date(), 90), 'yyyy-MM-dd'))
+        .limit(2000);
+      return [...new Set((data || []).map((d: any) => d.actor_name).filter(Boolean))].sort();
     },
   });
 
