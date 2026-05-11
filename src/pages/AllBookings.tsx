@@ -19,6 +19,8 @@ import { SlotAvailabilityTimeline } from '@/components/bookings/SlotAvailability
 import { SlotDetailDrawer } from '@/components/bookings/SlotDetailDrawer';
 import { BookingStatusTimeline } from '@/components/bookings/BookingStatusTimeline';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
+import { LivePill } from '@/components/ui/live-pill';
 
 export default function AllBookingsPage() {
   const queryClient = useQueryClient();
