@@ -282,6 +282,17 @@ export default function AuditLogsPage() {
                   {r.label}
                 </Button>
               ))}
+              <div className="flex-1" />
+              {user && (
+                <Button
+                  variant={filters.onlyMe ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 px-3 text-xs"
+                  onClick={() => { setFilters(f => ({ ...f, onlyMe: !f.onlyMe })); setCurrentPage(1); }}
+                >
+                  <UserIcon className="h-3 w-3 mr-1.5" /> My activity
+                </Button>
+              )}
             </div>
             <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
               <div className="space-y-2 lg:col-span-2">
