@@ -36,12 +36,13 @@ type FlashState = {
 
 export default function AttendanceDashboard() {
   const { branchFilter, effectiveBranchId } = useBranchContext();
-  const { hasAnyRole, user } = useAuth();
+  const { hasAnyRole, user, roles } = useAuth();
   const queryClient = useQueryClient();
   const isAdmin = hasAnyRole(['owner', 'admin']);
   const isManager = hasAnyRole(['manager']);
   const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
   const canRecordStaff = hasAnyRole(['owner', 'admin', 'manager']);
+  const actorRoles = (roles || []).map((r: any) => r.role);
 
   // Realtime: refresh on any attendance / member change.
   useRealtimeInvalidate({
