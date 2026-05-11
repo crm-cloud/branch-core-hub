@@ -343,17 +343,34 @@ export default function EquipmentMaintenancePage() {
           <TabsContent value="equipment" className="mt-4">
             <Card>
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>All Equipment</CardTitle>
-                <div className="relative w-full sm:w-80">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by name, brand, model, serial, category, or location…"
-                    className="pl-9"
-                    aria-label="Search equipment"
-                  />
+                <div className="flex items-center gap-3">
+                  <CardTitle>All Equipment</CardTitle>
+                  {selectedIds.size > 0 && (
+                    <Badge variant="secondary" className="rounded-full">{selectedIds.size} selected</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {selectedIds.size > 0 && canDelete && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setConfirmBulkDelete(true)}
+                      className="gap-1.5"
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete ({selectedIds.size})
+                    </Button>
+                  )}
+                  <div className="relative w-full sm:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search by name, brand, model, serial, category, or location…"
+                      className="pl-9"
+                      aria-label="Search equipment"
+                    />
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -365,11 +382,16 @@ export default function EquipmentMaintenancePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        {canDelete && (
+                          <TableHead className="w-10">
+                            <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
+                          </TableHead>
+                        )}
                         <TableHead>Name</TableHead>
                         <TableHead>Model Number</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Location</TableHead>
-                        <TableHead>Purchase Price</TableHead>
+                        {canViewPrice && <TableHead>Purchase Price</TableHead>}
                         <TableHead>Warranty</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Actions</TableHead>
@@ -377,15 +399,26 @@ export default function EquipmentMaintenancePage() {
                     </TableHeader>
                     <TableBody>
                       {filteredEquipment.map((item: any) => (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} data-state={selectedIds.has(item.id) ? 'selected' : undefined}>
+                          {canDelete && (
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedIds.has(item.id)}
+                                onCheckedChange={() => toggleOne(item.id)}
+                                aria-label={`Select ${item._displayName}`}
+                              />
+                            </TableCell>
+                          )}
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center">
                                 {getStatusIcon(item.status)}
                               </div>
                               <div>
-                                <div className="font-medium">{item.name}</div>
-                                <div className="text-sm text-muted-foreground">{item.brand || '-'}</div>
+                                <div className="font-medium">{item._displayName}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {item.brand || (item._unitCount > 1 ? `${item._unitCount} units` : '-')}
+                                </div>
                               </div>
                             </div>
                           </TableCell>
