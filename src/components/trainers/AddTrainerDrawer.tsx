@@ -156,6 +156,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
       });
 
       toast.success('Trainer profile created');
+      await queryClient.invalidateQueries({ queryKey: ['trainers'] });
       onOpenChange(false);
       resetForms();
     } catch (error) {
