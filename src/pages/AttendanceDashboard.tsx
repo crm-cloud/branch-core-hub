@@ -16,7 +16,7 @@ import { useAttendance } from '@/hooks/useAttendance';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download, DoorOpen } from 'lucide-react';
+import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download, DoorOpen, Info } from 'lucide-react';
 import { remoteOpenDoorByBranch } from '@/services/mipsService';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
@@ -24,6 +24,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { toast } from 'sonner';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { LivePill } from '@/components/ui/live-pill';
+import { canRecordAttendanceFor } from '@/lib/auth/permissions';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 type FlashState = {
   type: 'success' | 'denied';
@@ -34,12 +36,13 @@ type FlashState = {
 
 export default function AttendanceDashboard() {
   const { branchFilter, effectiveBranchId } = useBranchContext();
-  const { hasAnyRole, user } = useAuth();
+  const { hasAnyRole, user, roles } = useAuth();
   const queryClient = useQueryClient();
   const isAdmin = hasAnyRole(['owner', 'admin']);
   const isManager = hasAnyRole(['manager']);
   const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
   const canRecordStaff = hasAnyRole(['owner', 'admin', 'manager']);
+  const actorRoles = (roles || []).map((r: any) => r.role);
 
   // Realtime: refresh on any attendance / member change.
   useRealtimeInvalidate({
@@ -238,19 +241,37 @@ export default function AttendanceDashboard() {
       const { data: trainers } = await supabase.from('trainers').select('id, user_id, weekly_off').eq('branch_id', effectiveBranchId!).eq('is_active', true);
       const allUserIds = [...(emps?.map(e => e.user_id) || []), ...(trainers?.map(t => t.user_id) || [])].filter(Boolean);
       let profiles: any[] = [];
+      let userRoles: any[] = [];
       if (allUserIds.length > 0) {
-        const { data: pData } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allUserIds);
+        const [{ data: pData }, { data: rData }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name, avatar_url').in('id', allUserIds),
+          supabase.rpc('get_staff_roles_for_branch', { p_branch_id: effectiveBranchId! }),
+        ]);
         profiles = pData || [];
+        userRoles = (rData as any[]) || [];
       }
+      const rolesByUser = new Map<string, string[]>();
+      userRoles.forEach((r: any) => {
+        const list = rolesByUser.get(r.user_id) || [];
+        list.push(r.role);
+        rolesByUser.set(r.user_id, list);
+      });
       const empUserIds = new Set(emps?.map(e => e.user_id) || []);
       const staffList: any[] = [];
       (emps || []).forEach(emp => {
         const p = profiles.find(pr => pr.id === emp.user_id);
-        staffList.push({ user_id: emp.user_id, name: p?.full_name || 'Unknown', code: emp.employee_code, type: emp.department === 'Management' ? 'Manager' : 'Staff', position: emp.position, avatar_url: p?.avatar_url, weekly_off: (emp as any).weekly_off || 'sunday' });
+        const userRoleList = rolesByUser.get(emp.user_id) || [];
+        const isManagerRole = userRoleList.includes('manager') || userRoleList.includes('admin') || userRoleList.includes('owner');
+        const typeLabel = userRoleList.includes('owner') ? 'Owner'
+          : userRoleList.includes('admin') ? 'Admin'
+          : userRoleList.includes('manager') || emp.department === 'Management' ? 'Manager'
+          : 'Staff';
+        staffList.push({ user_id: emp.user_id, name: p?.full_name || 'Unknown', code: emp.employee_code, type: typeLabel, position: emp.position, avatar_url: p?.avatar_url, weekly_off: (emp as any).weekly_off || 'sunday', roles: userRoleList.length ? userRoleList : ['staff'] });
       });
       (trainers || []).filter(t => !empUserIds.has(t.user_id)).forEach(t => {
         const p = profiles.find(pr => pr.id === t.user_id);
-        staffList.push({ user_id: t.user_id, name: p?.full_name || 'Unknown', code: 'Trainer', type: 'Trainer', position: 'Trainer', avatar_url: p?.avatar_url, weekly_off: (t as any).weekly_off || 'sunday' });
+        const userRoleList = rolesByUser.get(t.user_id) || ['trainer'];
+        staffList.push({ user_id: t.user_id, name: p?.full_name || 'Unknown', code: 'Trainer', type: 'Trainer', position: 'Trainer', avatar_url: p?.avatar_url, weekly_off: (t as any).weekly_off || 'sunday', roles: userRoleList });
       });
       return staffList;
     },
@@ -342,18 +363,25 @@ export default function AttendanceDashboard() {
 
   const checkedInUserIds = new Set((checkedInStaff.data || []).map((a: any) => a.user_id));
 
-  const handleStaffCheckIn = (userId: string) => {
-    if (!canRecordStaff) return;
-    if (isManager && !isAdmin && userId === user?.id) {
-      toast.error('Your attendance must be recorded by an admin');
+  const decisionFor = (staff: any) =>
+    canRecordAttendanceFor(actorRoles, staff?.roles, staff?.user_id === user?.id);
+
+  const handleStaffCheckIn = (staff: any) => {
+    const decision = decisionFor(staff);
+    if (!decision.allowed) {
+      toast.error(decision.reason || 'Not allowed');
       return;
     }
-    staffCheckIn({ userId });
+    staffCheckIn({ userId: staff.user_id });
   };
 
-  const handleStaffCheckOut = (userId: string) => {
-    if (!canRecordStaff) return;
-    staffCheckOut(userId);
+  const handleStaffCheckOut = (staff: any) => {
+    const decision = decisionFor(staff);
+    if (!decision.allowed) {
+      toast.error(decision.reason || 'Not allowed');
+      return;
+    }
+    staffCheckOut(staff.user_id);
   };
 
   const filteredMemberAttendance = memberAttendance.filter((a: any) => {
@@ -496,22 +524,42 @@ export default function AttendanceDashboard() {
         )}
 
         {/* Rapid-Entry Search Bar */}
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Scan className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              placeholder={activeTab === 'staff-record' ? "Search staff by name or code..." : "Scan barcode or type member code / name / phone..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              className="pl-12 h-14 text-lg border-2 focus:border-primary transition-colors"
-            />
+        <div className="space-y-2">
+          {canRecordStaff && (
+            <div className="inline-flex items-center gap-1 p-1 rounded-full bg-muted/60 border">
+              <button
+                type="button"
+                onClick={() => { setActiveTab('members'); setSearchQuery(''); }}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${activeTab !== 'staff-record' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Users className="inline h-3.5 w-3.5 mr-1" />Members
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('staff-record'); setSearchQuery(''); }}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${activeTab === 'staff-record' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <UserCheck className="inline h-3.5 w-3.5 mr-1" />Staff
+              </button>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Scan className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder={activeTab === 'staff-record' ? "Search staff by name or employee code…" : "Scan barcode or type member code / name / phone…"}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                className="pl-12 h-14 text-lg border-2 focus:border-primary transition-colors"
+              />
+            </div>
+            <Button onClick={handleMemberSearch} disabled={isSearching || activeTab === 'staff-record'} className="h-14 px-6" size="lg">
+              <Search className="w-5 h-5 mr-2" />
+              {isSearching ? 'Searching…' : 'Search'}
+            </Button>
           </div>
-          <Button onClick={handleMemberSearch} disabled={isSearching || activeTab === 'staff-record'} className="h-14 px-6" size="lg">
-            <Search className="w-5 h-5 mr-2" />
-            {isSearching ? 'Searching...' : 'Search'}
-          </Button>
         </div>
 
         {/* Staff Search Results from top bar */}
@@ -519,6 +567,7 @@ export default function AttendanceDashboard() {
           <div className="space-y-2">
             {staffSearchResults.map((staff: any) => {
               const isCheckedIn = checkedInUserIds.has(staff.user_id);
+              const decision = decisionFor(staff);
               return (
                 <div key={staff.user_id} className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${isCheckedIn ? 'bg-success/5 border-success/30' : 'bg-card border-border hover:border-primary/50 hover:shadow-md'}`}>
                   <div className="flex items-center gap-4">
@@ -532,14 +581,17 @@ export default function AttendanceDashboard() {
                         <code className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{staff.code}</code>
                         <Badge className={`border text-xs ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : 'bg-muted text-muted-foreground border-border'}`}>{staff.type}</Badge>
                       </div>
+                      {!decision.allowed && (
+                        <p className="text-xs text-warning mt-1">{decision.reason}</p>
+                      )}
                     </div>
                   </div>
                   {isCheckedIn ? (
-                    <Button size="lg" variant="outline" className="gap-2" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff.user_id)}>
+                    <Button size="lg" variant="outline" className="gap-2" disabled={isStaffCheckingOut || !decision.allowed} onClick={() => handleStaffCheckOut(staff)}>
                       <LogOut className="w-5 h-5" /> Check Out
                     </Button>
                   ) : (
-                    <Button size="lg" className="gap-2 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff.user_id)}>
+                    <Button size="lg" className="gap-2 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn || !decision.allowed} onClick={() => handleStaffCheckIn(staff)}>
                       <LogIn className="w-5 h-5" /> Check In
                     </Button>
                   )}
@@ -602,6 +654,16 @@ export default function AttendanceDashboard() {
             </div>
             <p className="font-medium text-foreground/70">No members found</p>
             <p className="text-sm mt-1">No results for "{searchQuery}" — try a different name, code, or phone number</p>
+          </div>
+        )}
+
+        {activeTab === 'staff-record' && searchQuery.length >= 2 && staffSearchResults.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <div className="h-14 w-14 rounded-full bg-muted/80 flex items-center justify-center mx-auto mb-3">
+              <Search className="h-6 w-6 opacity-40" />
+            </div>
+            <p className="font-medium text-foreground/70">No staff found</p>
+            <p className="text-sm mt-1">No staff matched "{searchQuery}" — try another name or employee code</p>
           </div>
         )}
 
@@ -806,10 +868,35 @@ export default function AttendanceDashboard() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Record check-in/out for staff, trainers, and managers.
-                      {isManager && !isAdmin && ' Note: As a manager, you cannot check yourself in.'}
-                    </p>
+                    {/* Hardware-failure fallback banner */}
+                    <div className="flex items-start gap-3 p-3 rounded-lg border border-warning/30 bg-warning/5">
+                      <ShieldAlert className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 text-sm">
+                        <p className="font-medium text-foreground">Biometric-failure fallback only</p>
+                        <p className="text-muted-foreground text-xs mt-0.5">
+                          Use this only when the turnstile is offline. Every entry is audited and tied to your user. Self-attendance is never allowed — even for owners.
+                        </p>
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7">
+                            <Info className="h-3.5 w-3.5" />
+                            Hierarchy
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 text-xs space-y-2">
+                          <p className="font-semibold text-sm text-foreground">Who can record attendance for whom</p>
+                          <ul className="space-y-1 text-muted-foreground">
+                            <li><span className="font-medium text-foreground">Owner</span> → Admin, Manager, Staff, Trainer</li>
+                            <li><span className="font-medium text-foreground">Admin</span> → Manager, Staff, Trainer</li>
+                            <li><span className="font-medium text-foreground">Manager</span> → Staff, Trainer</li>
+                            <li><span className="font-medium text-foreground">Staff / Trainer</span> → no manual access</li>
+                          </ul>
+                          <p className="pt-1 border-t text-muted-foreground">Nobody — including the owner — can mark their own attendance. Owner-level entries require a second owner to be present.</p>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -827,7 +914,7 @@ export default function AttendanceDashboard() {
                         }).map((staff: any) => {
                           const isCheckedIn = checkedInUserIds.has(staff.user_id);
                           const isSelf = staff.user_id === user?.id;
-                          const cannotRecordSelf = isSelf && isManager && !isAdmin;
+                          const decision = decisionFor(staff);
                           return (
                             <TableRow key={staff.user_id}>
                               <TableCell>
@@ -843,7 +930,7 @@ export default function AttendanceDashboard() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge className={`border ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : staff.type === 'Manager' ? 'bg-accent/10 text-accent border-accent/20' : 'bg-muted text-muted-foreground border-border'}`}>
+                                <Badge className={`border ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : staff.type === 'Owner' ? 'bg-primary/10 text-primary border-primary/20' : staff.type === 'Admin' ? 'bg-warning/10 text-warning border-warning/20' : staff.type === 'Manager' ? 'bg-accent/10 text-accent border-accent/20' : 'bg-muted text-muted-foreground border-border'}`}>
                                   {staff.type}
                                 </Badge>
                               </TableCell>
@@ -856,14 +943,14 @@ export default function AttendanceDashboard() {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                {cannotRecordSelf ? (
-                                  <span className="text-xs text-muted-foreground italic">Admin records your attendance</span>
+                                {!decision.allowed ? (
+                                  <span className="text-xs text-muted-foreground italic" title={decision.reason}>{decision.reason}</span>
                                 ) : isCheckedIn ? (
-                                  <Button size="sm" variant="outline" className="gap-1.5" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff.user_id)}>
+                                  <Button size="sm" variant="outline" className="gap-1.5" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff)}>
                                     <LogOut className="h-3.5 w-3.5" />Check Out
                                   </Button>
                                 ) : (
-                                  <Button size="sm" className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff.user_id)}>
+                                  <Button size="sm" className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff)}>
                                     <LogIn className="h-3.5 w-3.5" />Check In
                                   </Button>
                                 )}

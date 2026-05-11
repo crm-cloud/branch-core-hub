@@ -11736,6 +11736,13 @@ export type Database = {
         Args: { p_branch_id: string; p_default: number; p_key: string }
         Returns: number
       }
+      get_staff_roles_for_branch: {
+        Args: { p_branch_id: string }
+        Returns: {
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }[]
+      }
       get_user_branch: { Args: { _user_id: string }; Returns: string }
       has_active_benefit: {
         Args: {
