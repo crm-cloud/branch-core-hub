@@ -100,11 +100,6 @@ export function DeliveryTimeline({ logId }: { logId: string }) {
     ? (lastReachedIdx / (visibleStages.length - 1)) * 100
     : 0;
 
-  // Pick the connector colour from the latest reached stage
-  const trackColour = hasFailure
-    ? 'bg-rose-500'
-    : (activeStage && stageMeta[activeStage]?.dotBg) || 'bg-emerald-500';
-
   const errorInfo = hasFailure ? explainError(failureEvent?.error_message) : null;
 
   return (
