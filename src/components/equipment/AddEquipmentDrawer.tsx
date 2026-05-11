@@ -11,6 +11,8 @@ import { useEffect, useState } from 'react';
 import { PRIMARY_CATEGORIES, MUSCLE_GROUPS, MOVEMENT_PATTERNS } from '@/lib/equipment/taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { can } from '@/lib/auth/permissions';
 
 interface AddEquipmentDrawerProps {
   open: boolean;
