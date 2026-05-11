@@ -601,6 +601,7 @@ export type Database = {
           old_data: Json | null
           record_id: string | null
           table_name: string
+          target_name: string | null
           user_agent: string | null
           user_id: string | null
         }
@@ -616,6 +617,7 @@ export type Database = {
           old_data?: Json | null
           record_id?: string | null
           table_name: string
+          target_name?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
@@ -631,6 +633,7 @@ export type Database = {
           old_data?: Json | null
           record_id?: string | null
           table_name?: string
+          target_name?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
@@ -11138,6 +11141,10 @@ export type Database = {
       _notify_booking_event: {
         Args: { p_booking_id: string; p_event: string }
         Returns: undefined
+      }
+      _resolve_audit_target_name: {
+        Args: { p_row: Json; p_table: string }
+        Returns: string
       }
       add_to_waitlist: {
         Args: { _class_id: string; _member_id: string }
