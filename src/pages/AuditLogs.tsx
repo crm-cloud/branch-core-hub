@@ -138,13 +138,18 @@ export default function AuditLogsPage() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Time', 'Action', 'Table', 'Actor', 'Description', 'Record ID'];
+    const headers = ['Time', 'Action', 'Category', 'Table', 'Actor', 'Target', 'Description', 'Record ID'];
     const rows = logs.data.map((log: any) => [
       format(new Date(log.created_at), 'yyyy-MM-dd HH:mm:ss'),
-      log.action, log.table_name, log.actor_name || 'System',
-      log.action_description || '', log.record_id || '',
+      log.action,
+      CATEGORY_LABEL[categoryOf(log.table_name)],
+      log.table_name,
+      log.actor_name || 'System',
+      log.target_name || '',
+      log.action_description || '',
+      log.record_id || '',
     ]);
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
