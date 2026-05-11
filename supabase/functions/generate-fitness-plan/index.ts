@@ -192,15 +192,15 @@ serve(async (req) => {
           .join("\n")}`
       : "";
 
+    // v1.1.0 — equipment prompt: clean machine name only (no brand/model/SKU leakage)
     const equipmentPrompt = type === "workout" && availableEquipment.length > 0
-      ? `\n\nIMPORTANT — this gym has the following OPERATIONAL equipment. Each line lists the muscle groups it trains and the movement pattern. When prescribing exercises, prefer movements that use this exact equipment, AND respect muscle-group coverage across the week (balance push/pull, include 1-2 dedicated CORE sessions, hit legs at least once). Use the EXACT machine name in the "exercise" field where possible. Bodyweight, mobility, stretching, and basic cardio (running, jump rope) are always allowed without being on the list. Do NOT recommend machines not on the list.\n\n${availableEquipment
+      ? `\n\nIMPORTANT — this gym has the following OPERATIONAL equipment. Each line lists the muscle groups it trains and the movement pattern. When prescribing exercises, prefer movements that use this exact equipment, AND respect muscle-group coverage across the week (balance push/pull, include 1-2 dedicated CORE sessions, hit legs at least once).\n\nNAMING RULE (STRICT): In the "exercise" field, use ONLY the clean machine name as listed below. NEVER include brand names (e.g. Panatta, Realleader, Booty Builder, Relax), model codes, SKUs, or part numbers (e.g. FW2035, PT-101, 1FW044, APT-128, XHA040). If the listed name itself contains a brand or model, strip it down to the generic exercise name (e.g. "PANATTA BACK DELTOIDS 1FW026" → "Rear Delt Machine"; "BB Platinum V4 Hip Thrust - Plate Loaded" → "Hip Thrust Machine").\n\nBodyweight, mobility, stretching, and basic cardio (running, jump rope) are always allowed without being on the list. Do NOT recommend machines not on the list.\n\n${availableEquipment
           .slice(0, 100)
           .map((e) => {
             const cat = e.primary_category || e.category;
             const muscles = (e.muscle_groups || []).length ? ` muscles=[${(e.muscle_groups || []).join(",")}]` : "";
             const move = e.movement_pattern ? ` pattern=${e.movement_pattern}` : "";
-            const brand = e.brand ? ` — ${e.brand}${e.model ? ` ${e.model}` : ""}` : "";
-            return `- ${e.name}${cat ? ` [${cat}]` : ""}${muscles}${move}${brand}`;
+            return `- ${e.name}${cat ? ` [${cat}]` : ""}${muscles}${move}`;
           })
           .join("\n")}`
       : "";
