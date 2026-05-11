@@ -120,7 +120,7 @@ export default function SettingsPage() {
           <div className="rounded-2xl bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70 shadow-sm">
             <ScrollArea className="w-full">
               <nav className="flex items-center gap-1 px-2 py-2 lg:justify-center">
-                {SETTINGS_MENU.map((item) => {
+                {visibleMenu.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.value;
                   return (
@@ -165,7 +165,7 @@ export default function SettingsPage() {
           {/* Sidebar Navigation */}
           <nav className="w-full md:w-60 shrink-0">
             <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
-              {SETTINGS_MENU.map((item) => {
+              {visibleMenu.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.value;
                 return (
