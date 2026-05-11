@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { getNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Zap } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Zap, UserCircle } from 'lucide-react';
 import { AutomationsControlRoom } from '@/components/settings/AutomationsControlRoom';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
 import { BackupRestore } from '@/components/settings/BackupRestore';
