@@ -657,6 +657,16 @@ export default function AttendanceDashboard() {
           </div>
         )}
 
+        {activeTab === 'staff-record' && searchQuery.length >= 2 && staffSearchResults.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <div className="h-14 w-14 rounded-full bg-muted/80 flex items-center justify-center mx-auto mb-3">
+              <Search className="h-6 w-6 opacity-40" />
+            </div>
+            <p className="font-medium text-foreground/70">No staff found</p>
+            <p className="text-sm mt-1">No staff matched "{searchQuery}" — try another name or employee code</p>
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="border-0 bg-gradient-to-br from-accent to-accent/80 text-accent-foreground">
