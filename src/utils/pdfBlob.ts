@@ -474,58 +474,83 @@ export interface PlanPdfInput {
   goal?: string | null;
   notes?: string | null;
   branch_name?: string | null;
+  branch_id?: string | null;
 }
 
-export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
+// Async — fetches DB logo if `brand.logoUrl` not provided.
+export async function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Promise<Blob> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const isWorkout = input.type === 'workout';
   const title = isWorkout ? 'YOUR WORKOUT PLAN' : 'YOUR PERSONALIZED DIET PLAN';
-  const resolvedBrand: BrandContext = brand || fallbackBrand(input.branch_name || undefined);
+  const resolvedBrand: BrandContext =
+    brand ?? (await resolveBrandAsync(input.branch_id, input.branch_name));
+  const logo = await loadLogoDataUrl(resolvedBrand.logoUrl);
   const accent: [number, number, number] = isWorkout ? [99, 102, 241] : [16, 185, 129]; // indigo or emerald
 
   // ---- HERO BAND (dark) ----
   doc.setFillColor(15, 23, 42); // slate-900
   doc.rect(0, 0, 210, 56, 'F');
   doc.setFillColor(...accent);
-  doc.rect(0, 56, 210, 2, 'F'); // accent strip
+  doc.rect(0, 56, 210, 2, 'F');
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(255, 255, 255);
-  doc.text((resolvedBrand.companyName || 'INCLINE FITNESS').toUpperCase(), 14, 14);
+  // Logo (white card top-left), or wordmark fallback
+  if (logo) {
+    const maxH = 16, maxW = 36;
+    const ratio = logo.w / Math.max(1, logo.h);
+    let lh = maxH, lw = lh * ratio;
+    if (lw > maxW) { lw = maxW; lh = lw / ratio; }
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(10, 10, lw + 6, lh + 6, 1.5, 1.5, 'F');
+    try { doc.addImage(logo.dataUrl, 'PNG', 13, 13, lw, lh, undefined, 'FAST'); } catch { /* ignore */ }
+  } else {
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text('INCLINE', 14, 18);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(148, 163, 184);
+    doc.text('Rise. Reflect. Repeat.', 14, 23);
+  }
 
+  // Title block (right-aligned)
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text(title, 14, 30);
-
-  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text(title, 200, 22, { align: 'right' });
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(226, 232, 240);
-  doc.text(input.name, 14, 39);
+  doc.text(input.name, 200, 30, { align: 'right' });
 
+  // Member / trainer / goal line
   doc.setFontSize(9);
   doc.setTextColor(148, 163, 184);
   const heroLine: string[] = [];
   if (input.member_name) heroLine.push(`For ${input.member_name}${input.member_code ? ` (${input.member_code})` : ''}`);
   if (input.trainer_name) heroLine.push(`Trainer: ${input.trainer_name}`);
   if (input.goal) heroLine.push(`Goal: ${input.goal}`);
-  if (heroLine.length) doc.text(heroLine.join('  •  '), 14, 47);
-  const dateLine: string[] = [];
-  if (input.validFrom) dateLine.push(`From ${new Date(input.validFrom).toLocaleDateString('en-IN')}`);
-  if (input.validUntil) dateLine.push(`To ${new Date(input.validUntil).toLocaleDateString('en-IN')}`);
-  if (input.caloriesTarget) dateLine.push(`Target ${input.caloriesTarget} kcal/day`);
-  if (dateLine.length) doc.text(dateLine.join('  •  '), 14, 52);
+  if (heroLine.length) doc.text(heroLine.join('  •  '), 200, 38, { align: 'right' });
+
+  // Tagline strip under hero
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text('RISE. REFLECT. REPEAT.', 200, 48, { align: 'right' });
 
   // ---- MOTIVATIONAL QUOTE STRIP ----
   const quote = pickByHash(isWorkout ? WORKOUT_QUOTES : DIET_QUOTES, input.name);
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.rect(0, 60, 210, 18, 'F');
+  doc.setFillColor(248, 250, 252);
+  doc.rect(0, 60, 210, 22, 'F');
   doc.setFontSize(10);
   doc.setFont('helvetica', 'italic');
   setColor(doc, accent);
-  doc.text(`"${quote}"`, 105, 71, { align: 'center', maxWidth: 180 });
+  doc.text(`"${quote}"`, 105, 70, { align: 'center', maxWidth: 180 });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  setColor(doc, BRAND.muted);
+  doc.text('— Team Incline', 196, 78, { align: 'right' });
 
-  let y = 86;
+  let y = 90;
 
   // ---- BODY ----
   if (isWorkout) {
@@ -540,49 +565,145 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
       doc.line(14, y + 1.5, 40, y + 1.5);
       y += 6;
       (week.days || []).forEach((day: any, di: number) => {
-        const rows = (day.exercises || []).map((ex: any) => {
-          const name = typeof ex === 'string' ? ex : ex.name || '';
-          const sets = ex.sets ? `${ex.sets}` : '';
-          const reps = ex.reps ? `${ex.reps}` : '';
+        const dayLabel = day.day || day.label || `Day ${di + 1}`;
+        const focusSuffix = day.focus ? ` — ${day.focus}` : '';
+        const rows: any[] = (day.exercises || []).map((ex: any) => {
+          if (typeof ex === 'string') return [ex, '', '', '', '', ''];
+          const machine = ex.equipment ? String(ex.equipment) : '';
+          const exerciseCell = machine
+            ? { content: `${ex.name || ''}\n${machine}`, styles: { fontStyle: 'bold' as const } }
+            : { content: ex.name || '', styles: { fontStyle: 'bold' as const } };
+          const sets = ex.sets ? String(ex.sets) : '';
+          const reps = ex.reps ? String(ex.reps) : '';
           const rest = ex.rest || (ex.rest_seconds ? `${ex.rest_seconds}s` : '');
-          return [name, sets, reps, rest];
+          const tipsRaw = Array.isArray(ex.form_tips) ? ex.form_tips.join(' • ') : (ex.form_tips || '');
+          const tips = tipsRaw ? String(tipsRaw).slice(0, 80) : '';
+          return [exerciseCell, sets, reps, rest, ex.weight || '', tips];
         });
         autoTable(doc, {
           startY: y,
-          head: [[day.day || day.label || `Day ${di + 1}${day.focus ? ' — ' + day.focus : ''}`, 'Sets', 'Reps', 'Rest']],
-          body: rows.length ? rows : [['Rest day', '', '', '']],
+          head: [[`${dayLabel}${focusSuffix}`, 'Sets', 'Reps', 'Rest', 'Load', 'Form Tips']],
+          body: rows.length ? rows : [['Rest day', '', '', '', '', '']],
           theme: 'striped',
           headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-          bodyStyles: { fontSize: 9, textColor: BRAND.text },
+          bodyStyles: { fontSize: 8.5, textColor: BRAND.text, valign: 'middle' },
           alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: { 1: { halign: 'center', cellWidth: 18 }, 2: { halign: 'center', cellWidth: 22 }, 3: { halign: 'center', cellWidth: 22 } },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { halign: 'center', cellWidth: 14 },
+            2: { halign: 'center', cellWidth: 18 },
+            3: { halign: 'center', cellWidth: 16 },
+            4: { halign: 'center', cellWidth: 18 },
+            5: { cellWidth: 'auto', textColor: BRAND.muted, fontSize: 8 },
+          },
           margin: { left: 14, right: 14 },
+          didParseCell: (data) => {
+            // Render machine name on second line in muted style
+            if (data.section === 'body' && data.column.index === 0 && typeof data.cell.raw === 'object' && (data.cell.raw as any).content?.includes('\n')) {
+              data.cell.styles.fontSize = 9;
+            }
+          },
         });
         y = (doc as any).lastAutoTable.finalY + 4;
+        if (y > 260) { doc.addPage(); y = 20; }
       });
       y += 2;
     });
   } else {
+    // Diet body
     const meals = input.data?.meals || input.data?.days?.[0]?.meals || [];
     if (meals.length) {
-      const rows = meals.map((m: any) => [
-        m.meal || m.name || '-',
-        m.time || '-',
-        m.items ? (Array.isArray(m.items) ? m.items.map((it: any) => typeof it === 'string' ? it : (it.food || it.name || '')).join(', ') : String(m.items)) : (m.description || '-'),
-        m.calories ? `${m.calories} kcal` : '-',
+      const itemsToString = (m: any) => {
+        if (!m.items) return m.description || '';
+        if (!Array.isArray(m.items)) return String(m.items);
+        return m.items.map((it: any) => typeof it === 'string' ? it : (it.food || it.name || '')).filter(Boolean).join(', ');
+      };
+      let totC = 0, totP = 0, totCa = 0, totF = 0, totFi = 0, totS = 0, totSu = 0;
+      const rows = meals.map((m: any) => {
+        const cal = Number(m.calories) || 0;
+        const p = Number(m.protein) || 0;
+        const c = Number(m.carbs) || 0;
+        const f = Number(m.fats ?? m.fat) || 0;
+        const fi = Number(m.fiber) || 0;
+        const so = Number(m.sodium) || 0;
+        const su = Number(m.sugar) || 0;
+        totC += cal; totP += p; totCa += c; totF += f; totFi += fi; totS += so; totSu += su;
+        return [
+          { content: m.meal || m.name || '-', styles: { fontStyle: 'bold' as const } },
+          m.time || '—',
+          itemsToString(m) || '—',
+          cal ? `${cal}` : '—',
+          p ? `${p}g` : '—',
+          c ? `${c}g` : '—',
+          f ? `${f}g` : '—',
+        ];
+      });
+      // Totals row
+      rows.push([
+        { content: 'DAY TOTAL', styles: { fontStyle: 'bold' as const, fillColor: [241, 245, 249] as any, textColor: [15, 23, 42] as any } },
+        { content: '', styles: { fillColor: [241, 245, 249] as any } },
+        { content: '', styles: { fillColor: [241, 245, 249] as any } },
+        { content: `${totC} kcal`, styles: { fontStyle: 'bold' as const, fillColor: [241, 245, 249] as any } },
+        { content: `${totP}g`, styles: { fontStyle: 'bold' as const, fillColor: [241, 245, 249] as any } },
+        { content: `${totCa}g`, styles: { fontStyle: 'bold' as const, fillColor: [241, 245, 249] as any } },
+        { content: `${totF}g`, styles: { fontStyle: 'bold' as const, fillColor: [241, 245, 249] as any } },
       ]);
       autoTable(doc, {
         startY: y,
-        head: [['Meal', 'Time', 'Items', 'Calories']],
+        head: [['Meal', 'Time', 'Items', 'Calories', 'Protein', 'Carbs', 'Fats']],
         body: rows,
         theme: 'striped',
-        headStyles: { fillColor: accent, textColor: 255, fontSize: 9 },
-        bodyStyles: { fontSize: 9, textColor: BRAND.text },
+        headStyles: { fillColor: accent as any, textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 8.5, textColor: BRAND.text, valign: 'middle' },
         alternateRowStyles: { fillColor: [248, 250, 252] },
-        columnStyles: { 3: { halign: 'right', cellWidth: 24 } },
+        columnStyles: {
+          0: { cellWidth: 32 },
+          1: { cellWidth: 24, halign: 'center' },
+          2: { cellWidth: 'auto', fontSize: 8, textColor: BRAND.muted },
+          3: { cellWidth: 18, halign: 'right' },
+          4: { cellWidth: 16, halign: 'right' },
+          5: { cellWidth: 14, halign: 'right' },
+          6: { cellWidth: 14, halign: 'right' },
+        },
         margin: { left: 14, right: 14 },
       });
-      y = (doc as any).lastAutoTable.finalY + 4;
+      y = (doc as any).lastAutoTable.finalY + 6;
+
+      // Micros strip
+      if (totFi || totS || totSu) {
+        doc.setFillColor(238, 242, 255);
+        doc.rect(14, y, 182, 12, 'F');
+        setColor(doc, BRAND.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('MICRONUTRIENTS (DAILY)', 18, y + 5);
+        setColor(doc, BRAND.text);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        const micros = [
+          totFi ? `Fiber ${totFi}g` : null,
+          totSu ? `Sugar ${totSu}g` : null,
+          totS ? `Sodium ${totS}mg` : null,
+        ].filter(Boolean).join('   •   ');
+        doc.text(micros, 18, y + 10);
+        y += 16;
+      }
+
+      // Hydration / supplements
+      const extras: string[] = [];
+      if (input.data?.hydration) extras.push(`Hydration: ${input.data.hydration}`);
+      if (Array.isArray(input.data?.supplements) && input.data.supplements.length) {
+        extras.push(`Supplements: ${input.data.supplements.join(', ')}`);
+      }
+      if (extras.length) {
+        setColor(doc, BRAND.muted);
+        doc.setFontSize(9);
+        extras.forEach((line) => {
+          const wrapped = doc.splitTextToSize(line, 180);
+          doc.text(wrapped, 14, y);
+          y += wrapped.length * 4 + 2;
+        });
+      }
     } else {
       doc.text('No meals defined.', 14, y);
       y += 6;
@@ -601,10 +722,8 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
     y += 4 + lines.length * 4;
   }
 
-  // ---- DO'S & DON'TS + TIPS (always on a fresh page for breathing room) ----
+  // ---- DO'S & DON'TS + TIPS (fresh page) ----
   doc.addPage();
-
-  // Page header
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, 210, 16, 'F');
   doc.setFillColor(...accent);
@@ -612,15 +731,14 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('TRAINING WISDOM — DO\'S, DON\'TS & PRO TIPS', 14, 11);
+  doc.text("TRAINING WISDOM — DO'S, DON'TS & PRO TIPS", 14, 11);
 
   const dos = isWorkout ? WORKOUT_DOS : DIET_DOS;
   const donts = isWorkout ? WORKOUT_DONTS : DIET_DONTS;
   const tips = isWorkout ? WORKOUT_TIPS : DIET_TIPS;
 
-  // DO panel (left)
   let py = 28;
-  doc.setFillColor(236, 253, 245); // emerald-50
+  doc.setFillColor(236, 253, 245);
   doc.rect(14, py, 88, 95, 'F');
   doc.setDrawColor(16, 185, 129);
   doc.setLineWidth(0.4);
@@ -629,11 +747,7 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(5, 122, 85);
   doc.text('DO', 19, py + 8);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
   dos.forEach((item, i) => {
-    // Filled circle as a "do" marker — safe in built-in Helvetica.
     doc.setFillColor(16, 185, 129);
     doc.circle(20.5, py + 16 + i * 12, 1.4, 'F');
     doc.setTextColor(15, 23, 42);
@@ -643,8 +757,7 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
     doc.text(lines, 25, py + 18 + i * 12);
   });
 
-  // DON'T panel (right)
-  doc.setFillColor(254, 242, 242); // rose-50
+  doc.setFillColor(254, 242, 242);
   doc.rect(108, py, 88, 95, 'F');
   doc.setDrawColor(239, 68, 68);
   doc.line(108, py, 108, py + 95);
@@ -652,10 +765,7 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(185, 28, 28);
   doc.text("DON'T", 113, py + 8);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
   donts.forEach((item, i) => {
-    // Two diagonal strokes form a clean "x" — safe in built-in Helvetica.
     doc.setDrawColor(239, 68, 68);
     doc.setLineWidth(0.6);
     const cx = 114, cy = py + 16 + i * 12, r = 1.6;
@@ -668,7 +778,6 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
     doc.text(lines, 119, py + 18 + i * 12);
   });
 
-  // Pro Tips strip
   py += 105;
   doc.setFillColor(15, 23, 42);
   doc.rect(14, py, 182, 8, 'F');
@@ -694,24 +803,29 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
     doc.text(lines, x + 12, py + 8);
   });
 
-  // Final brand sign-off band
+  // Final brand sign-off band (no dates, no validity)
   py += 38;
   doc.setFillColor(15, 23, 42);
-  doc.rect(0, py, 210, 24, 'F');
+  doc.rect(0, py, 210, 26, 'F');
+  doc.setFillColor(...accent);
+  doc.rect(0, py, 210, 1, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
+  doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('THE INCLINE LIFE BY INCLINE', 105, py + 10, { align: 'center' });
+  doc.text('INCLINE', 105, py + 10, { align: 'center' });
   doc.setFontSize(8);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(203, 213, 225);
+  doc.text('Rise. Reflect. Repeat.', 105, py + 15, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(148, 163, 184);
   const tagLine = [resolvedBrand.branch?.name, resolvedBrand.branch?.phone, resolvedBrand.branch?.email]
     .filter(Boolean).join('  •  ');
-  if (tagLine) doc.text(tagLine, 105, py + 16, { align: 'center' });
-  doc.text(`Personalized for ${input.member_name || 'you'} • Generated ${new Date().toLocaleDateString('en-IN')}`,
-    105, py + 21, { align: 'center' });
+  if (tagLine) doc.text(tagLine, 105, py + 20, { align: 'center' });
+  doc.setFontSize(7);
+  doc.text('THE INCLINE LIFE BY INCLINE', 105, py + 24, { align: 'center' });
 
-  // Page footers on every page
+  // Page footers
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -723,6 +837,7 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
 
   return doc.output('blob');
 }
+
 
 // ---------- PAYSLIP ----------
 export interface PayslipPdfInput {
