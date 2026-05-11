@@ -585,9 +585,12 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
   dos.forEach((item, i) => {
-    doc.setTextColor(16, 185, 129);
-    doc.text('✓', 19, py + 18 + i * 12);
+    // Filled circle as a "do" marker — safe in built-in Helvetica.
+    doc.setFillColor(16, 185, 129);
+    doc.circle(20.5, py + 16 + i * 12, 1.4, 'F');
     doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     const lines = doc.splitTextToSize(item, 76);
     doc.text(lines, 25, py + 18 + i * 12);
   });
