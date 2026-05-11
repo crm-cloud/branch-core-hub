@@ -465,12 +465,6 @@ export default function AuditLogsPage() {
                                   </div>
                                 </div>
                               </CollapsibleTrigger>
-                                      </span>
-                                      {expandedRows.has(log.id) ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                                    </div>
-                                  </div>
-                                </div>
-                              </CollapsibleTrigger>
                               <CollapsibleContent>
                                 <div className="ml-2 mb-2 border border-t-0 rounded-b-lg -mt-2 px-4 pb-4 pt-3 bg-muted/30">
                                   <div className="grid gap-4 md:grid-cols-2">
