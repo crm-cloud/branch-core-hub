@@ -45,6 +45,12 @@ export default function ClassesPage() {
   const markAttendance = useMarkAttendance();
   const cancelBooking = useCancelBooking();
 
+  useRealtimeInvalidate({
+    channel: 'page-classes',
+    tables: ['classes', 'class_bookings', 'class_waitlist'],
+    invalidateKeys: [['classes'], ['class-bookings'], ['class-waitlist']],
+  });
+
   const handleMarkAttendance = async (bookingId: string, attended: boolean) => {
     try {
       const result = await markAttendance.mutateAsync({ bookingId, attended });
