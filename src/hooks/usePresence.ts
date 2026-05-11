@@ -42,9 +42,16 @@ export function usePresenceHeartbeat() {
 
     channelRef.current = channel;
 
-    // Heartbeat to DB
-    const ping = () => {
-      supabase.rpc('touch_presence').then(() => {});
+    // Heartbeat to DB — swallow any auth/network errors so an expired session
+    // can never bubble up into the global ErrorBoundary.
+    const ping = async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        if (!sess.session) return;
+        await supabase.rpc('touch_presence');
+      } catch {
+        // ignore — presence is best-effort
+      }
     };
     ping();
     const interval = setInterval(ping, 60_000);
@@ -54,10 +61,13 @@ export function usePresenceHeartbeat() {
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
-      supabase.removeChannel(channel);
+      try { supabase.removeChannel(channel); } catch { /* ignore */ }
       channelRef.current = null;
     };
-  }, [user?.id, profile?.full_name, profile?.avatar_url, roles]);
+    // Intentionally only depend on user.id — profile/roles changes shouldn't
+    // tear down and re-create the realtime channel every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 }
 
 /** Subscribes to the same channel and returns the deduped list of online users. */

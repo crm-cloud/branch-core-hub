@@ -1,69 +1,91 @@
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
-import { Home, ArrowLeft, Dumbbell } from "lucide-react";
+import { motion } from "framer-motion";
+import { ArrowLeft, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Globe } from "@/components/ui/cosmic-404";
+import { useAuth } from "@/contexts/AuthContext";
 
-const QUICK_LINKS = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Members", href: "/members" },
-  { label: "Classes", href: "/classes" },
-  { label: "Settings", href: "/settings" },
-];
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" as const } },
+};
 
 const NotFound = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
-    console.error("404 — Route not found:", location.pathname);
+    console.warn("404 — Route not found:", location.pathname);
   }, [location.pathname]);
 
+  const handleHome = () => {
+    navigate(user ? "/home" : "/", { replace: true });
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md text-center">
-        <div className="h-20 w-20 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-6">
-          <Dumbbell className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
-        </div>
+    <div className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-4 py-10">
+      {/* Ambient gradient blobs */}
+      <div className="pointer-events-none absolute -left-40 -top-40 h-[480px] w-[480px] rounded-full bg-indigo-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-40 h-[520px] w-[520px] rounded-full bg-violet-500/20 blur-3xl" />
 
-        <div className="text-8xl font-black text-muted-foreground/30 mb-2" aria-hidden="true">404</div>
-        <h1 className="text-2xl font-bold text-foreground mb-2">Page not found</h1>
-        <p className="text-muted-foreground mb-2">
-          The page <code className="text-sm bg-muted px-1.5 py-0.5 rounded font-mono">{location.pathname}</code> does not exist.
-        </p>
-        <p className="text-muted-foreground text-sm mb-8">
-          It may have been moved, deleted, or you may have typed the address incorrectly.
-        </p>
+      <div className="relative grid w-full max-w-5xl items-center gap-10 lg:grid-cols-2">
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          className="order-2 mx-auto w-full max-w-[420px] lg:order-1"
+        >
+          <Globe />
+        </motion.div>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
-          <Button onClick={() => window.history.back()} variant="outline" className="gap-2">
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Go Back
-          </Button>
-          <Button asChild className="gap-2">
-            <Link to="/">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={{ visible: { transition: { staggerChildren: 0.12 } } }}
+          className="order-1 text-center lg:order-2 lg:text-left"
+        >
+          <motion.p
+            variants={fadeUp}
+            className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-indigo-300/80"
+          >
+            Error 404
+          </motion.p>
+          <motion.h1
+            variants={fadeUp}
+            className="bg-gradient-to-br from-white via-slate-200 to-indigo-200 bg-clip-text text-4xl font-bold leading-tight tracking-tight text-transparent sm:text-5xl lg:text-6xl"
+          >
+            Lost in space
+          </motion.h1>
+          <motion.p
+            variants={fadeUp}
+            className="mx-auto mt-4 max-w-md text-base leading-relaxed text-slate-300/80 lg:mx-0"
+          >
+            The page you're looking for has drifted off our radar. Let's get you back to safer orbit.
+          </motion.p>
+
+          <motion.div
+            variants={fadeUp}
+            className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start"
+          >
+            <Button
+              variant="outline"
+              onClick={() => navigate(-1)}
+              className="gap-2 border-white/15 bg-white/5 text-white backdrop-blur hover:bg-white/10 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Go Back
+            </Button>
+            <Button
+              onClick={handleHome}
+              className="gap-2 bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30 hover:from-indigo-400 hover:to-violet-400"
+            >
               <Home className="h-4 w-4" aria-hidden="true" />
-              Home
-            </Link>
-          </Button>
-        </div>
-
-        <div className="text-left border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 bg-muted border-b border-border">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Quick Links</span>
-          </div>
-          <ul>
-            {QUICK_LINKS.map(({ label, href }) => (
-              <li key={href} className="border-b border-border last:border-0">
-                <Link
-                  to={href}
-                  className="flex items-center justify-between px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
-                >
-                  {label}
-                  <ArrowLeft className="h-4 w-4 rotate-180 text-muted-foreground" aria-hidden="true" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+              {user ? "Back to dashboard" : "Back to home"}
+            </Button>
+          </motion.div>
+        </motion.div>
       </div>
     </div>
   );

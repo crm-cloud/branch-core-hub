@@ -147,11 +147,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, warningDelay);
 
     // Set the actual sign-out timer
-    inactivityTimerRef.current = setTimeout(() => {
+    inactivityTimerRef.current = setTimeout(async () => {
       clearAllTimers();
-      supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // ignore
+      }
+      try { queryClient.clear(); } catch { /* ignore */ }
+      // Hard redirect to /auth so any in-flight queries that lost their session
+      // don't trigger the global ErrorBoundary.
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth?reason=timeout';
+      }
     }, timeoutMs);
-  }, [clearAllTimers]);
+  }, [clearAllTimers, queryClient]);
 
   const extendSession = useCallback(() => {
     setShowTimeoutWarning(false);
