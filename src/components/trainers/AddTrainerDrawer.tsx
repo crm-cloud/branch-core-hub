@@ -41,6 +41,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState('');
   const createTrainer = useCreateTrainer();
+  const queryClient = useQueryClient();
 
   // Form data for linking existing user
   const [linkFormData, setLinkFormData] = useState({
