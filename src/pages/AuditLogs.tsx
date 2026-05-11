@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,13 +8,17 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { StatCard } from '@/components/ui/stat-card';
-import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, AlertCircle, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ClipboardList, Search, Download, ChevronDown, ChevronRight, Activity, Database, Users, Copy, Filter, RefreshCw, Plus, Pencil, Trash2, ArrowRight, ExternalLink, User as UserIcon } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format, subDays, isToday, isYesterday } from 'date-fns';
+import { format, subDays, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { CATEGORY_LABEL, TABLE_CATEGORY, categoryOf, deepLinkFor, type AuditCategory } from '@/lib/audit/auditMeta';
+import { useOnlineUsers } from '@/hooks/usePresence';
+import { OnlinePresencePill } from '@/components/presence/OnlinePresencePill';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuditLogsPage() {
   const [filters, setFilters] = useState({
