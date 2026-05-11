@@ -1,48 +1,81 @@
-## Goal
-Stop the recurring “Oops! Something went wrong” screen after inactivity, make recovery send authenticated users back to their dashboard instead of the public homepage, and replace the current route-revealing 404 page with a polished cosmic-style page.
+## Goals
 
-## Findings
-- The global `ErrorBoundary` currently uses `window.location.href = '/'`, so “Go Home” always opens the public landing page. If the session has expired, the user must manually go back to `/auth`.
-- The app has an inactivity sign-out timer in `AuthContext`. After timeout it calls `supabase.auth.signOut()` directly, which can leave parts of the UI reacting to a suddenly removed session.
-- The recently added presence heartbeat is mounted inside `AppLayout`. It tracks online state and calls `touch_presence()` every 60 seconds. This should be made defensive so failed/expired auth during inactivity cannot crash the app.
-- The current 404 page prints the invalid route (`/incline`) and shows admin quick links. That is not ideal for a public-facing error page.
-- `@radix-ui/react-slot` and `class-variance-authority` already exist. `cobe` and `framer-motion` are not installed yet, so they must be added if we implement the supplied cosmic 404 style.
+1. Make the global loader feel premium and on-brand (no static blue dumbbell look).
+2. Redesign the Set Password screen so it matches the rest of the app theme (right now it's a generic white card on a dark navy gradient that doesn't feel like Incline).
+3. Let **staff and trainers** open a Settings/Preferences area — today only owner/admin/manager see it, so they have no way to change theme, density, notifications, or update their own password.
 
-## Implementation Plan
+---
 
-### 1. Make the inactivity flow safe
-- Update `AuthContext` so the inactivity timeout uses the existing `signOut()` cleanup path rather than calling `supabase.auth.signOut()` directly.
-- Add a small “session expired / signed out” redirect state where appropriate so users land on `/auth` cleanly instead of triggering the generic error page.
-- Ensure query/cache cleanup happens consistently when the auth session becomes null.
+## 1. Loader redesign (`src/components/ui/gym-loader.tsx`)
 
-### 2. Harden presence tracking after inactivity
-- Update `usePresenceHeartbeat()` to:
-  - avoid reconnecting repeatedly when `roles` object identity changes,
-  - catch and ignore `touch_presence()` failures caused by expired sessions,
-  - only track presence when the auth user is valid,
-  - cleanly remove the realtime channel on logout/session expiry.
-- Update `useOnlineUsers()` to fail gracefully if realtime presence is unavailable.
+Replace the flat SVG dumbbell with a more polished, theme-aware loader:
 
-### 3. Improve ErrorBoundary recovery UX
-- Replace the current “Go Home” behavior with role/session-aware navigation:
-  - authenticated users: reset error and navigate to `/home` so `DashboardRedirect` chooses the correct dashboard,
-  - unauthenticated users: go to `/auth`,
-  - public-only errors: optionally go to `/` only when already on a public path.
-- Keep “Try Again” but make it reset the boundary without changing route.
-- Add a less alarming message for session-expired/auth-related crashes if detected.
+- Soft circular orbit: a faint primary-tinted ring + a smaller arc spinning on top using `border-t-primary border-transparent` and `animate-spin`.
+- Inside the ring: a small dumbbell glyph that gently bounces (keep the dumbbell identity, but smaller and centered).
+- Use semantic tokens only (`primary`, `accent`, `muted-foreground`, `card`) — no hardcoded blue/orange.
+- Add a subtle pulsing glow behind the ring using `bg-primary/10 blur-2xl`.
+- Text: keep `animate-pulse`, but switch to `text-foreground/70`, tighter letter spacing.
+- Sizes (`sm`/`md`/`lg`) and the existing `text` prop stay backwards compatible.
 
-### 4. Redesign the 404 page
-- Add `src/components/ui/cosmic-404.tsx` based on the supplied `cobe` globe component, corrected for TypeScript (`Record<string, unknown>` / COBE render state typing) and proper JSX.
-- Add the required dependencies: `cobe` and `framer-motion`.
-- Replace `src/pages/NotFound.tsx` with a robust page that:
-  - does not display the invalid route path,
-  - uses the animated cosmic globe design,
-  - has “Go Back” and “Go to dashboard/home” actions,
-  - sends authenticated users to `/home` and unauthenticated users to `/`,
-  - avoids admin quick links on public 404s.
+Side effect: every full-page loader (`DashboardRedirect`, `SetPassword`, `ProtectedRoute`, etc.) automatically picks up the new look.
 
-### 5. Validate
-- Verify `/audit-logs` loads without console errors.
-- Verify logging out/inactivity-style unauthenticated access to `/audit-logs` redirects to `/auth` rather than crashing.
-- Verify unknown routes like `/incline` show the redesigned 404 and do not reveal the typed route.
-- Verify “Home” from error/404 sends logged-in users to their role dashboard and public visitors to the public homepage.
+## 2. Set Password screen redesign
+
+`src/pages/SetPassword.tsx`:
+- Drop the dark navy `--gradient-hero` background. Use the same soft, themed background pattern as `Auth.tsx` (split layout or subtle ambient gradient using `from-background via-background to-primary/5`) with a couple of blurred primary/accent blobs for depth.
+- Two-column layout on desktop (`lg:grid-cols-2`): left side = Incline brand panel with gradient, tagline ("Welcome to Incline. Let's secure your account."), and a small marketing illustration; right side = the form card. On mobile: single column, brand collapses to a header.
+- Replace the standalone `<h1>Incline</h1>` above the card with the brand panel.
+
+`src/components/auth/SetPasswordForm.tsx`:
+- Card: `rounded-2xl border-0 shadow-xl shadow-primary/5 bg-card` (kill the green lock badge).
+- Lock badge: `bg-primary/10 text-primary` (theme token), not raw green.
+- Password requirements block: switch from green `text-success` ticks to a checklist where unmet items use `text-muted-foreground` + outline circle, met items use `text-primary` + filled `CheckCircle2`. Reorganize into a 2-col grid on `sm+` so it doesn't feel tall.
+- Password strength meter: add a 4-segment bar above the requirements that fills based on how many rules pass (uses `bg-primary` / `bg-emerald-500` / `bg-amber-500` semantic mapping but driven by tokens).
+- Inputs: keep shadcn defaults, add show/hide toggle to confirm field too.
+- Submit button: `bg-primary` (not green), with the existing loader.
+
+Verification: open `/set-password` route in the preview after the change to confirm parity with `/auth`.
+
+## 3. Settings access for staff & trainer
+
+Today, the only entry point for Settings is the admin nav item that points to `/settings` (owner/admin only). Staff/trainer have no way to change theme or notification preferences.
+
+**Approach:** keep the full Settings page admin-only, but expose a **scoped personal preferences subset** to staff/trainer/manager.
+
+Changes:
+
+- **`src/config/menu.ts`**
+  - Add a "Preferences" item to `staffMenuConfig`, `trainerMenuConfig`, and `managerMenuConfig` (under a "Account" / "Work" section): `{ label: 'Preferences', href: '/settings?tab=appearance', icon: Settings, roles: [...] }`.
+  - Adjust admin "Settings" entry to keep current behaviour.
+
+- **`src/pages/Settings.tsx`**
+  - Read current user roles via `useAuth()`.
+  - Define a `PERSONAL_TABS` whitelist: `appearance`, `notifications`, plus a new `profile` tab pointing to a lightweight "My Profile & Password" component (reuse existing `Profile.tsx` building blocks or a minimal change-password card).
+  - If the user is NOT owner/admin/manager, filter `SETTINGS_MENU` down to `PERSONAL_TABS` and force the default tab to `appearance` when an out-of-scope tab is requested.
+  - Update the page header copy: show "Preferences" instead of "Settings" for non-admin roles.
+
+- **`src/components/auth/ProtectedRoute.tsx` (or wherever `/settings` is gated)**
+  - Allow `staff` and `trainer` (in addition to admin/owner/manager) to reach `/settings`. Server-side data is already RLS-scoped, and the page-level filter above prevents them from seeing admin tabs.
+
+- **`src/components/settings/ThemePicker.tsx` & `NotificationSettings.tsx`** — quick audit only: confirm they don't make any admin-only API calls. If they do, add a role guard and hide the offending controls (e.g., notification rules) for non-admins, leaving only personal preferences (own email/sms/whatsapp toggles).
+
+## 4. Verification
+
+After implementation:
+- Load `/set-password` (when `mustSetPassword=true`) and `/auth` side-by-side — visual language should match.
+- Trigger `isLoading` (e.g., reload `/dashboard`) — confirm new loader animates smoothly in light + dark themes.
+- Log in as a staff user → sidebar shows "Preferences" → `/settings?tab=appearance` opens with Appearance / Notifications / Profile only, no admin tabs leaked.
+- Log in as a trainer → same scoped Preferences experience.
+- Log in as owner → full Settings menu unchanged.
+
+## Files touched
+
+- `src/components/ui/gym-loader.tsx` (rewrite visuals)
+- `src/pages/SetPassword.tsx` (layout + background)
+- `src/components/auth/SetPasswordForm.tsx` (card, badge, checklist, strength meter, confirm toggle)
+- `src/config/menu.ts` (add Preferences to staff/trainer/manager menus)
+- `src/pages/Settings.tsx` (role-based tab filtering + header copy + Profile tab)
+- `src/components/auth/ProtectedRoute.tsx` (allow staff/trainer on `/settings`)
+- `src/components/settings/NotificationSettings.tsx` (role-aware hide of admin-only sections, only if needed)
+
+No DB migrations, no business-logic changes.
