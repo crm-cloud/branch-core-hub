@@ -41,6 +41,19 @@ export default function AttendanceDashboard() {
   const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
   const canRecordStaff = hasAnyRole(['owner', 'admin', 'manager']);
 
+  // Realtime: refresh on any attendance / member change.
+  useRealtimeInvalidate({
+    channel: 'page-attendance-dashboard',
+    tables: ['member_attendance', 'staff_attendance', 'members'],
+    invalidateKeys: [
+      ['member-attendance-dashboard'],
+      ['staff-attendance-dashboard'],
+      ['staff-attendance-history'],
+      ['attendance-trends'],
+      ['all-staff-profiles'],
+    ],
+  });
+
   // Rapid-entry member search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
