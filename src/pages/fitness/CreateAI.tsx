@@ -453,7 +453,7 @@ export default function CreateAIPage() {
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className={type === 'workout' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4' : 'grid gap-3 sm:grid-cols-2'}>
                 <div className="space-y-2">
                   <Label>Primary Goal</Label>
                   <Select value={goal} onValueChange={setGoal}>
@@ -469,16 +469,45 @@ export default function CreateAIPage() {
                   </Select>
                 </div>
                 {type === 'workout' ? (
-                  <div className="space-y-2">
-                    <Label>Duration (weeks)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={24}
-                      value={durationWeeks}
-                      onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 4)}
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label>Days / week</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={7}
+                        value={daysPerWeek}
+                        onChange={(e) => setDaysPerWeek(Math.max(1, Math.min(7, parseInt(e.target.value) || 4)))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Duration (weeks)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={24}
+                        value={durationWeeks}
+                        onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 4)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Rotate plan every</Label>
+                      <Select
+                        value={String(rotationIntervalDays)}
+                        onValueChange={(v) => setRotationIntervalDays(parseInt(v) || 0)}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Off (no rotation)</SelectItem>
+                          <SelectItem value="7">7 days</SelectItem>
+                          <SelectItem value="10">10 days</SelectItem>
+                          <SelectItem value="14">14 days</SelectItem>
+                          <SelectItem value="21">21 days</SelectItem>
+                          <SelectItem value="30">30 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
                 ) : (
                   <div className="space-y-2">
                     <Label>Daily Calorie Target</Label>
@@ -488,6 +517,15 @@ export default function CreateAIPage() {
                       value={caloriesTarget}
                       onChange={(e) => setCaloriesTarget(e.target.value)}
                     />
+                  </div>
+                )}
+              </div>
+
+              {type === 'workout' && rotationIntervalDays > 0 && (
+                <p className="text-xs text-muted-foreground -mt-1 ml-0.5">
+                  AI will generate multiple exercise variants and rotate them every {rotationIntervalDays} days so members never repeat the exact same session back-to-back.
+                </p>
+              )}
                   </div>
                 )}
               </div>
