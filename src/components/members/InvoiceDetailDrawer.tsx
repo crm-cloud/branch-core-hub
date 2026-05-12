@@ -4,7 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
-import { FileText, Download, CreditCard, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { FileText, Download, CreditCard, CheckCircle, Clock, XCircle, FlaskConical } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { signLabReport } from '@/services/batchService';
+import { toast } from 'sonner';
 
 interface InvoiceDetailDrawerProps {
   invoice: any;
@@ -14,6 +18,41 @@ interface InvoiceDetailDrawerProps {
 }
 
 export function InvoiceDetailDrawer({ invoice, open, onOpenChange, onPayNow }: InvoiceDetailDrawerProps) {
+  // Look up batch info + lab report paths for this invoice (POS sales only).
+  const { data: batchLines = [] } = useQuery({
+    queryKey: ['invoice-batches', invoice?.id],
+    enabled: !!invoice?.id && open,
+    queryFn: async () => {
+      const { data: sale } = await (supabase as any)
+        .from('pos_sales')
+        .select('items')
+        .eq('invoice_id', invoice.id)
+        .maybeSingle();
+      const items = Array.isArray(sale?.items) ? sale.items : [];
+      const batchIds: string[] = [];
+      for (const it of items) {
+        if (Array.isArray(it.batches)) for (const b of it.batches) if (b.batch_id) batchIds.push(b.batch_id);
+      }
+      if (batchIds.length === 0) return [];
+      const { data: batches } = await (supabase as any)
+        .from('product_batches')
+        .select('id, batch_number, exp_date, lab_report_url, lab_report_filename, products(name)')
+        .in('id', batchIds);
+      return batches || [];
+    },
+  });
+
+  const handleDownloadLab = async (path: string, filename: string | null) => {
+    const url = await signLabReport(path, 60);
+    if (!url) { toast.error('Lab report unavailable'); return; }
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    if (filename) a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+
   if (!invoice) return null;
 
   const getStatusBadge = (status: string) => {
@@ -93,6 +132,38 @@ export function InvoiceDetailDrawer({ invoice, open, onOpenChange, onPayNow }: I
               <p className="text-sm text-muted-foreground">No item details available</p>
             )}
           </div>
+
+          {batchLines.length > 0 && (
+            <>
+              <Separator />
+              <div>
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FlaskConical className="h-4 w-4 text-emerald-600" />
+                  Batch & Lab Reports
+                </h4>
+                <div className="space-y-2">
+                  {batchLines.map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/40">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{b.products?.name || 'Product'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Batch {b.batch_number}{b.exp_date ? ` · EXP ${format(new Date(b.exp_date), 'MMM yyyy')}` : ''}
+                        </p>
+                      </div>
+                      {b.lab_report_url ? (
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadLab(b.lab_report_url, b.lab_report_filename)}>
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          Lab report
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">On request</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           <Separator />
 
