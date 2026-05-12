@@ -390,12 +390,7 @@ export default function CreateAIPage() {
                         <Label>Weight max (kg)</Label>
                         <Input type="number" placeholder="optional" value={audWeightMax} onChange={(e) => setAudWeightMax(e.target.value)} />
                       </div>
-                      {type === 'workout' && (
-                        <div className="space-y-2">
-                          <Label>Days/week</Label>
-                          <Input type="number" min={1} max={7} value={audDaysPerWeek} onChange={(e) => setAudDaysPerWeek(e.target.value)} />
-                        </div>
-                      )}
+                      {/* Days/week now lives in the main "Schedule & Rotation" row below — single source of truth. */}
                     </div>
 
                     {type === 'diet' && (
