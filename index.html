@@ -9,21 +9,96 @@
     <link rel="preconnect" href="https://iyqqpbvnszyrrgerniog.supabase.co" crossorigin />
     <link rel="dns-prefetch" href="https://iyqqpbvnszyrrgerniog.supabase.co" />
     <link rel="dns-prefetch" href="https://storage.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Non-blocking font load: stylesheet is fetched as a low-priority
-         preload then promoted to a stylesheet once it lands, so it no longer
-         blocks the initial render. The <noscript> fallback keeps the font
-         working when JS is disabled. -->
+
+    <!-- LCP image preload: paints with the inline static hero before React boots. -->
+    <link rel="preload" as="image" href="/incline-logo.png" fetchpriority="high" />
+
+    <!-- Self-hosted Oswald (one variable woff2 covers 400–700) — removes the
+         chained fonts.googleapis.com -> fonts.gstatic.com hops from the
+         critical path. -->
     <link
       rel="preload"
-      as="style"
-      href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap"
-      onload="this.onload=null;this.rel='stylesheet'"
+      as="font"
+      type="font/woff2"
+      href="/fonts/oswald/oswald-latin.woff2"
+      crossorigin
     />
-    <noscript
-      ><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap"
-    /></noscript>
+    <style>
+      @font-face {
+        font-family: 'Oswald';
+        font-style: normal;
+        font-weight: 400 700;
+        font-display: swap;
+        src: url('/fonts/oswald/oswald-latin.woff2') format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+      @font-face {
+        font-family: 'Oswald';
+        font-style: normal;
+        font-weight: 400 700;
+        font-display: swap;
+        src: url('/fonts/oswald/oswald-latin-ext.woff2') format('woff2');
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+      }
+      /* Critical hero styles — inlined so the LCP element paints from the
+         initial HTML response, before the main app CSS/JS are parsed. The
+         React app renders an identical hero on top once it boots. */
+      .lcp-shell {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        padding: 0 1rem;
+        background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      .lcp-shell-inner {
+        width: 100%;
+        max-width: 80rem;
+        margin: 0 auto;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .lcp-shell-text {
+        max-width: 28rem;
+        text-align: right;
+        margin-right: 2rem;
+        color: #0f172a;
+      }
+      @media (min-width: 768px) { .lcp-shell-text { margin-right: 8rem; } }
+      .lcp-shell-h1 {
+        font-size: 1.5rem;
+        line-height: 1.15;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        margin: 0 0 1.5rem;
+      }
+      @media (min-width: 768px) { .lcp-shell-h1 { font-size: 1.875rem; } }
+      @media (min-width: 1024px) { .lcp-shell-h1 { font-size: 2.25rem; } }
+      .lcp-shell-h1 .accent { color: hsl(43 74% 49%); }
+      .lcp-shell-p {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #64748b;
+        margin: 0;
+      }
+      .lcp-shell-logo {
+        position: fixed;
+        top: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        height: 4rem;
+        width: auto;
+        filter: brightness(0);
+        pointer-events: none;
+      }
+      @media (min-width: 640px) { .lcp-shell-logo { height: 5rem; } }
+      @media (min-width: 768px) {
+        .lcp-shell-logo { height: 7rem; left: 2rem; transform: none; }
+      }
+    </style>
 
     <title>The Incline Life | Luxury Fitness &amp; Recovery Club in Udaipur</title>
     <meta
@@ -137,7 +212,35 @@
   </head>
 
   <body>
+    <!-- Static LCP shell: paints from initial HTML so LCP is ~TTFB instead of
+         waiting for the React bundle. React mounts an identical hero into
+         #root and the 3D Canvas covers it once ready, so users see no flicker.
+         Marked aria-hidden so AT only sees the React-rendered version. -->
+    <div id="lcp-shell" aria-hidden="true">
+      <img class="lcp-shell-logo" src="/incline-logo.png" alt="" width="224" height="128" fetchpriority="high" decoding="async" />
+      <section class="lcp-shell">
+        <div class="lcp-shell-inner">
+          <div class="lcp-shell-text">
+            <h1 class="lcp-shell-h1">
+              WHERE <span class="accent">GLOBAL STRENGTH</span><br />
+              MEETS <span class="accent">CLINICAL SERENITY.</span>
+            </h1>
+            <p class="lcp-shell-p">
+              Rajasthan's new benchmark for excellence. An elevated sanctuary designed for the driven&mdash;delivering Italian biomechanics in every rep, and advanced restoration in every recovery.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Remove the static LCP shell once React has hydrated the real hero,
+      // to avoid duplicate DOM. Runs after main.tsx executes.
+      window.addEventListener('load', function () {
+        var shell = document.getElementById('lcp-shell');
+        if (shell) setTimeout(function () { shell.remove(); }, 100);
+      });
+    </script>
   </body>
 </html>
