@@ -165,6 +165,8 @@ export function useGenerateFitnessPlan() {
       };
       options?: {
         durationWeeks?: number;
+        daysPerWeek?: number;
+        rotationIntervalDays?: number;
         caloriesTarget?: number;
         availableMeals?: Array<{
           id: string;

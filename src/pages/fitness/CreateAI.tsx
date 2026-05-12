@@ -37,6 +37,8 @@ export default function CreateAIPage() {
   const [planName, setPlanName] = useState('');
   const [goal, setGoal] = useState('');
   const [durationWeeks, setDurationWeeks] = useState(4);
+  const [daysPerWeek, setDaysPerWeek] = useState<number>(4);
+  const [rotationIntervalDays, setRotationIntervalDays] = useState<number>(0);
   const [caloriesTarget, setCaloriesTarget] = useState('');
   const [proteinTarget, setProteinTarget] = useState('');
   const [carbsTarget, setCarbsTarget] = useState('');
@@ -51,7 +53,7 @@ export default function CreateAIPage() {
   const [audExperience, setAudExperience] = useState<string[]>(['beginner']);
   const [audWeightMin, setAudWeightMin] = useState<string>('');
   const [audWeightMax, setAudWeightMax] = useState<string>('');
-  const [audDaysPerWeek, setAudDaysPerWeek] = useState<string>('4');
+  // Days/week is now shared between member + audience modes (see `daysPerWeek`).
   const [audDietaryType, setAudDietaryType] = useState<string>('');
   const [audCuisine, setAudCuisine] = useState<string>('');
   const [audEquipmentHint, setAudEquipmentHint] = useState<string>('');
@@ -203,7 +205,7 @@ export default function CreateAIPage() {
           experience: audExperience[0] || 'beginner',
           preferences: [
             `Common (no-PT) plan targeting ${audAgeMin}-${audAgeMax}y, gender: ${audGender}, experience: ${audExperience.join('/')}`,
-            audDaysPerWeek && type === 'workout' && `${audDaysPerWeek} days/week`,
+            type === 'workout' && daysPerWeek && `${daysPerWeek} days/week`,
             audWeightMin && audWeightMax && `weight band ${audWeightMin}-${audWeightMax}kg`,
             type === 'diet' && audDietaryType && `diet: ${audDietaryType}`,
             type === 'diet' && audCuisine && `cuisine: ${audCuisine}`,
@@ -217,6 +219,8 @@ export default function CreateAIPage() {
         memberInfo,
         options: {
           durationWeeks,
+          daysPerWeek: type === 'workout' ? daysPerWeek : undefined,
+          rotationIntervalDays: type === 'workout' ? rotationIntervalDays : undefined,
           caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined,
           availableMeals: type === 'diet'
             ? catalogMeals.slice(0, 80).map((m) => ({
@@ -273,8 +277,10 @@ export default function CreateAIPage() {
           target_weight_max_kg: audWeightMax ? parseFloat(audWeightMax) : null,
           target_goal: goal || null,
           duration_weeks: durationWeeks,
-          days_per_week: audDaysPerWeek ? parseInt(audDaysPerWeek) : null,
+          days_per_week: daysPerWeek || null,
         } : undefined,
+        daysPerWeek: type === 'workout' ? daysPerWeek : undefined,
+        rotationIntervalDays: type === 'workout' ? rotationIntervalDays : undefined,
         content: plan,
         createdAt: new Date().toISOString(),
       });
@@ -388,12 +394,7 @@ export default function CreateAIPage() {
                         <Label>Weight max (kg)</Label>
                         <Input type="number" placeholder="optional" value={audWeightMax} onChange={(e) => setAudWeightMax(e.target.value)} />
                       </div>
-                      {type === 'workout' && (
-                        <div className="space-y-2">
-                          <Label>Days/week</Label>
-                          <Input type="number" min={1} max={7} value={audDaysPerWeek} onChange={(e) => setAudDaysPerWeek(e.target.value)} />
-                        </div>
-                      )}
+                      {/* Days/week now lives in the main "Schedule & Rotation" row below — single source of truth. */}
                     </div>
 
                     {type === 'diet' && (
@@ -456,7 +457,7 @@ export default function CreateAIPage() {
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className={type === 'workout' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4' : 'grid gap-3 sm:grid-cols-2'}>
                 <div className="space-y-2">
                   <Label>Primary Goal</Label>
                   <Select value={goal} onValueChange={setGoal}>
@@ -472,16 +473,45 @@ export default function CreateAIPage() {
                   </Select>
                 </div>
                 {type === 'workout' ? (
-                  <div className="space-y-2">
-                    <Label>Duration (weeks)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={24}
-                      value={durationWeeks}
-                      onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 4)}
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label>Days / week</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={7}
+                        value={daysPerWeek}
+                        onChange={(e) => setDaysPerWeek(Math.max(1, Math.min(7, parseInt(e.target.value) || 4)))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Duration (weeks)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={24}
+                        value={durationWeeks}
+                        onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 4)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Rotate plan every</Label>
+                      <Select
+                        value={String(rotationIntervalDays)}
+                        onValueChange={(v) => setRotationIntervalDays(parseInt(v) || 0)}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Off (no rotation)</SelectItem>
+                          <SelectItem value="7">7 days</SelectItem>
+                          <SelectItem value="10">10 days</SelectItem>
+                          <SelectItem value="14">14 days</SelectItem>
+                          <SelectItem value="21">21 days</SelectItem>
+                          <SelectItem value="30">30 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
                 ) : (
                   <div className="space-y-2">
                     <Label>Daily Calorie Target</Label>
@@ -494,6 +524,12 @@ export default function CreateAIPage() {
                   </div>
                 )}
               </div>
+
+              {type === 'workout' && rotationIntervalDays > 0 && (
+                <p className="text-xs text-muted-foreground -mt-1 ml-0.5">
+                  AI will generate multiple exercise variants and rotate them every {rotationIntervalDays} days so members never repeat the exact same session back-to-back.
+                </p>
+              )}
 
               {type === 'diet' && (
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -566,7 +602,7 @@ export default function CreateAIPage() {
                     <li>Weight band: <span className="text-foreground font-medium">{audWeightMin || '—'}–{audWeightMax || '—'} kg</span></li>
                   )}
                   {goal && <li>Goal: <span className="text-foreground font-medium">{goal}</span></li>}
-                  {type === 'workout' && <li>Days/week: <span className="text-foreground font-medium">{audDaysPerWeek || '—'}</span></li>}
+                  {type === 'workout' && <li>Days/week: <span className="text-foreground font-medium">{daysPerWeek || '—'}</span>{rotationIntervalDays > 0 && <> · Rotates every <span className="text-foreground font-medium">{rotationIntervalDays}d</span></>}</li>}
                 </ul>
                 <p className="text-[11px] text-muted-foreground pt-2 border-t">
                   After previewing, click <strong>Save as template</strong> to publish it as a Common Plan and auto-match

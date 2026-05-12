@@ -1,3 +1,4 @@
+// generate-fitness-plan v1.3.0 — adds daysPerWeek + rotationIntervalDays
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 const serve = Deno.serve;
@@ -44,6 +45,11 @@ interface GeneratePlanRequest {
     preferences?: string;
   };
   durationWeeks?: number;
+  /** Workout sessions per week (1-7). */
+  daysPerWeek?: number;
+  /** If > 0, the workout plan must include a `rotation` array of variant
+   * blocks that the dashboard cycles through every N days. 0 = no rotation. */
+  rotationIntervalDays?: number;
   caloriesTarget?: number;
   /** Optional list of meals from the gym's meal_catalog the AI should
    * prefer when composing diet plans. Items the AI proposes outside of
@@ -103,7 +109,11 @@ serve(async (req) => {
       );
     }
 
-    const { type, memberInfo, durationWeeks = 4, caloriesTarget, availableMeals = [], availableEquipment = [], previousPlanContext } = await req.json() as GeneratePlanRequest;
+    const { type, memberInfo, durationWeeks = 4, daysPerWeek, rotationIntervalDays = 0, caloriesTarget, availableMeals = [], availableEquipment = [], previousPlanContext } = await req.json() as GeneratePlanRequest;
+    // Cap variants for cost — even at 30-day rotation across 24 weeks we limit to 4 distinct sessions per slot.
+    const variantCount = rotationIntervalDays && rotationIntervalDays > 0
+      ? Math.max(2, Math.min(4, Math.ceil((durationWeeks * 7) / rotationIntervalDays)))
+      : 0;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
@@ -118,6 +128,7 @@ serve(async (req) => {
            "description": "Brief description",
            "goal": "Primary goal",
            "difficulty": "beginner|intermediate|advanced",
+           "daysPerWeek": <integer matching the requested sessions per week>,
            "weeks": [
              {
                "week": 1,
@@ -134,8 +145,21 @@ serve(async (req) => {
                ]
              }
            ],
+           "rotation": {
+             "intervalDays": <integer — copy from request, or 0 if not requested>,
+             "variants": [
+               {
+                 "variantIndex": 0,
+                 "label": "Block A",
+                 "days": [
+                   { "day": "Monday", "focus": "...", "exercises": [ { "name": "...", "equipment": "...", "sets": 4, "reps": "8-10", "rest": "90s", "notes": "..." } ] }
+                 ]
+               }
+             ]
+           },
            "notes": "General advice and precautions"
-         }`
+         }
+         IMPORTANT: Only include the "rotation" key if the user explicitly requested rotation. Otherwise omit it entirely.`
       : `You are an expert nutritionist creating personalized diet plans. Generate detailed, balanced, and practical meal plans.
          For EACH meal, return: meal name, a TIME RANGE (e.g. "8:00–9:00 AM" — eating times vary per person), calories, and macros (protein/carbs/fat in grams). When possible also include micros: fiber, sodium (mg), sugar (g).
          Return a JSON object with the following structure:
@@ -170,8 +194,10 @@ serve(async (req) => {
          - Fitness Goals: ${memberInfo.fitnessGoals || "General fitness"}
          - Health Conditions: ${memberInfo.healthConditions || "None reported"}
          - Experience Level: ${memberInfo.experience || "Beginner"}
+         ${daysPerWeek ? `- Sessions per week: EXACTLY ${daysPerWeek} training days. Mark the remaining ${7 - daysPerWeek} day(s) explicitly as { "day": "...", "focus": "Rest", "exercises": [] }.` : ""}
          - Preferences: ${memberInfo.preferences || "None"}
-         
+         ${variantCount > 0 ? `\n         ROTATION REQUIRED — produce a "rotation" object with intervalDays=${rotationIntervalDays} and exactly ${variantCount} variants (Block A, Block B${variantCount >= 3 ? ", Block C" : ""}${variantCount >= 4 ? ", Block D" : ""}). Each variant must cover the SAME muscle groups / movement patterns as the base "weeks[0]" but SWAP the exercises (e.g. Barbell Bench → Dumbbell Press, Back Squat → Goblet Squat, Lat Pulldown → Seated Row). The dashboard will rotate variants every ${rotationIntervalDays} days so members never repeat the identical session back-to-back.` : ""}
+
          Create a progressive, balanced workout plan suitable for their level.`
       : `Create a weekly meal plan for:
          - Name: ${memberInfo.name || "Member"}
@@ -307,7 +333,18 @@ serve(async (req) => {
       console.log(`Catalog match: ${matchedCount}/${totalCount} meals mapped to catalog ids.`);
     }
 
-    console.log(`Successfully generated ${type} plan:`, plan.name);
+    // Workout post-process: stamp daysPerWeek + rotation interval on the plan
+    // so the dashboard can pick the right session even if the AI omitted them.
+    if (type === "workout") {
+      if (daysPerWeek && !plan.daysPerWeek) plan.daysPerWeek = daysPerWeek;
+      if (variantCount > 0) {
+        plan.rotation = plan.rotation || {};
+        plan.rotation.intervalDays = rotationIntervalDays;
+        if (!Array.isArray(plan.rotation.variants)) plan.rotation.variants = [];
+      }
+    }
+
+    console.log(`Successfully generated ${type} plan:`, plan.name, `daysPerWeek=${daysPerWeek}, rotation=${variantCount}`);
 
     return new Response(
       JSON.stringify({ success: true, plan }),

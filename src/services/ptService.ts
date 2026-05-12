@@ -311,6 +311,11 @@ export async function generateFitnessPlan(
   },
   options?: {
     durationWeeks?: number;
+    /** Workout sessions per week (1-7). Drives session count + structure. */
+    daysPerWeek?: number;
+    /** If > 0, AI returns multiple variant blocks that rotate every N days
+     * so members don't repeat the exact same session. 0 = no rotation. */
+    rotationIntervalDays?: number;
     caloriesTarget?: number;
     /** Subset of meal_catalog rows the AI is allowed/encouraged to use.
      * Mapped back to catalog ids in the response so the diet page can show
@@ -342,6 +347,8 @@ export async function generateFitnessPlan(
       type,
       memberInfo,
       durationWeeks: options?.durationWeeks || 4,
+      daysPerWeek: options?.daysPerWeek,
+      rotationIntervalDays: options?.rotationIntervalDays,
       caloriesTarget: options?.caloriesTarget,
       availableMeals: options?.availableMeals,
       availableEquipment: options?.availableEquipment,
