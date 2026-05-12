@@ -1062,3 +1062,318 @@ export function buildContractPdf(data: ContractPdfInput, brand: BrandContext): B
   footer(doc, brand);
   return doc.output('blob');
 }
+
+// ============================================================================
+// THERMAL RECEIPT (80mm) — single source of truth for POS-style receipts.
+// ============================================================================
+export function buildThermalReceiptPdf(data: InvoicePdfInput, brand?: BrandContext): Blob {
+  // 80mm wide, dynamic height (we'll add pages as needed). jsPDF needs a fixed
+  // page format, so we use 80x297 portrait and rely on text flow.
+  const doc = new jsPDF({ unit: 'mm', format: [80, 297] });
+  const resolvedBrand: BrandContext = brand || {
+    ...DEFAULT_BRAND,
+    branch: {
+      name: data.branch_name,
+      phone: data.branch_phone ?? null,
+      gstin: data.gst_number ?? null,
+    },
+  };
+  const W = 80;
+  const margin = 4;
+  let y = 6;
+
+  doc.setFont('courier', 'bold');
+  doc.setFontSize(11);
+  setColor(doc, BRAND.text);
+  doc.text(resolvedBrand.companyName.toUpperCase(), W / 2, y, { align: 'center' });
+  y += 4;
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(8);
+  setColor(doc, BRAND.muted);
+  if (resolvedBrand.branch.name) { doc.text(resolvedBrand.branch.name, W / 2, y, { align: 'center' }); y += 3; }
+  if (resolvedBrand.branch.phone) { doc.text(`Tel: ${resolvedBrand.branch.phone}`, W / 2, y, { align: 'center' }); y += 3; }
+  if (resolvedBrand.branch.gstin) { doc.text(`GSTIN: ${resolvedBrand.branch.gstin}`, W / 2, y, { align: 'center' }); y += 3; }
+
+  const dash = () => {
+    doc.setDrawColor(0); doc.setLineDashPattern([0.6, 0.6], 0);
+    doc.line(margin, y, W - margin, y); doc.setLineDashPattern([], 0);
+    y += 2.5;
+  };
+  dash();
+
+  setColor(doc, BRAND.text);
+  doc.setFontSize(8);
+  doc.text(data.invoice_number, margin, y);
+  doc.text(new Date(data.created_at).toLocaleDateString('en-IN'), W - margin, y, { align: 'right' });
+  y += 3;
+  doc.text(`Customer: ${data.member_name}`, margin, y);
+  y += 3;
+  dash();
+
+  // Items header
+  doc.setFont('courier', 'bold');
+  doc.text('ITEM', margin, y);
+  doc.text('QTY', W - margin - 14, y, { align: 'right' });
+  doc.text('AMT', W - margin, y, { align: 'right' });
+  y += 3;
+  doc.setFont('courier', 'normal');
+
+  data.items.forEach((it) => {
+    const nameLines = doc.splitTextToSize(it.description, W - margin * 2 - 22);
+    doc.text(nameLines, margin, y);
+    doc.text(String(it.quantity || 1), W - margin - 14, y, { align: 'right' });
+    doc.text(`Rs.${(it.total_amount || 0).toLocaleString('en-IN')}`, W - margin, y, { align: 'right' });
+    y += nameLines.length * 3 + 0.5;
+  });
+  dash();
+
+  const line = (label: string, val: string, bold = false) => {
+    if (bold) doc.setFont('courier', 'bold');
+    doc.text(label, margin, y);
+    doc.text(val, W - margin, y, { align: 'right' });
+    if (bold) doc.setFont('courier', 'normal');
+    y += 3;
+  };
+  line('Subtotal', `Rs.${(data.subtotal || 0).toLocaleString('en-IN')}`);
+  if ((data.discount_amount || 0) > 0) line('Discount', `-Rs.${(data.discount_amount || 0).toLocaleString('en-IN')}`);
+  if ((data.tax_amount || 0) > 0) {
+    const half = (data.tax_amount || 0) / 2;
+    const r = data.gst_rate ? data.gst_rate / 2 : 0;
+    line(`CGST${r ? ' @' + r + '%' : ''}`, `Rs.${half.toLocaleString('en-IN')}`);
+    line(`SGST${r ? ' @' + r + '%' : ''}`, `Rs.${half.toLocaleString('en-IN')}`);
+  }
+  dash();
+  doc.setFontSize(10);
+  line('TOTAL', `Rs.${(data.total_amount || 0).toLocaleString('en-IN')}`, true);
+  doc.setFontSize(8);
+  if ((data.amount_paid || 0) > 0) line('Paid', `Rs.${(data.amount_paid || 0).toLocaleString('en-IN')}`);
+  const due = (data.total_amount || 0) - (data.amount_paid || 0);
+  if (due > 0) line('DUE', `Rs.${due.toLocaleString('en-IN')}`, true);
+  dash();
+
+  setColor(doc, BRAND.muted);
+  doc.text('Thank you! Visit again.', W / 2, y, { align: 'center' }); y += 3;
+  doc.text(new Date().toLocaleString('en-IN'), W / 2, y, { align: 'center' });
+  y += 3;
+  doc.setFontSize(7);
+  doc.text(resolvedBrand.legalName, W / 2, y, { align: 'center' });
+
+  return doc.output('blob');
+}
+
+// ============================================================================
+// REGISTRATION FORM — single source of truth for member onboarding waiver PDFs.
+// ============================================================================
+export interface RegistrationFormPdfInput {
+  data: {
+    memberName: string;
+    memberCode: string;
+    email?: string;
+    phone?: string;
+    gender?: string;
+    dateOfBirth?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+    planName?: string;
+    startDate?: string;
+    endDate?: string;
+    pricePaid?: number;
+    branchName?: string;
+  };
+  govIdType: string;
+  govIdNumber: string;
+  fitnessGoals: string;
+  medicalConditions: string;
+  parq?: Record<string, string>;
+  parqQuestions: string[];
+  customTerms: string;
+  terms: Array<{ title: string; body: string }>;
+  declaration: string;
+  signatureDataUrl?: string | null;
+}
+
+function fmtDate(d?: string) {
+  if (!d) return '';
+  try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+  catch { return d; }
+}
+
+export function buildRegistrationFormPdf(args: RegistrationFormPdfInput, brand?: BrandContext): Blob {
+  const { data, govIdType, govIdNumber, fitnessGoals, medicalConditions, parq, parqQuestions, customTerms, terms, declaration, signatureDataUrl } = args;
+  const resolvedBrand: BrandContext = brand || {
+    ...DEFAULT_BRAND,
+    branch: { name: data.branchName || 'Incline' },
+  };
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 14;
+
+  header(doc, 'MEMBERSHIP REGISTRATION', resolvedBrand, {
+    docNumber: `REG-${data.memberCode}`,
+    issueDate: fmtDate(new Date().toISOString()),
+  });
+
+  let y = 56;
+
+  const section = (title: string) => {
+    if (y > pageH - 40) { doc.addPage(); y = 20; }
+    doc.setFillColor(241, 245, 249);
+    doc.rect(margin, y, pageW - margin * 2, 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    setColor(doc, BRAND.primary);
+    doc.text(title.toUpperCase(), margin + 2, y + 4.2);
+    y += 8;
+  };
+
+  const fieldsTable = (rows: Array<[string, string]>) => {
+    autoTable(doc, {
+      startY: y,
+      body: rows.map(([k, v]) => [k, v || '—']),
+      theme: 'plain',
+      bodyStyles: { fontSize: 9, textColor: BRAND.text, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 } },
+      columnStyles: { 0: { fontStyle: 'bold', textColor: BRAND.muted, cellWidth: 45 } },
+      margin: { left: margin, right: margin },
+    });
+    y = (doc as any).lastAutoTable.finalY + 4;
+  };
+
+  section('Member Information');
+  fieldsTable([
+    ['Full Name', data.memberName],
+    ['Member Code', data.memberCode],
+    ['Email', data.email || ''],
+    ['Phone', data.phone || ''],
+    ['Gender', data.gender || ''],
+    ['Date of Birth', fmtDate(data.dateOfBirth)],
+    ['Address', [data.address, data.city, data.state].filter(Boolean).join(', ')],
+  ]);
+
+  section('Government ID');
+  fieldsTable([
+    ['ID Type', govIdType.toUpperCase()],
+    ['ID Number', govIdNumber],
+  ]);
+
+  section('Emergency Contact');
+  fieldsTable([
+    ['Name', data.emergencyContactName || ''],
+    ['Phone', data.emergencyContactPhone || ''],
+  ]);
+
+  section('Health & Fitness');
+  fieldsTable([
+    ['Fitness Goals', fitnessGoals],
+    ['Medical Conditions', medicalConditions || 'None declared'],
+  ]);
+
+  if (parq && parqQuestions.length) {
+    section('PAR-Q Health Screen');
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Question', 'Answer']],
+      body: parqQuestions.map((q, i) => [String(i + 1), q, (parq[q] || 'no').toUpperCase()]),
+      theme: 'striped',
+      headStyles: { fillColor: BRAND.primary as any, fontSize: 8.5, textColor: 255 },
+      bodyStyles: { fontSize: 8.5, textColor: BRAND.text },
+      columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 18, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: margin, right: margin },
+    });
+    y = (doc as any).lastAutoTable.finalY + 4;
+  }
+
+  section('Membership Details');
+  fieldsTable([
+    ['Plan', data.planName || ''],
+    ['Amount', data.pricePaid ? inr(data.pricePaid) : ''],
+    ['Start Date', fmtDate(data.startDate)],
+    ['End Date', fmtDate(data.endDate)],
+    ['Branch', data.branchName || ''],
+  ]);
+
+  section('Terms & Conditions');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  setColor(doc, BRAND.text);
+  const allTerms = customTerms ? [...terms, { title: 'Custom Terms', body: customTerms }] : terms;
+  const lineH = 3.4;
+  allTerms.forEach((t, i) => {
+    const titleStr = `${i + 1}. ${t.title}`;
+    const bodyLines = doc.splitTextToSize(t.body, pageW - margin * 2 - 4);
+    const blockH = lineH + bodyLines.length * lineH + 2;
+    if (y + blockH > pageH - 60) { doc.addPage(); y = 20; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.8);
+    setColor(doc, BRAND.text);
+    doc.text(titleStr, margin + 2, y);
+    y += lineH;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.3);
+    doc.text(bodyLines, margin + 4, y);
+    y += bodyLines.length * lineH + 2;
+  });
+
+  if (y + 16 > pageH - 60) { doc.addPage(); y = 20; }
+  y += 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  setColor(doc, BRAND.primary);
+  doc.text('MEMBER DECLARATION', margin + 2, y);
+  y += lineH + 1;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8.5);
+  setColor(doc, BRAND.text);
+  const decl = doc.splitTextToSize(declaration, pageW - margin * 2 - 4);
+  doc.text(decl, margin + 2, y);
+  y += decl.length * lineH + 2;
+
+  if (y > pageH - 55) { doc.addPage(); y = 20; }
+  y += 8;
+  doc.setDrawColor(203, 213, 225);
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+
+  const sigBoxW = (pageW - margin * 2 - 10) / 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  setColor(doc, BRAND.muted);
+  doc.text('MEMBER SIGNATURE', margin, y);
+  doc.text('AUTHORIZED STAFF', margin + sigBoxW + 10, y);
+  y += 3;
+
+  if (signatureDataUrl) {
+    try { doc.addImage(signatureDataUrl, 'PNG', margin, y, sigBoxW, 22); } catch { /* noop */ }
+  }
+
+  const sigLineY = y + 26;
+  doc.setDrawColor(30, 41, 59);
+  doc.line(margin, sigLineY, margin + sigBoxW, sigLineY);
+  doc.line(margin + sigBoxW + 10, sigLineY, pageW - margin, sigLineY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  setColor(doc, BRAND.muted);
+  doc.text(`${data.memberName} • ${fmtDate(new Date().toISOString())}`, margin, sigLineY + 4);
+  doc.text('Date: ____________________', margin + sigBoxW + 10, sigLineY + 4);
+
+  footer(doc, resolvedBrand);
+  return doc.output('blob');
+}
+
+// ============================================================================
+// PLAN HELPERS — folded in from former planPdf.ts
+// ============================================================================
+export function planPdfFilename(plan: { name: string; type: 'workout' | 'diet' }) {
+  const safeName = plan.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'plan';
+  return `${plan.type === 'workout' ? 'Workout' : 'Diet'}-Plan-${safeName}.pdf`;
+}
+
+export async function downloadPlanPdf(input: PlanPdfInput, brand?: BrandContext): Promise<Blob> {
+  const blob = await buildPlanPdf(input, brand);
+  downloadBlob(blob, planPdfFilename({ name: input.name, type: input.type }));
+  return blob;
+}

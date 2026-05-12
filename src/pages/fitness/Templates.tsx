@@ -23,7 +23,7 @@ import {
   FileUp,
   FileText,
 } from "lucide-react";
-import { downloadPlanPdf } from "@/utils/planPdf";
+import { downloadPlanPdf } from "@/utils/pdfBlob";
 import { useBrandContext } from "@/lib/brand/useBrandContext";
 import { toast as sonnerToast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

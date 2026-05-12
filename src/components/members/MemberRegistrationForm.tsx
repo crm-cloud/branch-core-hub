@@ -13,9 +13,8 @@ import { Printer, Save, FileSignature, Eraser, Dumbbell, Shield, HeartPulse, Use
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { e } from '@/utils/htmlEscape';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { buildRegistrationFormPdf, printBlob } from '@/utils/pdfBlob';
+import { useBrandContext } from '@/lib/brand/useBrandContext';
 import {
   PARQ_QUESTIONS,
   PRIMARY_GOALS,
@@ -80,6 +79,7 @@ const MEMBER_DECLARATION = 'I have read, understood, and agree to abide by all t
 
 export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: MemberRegistrationFormProps) {
   const queryClient = useQueryClient();
+  const { data: brand } = useBrandContext(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
@@ -237,10 +237,12 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         fitnessGoals,
         medicalConditions,
         parq: parqMap,
+        parqQuestions: [...PARQ_QUESTIONS],
         customTerms,
         terms: DEFAULT_TERMS,
+        declaration: MEMBER_DECLARATION,
         signatureDataUrl,
-      });
+      }, brand);
 
       const fileName = `${data.memberId}/registration-form-${Date.now()}.pdf`;
       const { error: uploadError } = await supabase.storage
@@ -303,108 +305,23 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { toast.error('Please allow popups'); return; }
-
     const signatureDataUrl = hasSigned ? canvasRef.current?.toDataURL('image/png') : null;
-
-    const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${e(data.memberName)}</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; color: #1e293b; max-width: 800px; margin: 0 auto; font-size: 13px; }
-      .header { text-align: center; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 3px double #6366f1; }
-      .header h1 { color: #6366f1; font-size: 22px; text-transform: uppercase; letter-spacing: 3px; }
-      .header p { color: #64748b; font-size: 11px; margin-top: 4px; }
-      .badge { display: inline-block; background: #6366f1; color: white; padding: 2px 10px; border-radius: 10px; font-size: 10px; margin-top: 4px; }
-      .title { font-size: 16px; font-weight: bold; text-align: center; margin: 16px 0; color: #334155; }
-      .section { margin-bottom: 16px; }
-      .section-title { font-size: 12px; font-weight: bold; color: #6366f1; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-      .field label { font-weight: 600; display: block; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-      .field .val { padding: 4px 0; border-bottom: 1px dotted #cbd5e1; min-height: 22px; font-size: 13px; }
-      .full { grid-column: span 2; }
-      .terms { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; margin: 16px 0; }
-      .terms ol { margin-left: 16px; }
-      .terms li { margin-bottom: 4px; font-size: 11px; line-height: 1.4; }
-      .sig-section { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-      .sig-box { text-align: center; }
-      .sig-img { max-height: 60px; margin: 0 auto; }
-      .sig-line { border-top: 1px solid #334155; margin-top: 40px; padding-top: 6px; font-size: 11px; color: #64748b; }
-      .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
-      @media print { body { padding: 15px; } }
-    </style></head><body>
-      <div class="header">
-        <h1>${e(data.branchName || 'FITNESS CENTER')}</h1>
-        <p>Membership Registration & Agreement Form</p>
-        <div class="badge">REG-${e(data.memberCode)}</div>
-      </div>
-      <div class="title">MEMBERSHIP AGREEMENT</div>
-      <div class="section">
-        <div class="section-title">👤 Member Information</div>
-        <div class="grid">
-          <div class="field"><label>Full Name</label><div class="val">${e(data.memberName)}</div></div>
-          <div class="field"><label>Member Code</label><div class="val">${e(data.memberCode)}</div></div>
-          <div class="field"><label>Email</label><div class="val">${e(data.email || '—')}</div></div>
-          <div class="field"><label>Phone</label><div class="val">${e(data.phone || '—')}</div></div>
-          <div class="field"><label>Gender</label><div class="val">${e(data.gender || '—')}</div></div>
-          <div class="field"><label>Date of Birth</label><div class="val">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field full"><label>Address</label><div class="val">${e([data.address, data.city, data.state].filter(Boolean).join(', ') || '—')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">🪪 Government ID</div>
-        <div class="grid">
-          <div class="field"><label>ID Type</label><div class="val">${e(govIdType.toUpperCase())}</div></div>
-          <div class="field"><label>ID Number</label><div class="val">${e(govIdNumber || '—')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">🚨 Emergency Contact</div>
-        <div class="grid">
-          <div class="field"><label>Name</label><div class="val">${e(data.emergencyContactName || '—')}</div></div>
-          <div class="field"><label>Phone</label><div class="val">${e(data.emergencyContactPhone || '—')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">💪 Health & Fitness</div>
-        <div class="grid">
-          <div class="field full"><label>Fitness Goals</label><div class="val">${e(fitnessGoals || '—')}</div></div>
-          <div class="field full"><label>Medical Conditions</label><div class="val">${e(medicalConditions || 'None declared')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">📋 Membership Details</div>
-        <div class="grid">
-          <div class="field"><label>Plan</label><div class="val">${e(data.planName || '—')}</div></div>
-          <div class="field"><label>Amount</label><div class="val">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '—'}</div></div>
-          <div class="field"><label>Start Date</label><div class="val">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field"><label>End Date</label><div class="val">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field"><label>Registration Date</label><div class="val">${format(new Date(), 'dd MMM yyyy')}</div></div>
-          <div class="field"><label>Branch</label><div class="val">${e(data.branchName || '—')}</div></div>
-        </div>
-      </div>
-      <div class="terms">
-        <div class="section-title" style="color:#334155;">📜 Terms & Conditions</div>
-        <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}${customTerms ? `<li style="margin-bottom:6px"><strong>Custom Terms</strong><br/><span>${e(customTerms)}</span></li>` : ''}</ol>
-        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:11px;color:#334155"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div>
-      </div>
-      <div class="sig-section">
-        <div class="sig-box">
-          ${signatureDataUrl ? `<img src="${signatureDataUrl}" class="sig-img" />` : ''}
-          <div class="sig-line">Member Signature<br/><small>Date: ${format(new Date(), 'dd/MM/yyyy')}</small></div>
-        </div>
-        <div class="sig-box">
-          <div class="sig-line">Authorized Staff Signature<br/><small>Date: _______________</small></div>
-        </div>
-      </div>
-      <div class="footer">
-        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • REF: ${e(data.memberCode)} • This is a computer-generated document</p>
-      </div>
-    </body></html>`;
-
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.onload = () => printWindow.print();
+    const parqMap: Record<string, string> = {};
+    PARQ_QUESTIONS.forEach((q, i) => { parqMap[q] = parq[`q${i}`] || 'no'; });
+    const blob = buildRegistrationFormPdf({
+      data,
+      govIdType,
+      govIdNumber,
+      fitnessGoals,
+      medicalConditions,
+      parq: parqMap,
+      parqQuestions: [...PARQ_QUESTIONS],
+      customTerms,
+      terms: DEFAULT_TERMS,
+      declaration: MEMBER_DECLARATION,
+      signatureDataUrl,
+    }, brand);
+    printBlob(blob);
   };
 
   return (
@@ -685,277 +602,4 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   );
 }
 
-interface BuildPdfArgs {
-  data: RegistrationFormData;
-  govIdType: string;
-  govIdNumber: string;
-  fitnessGoals: string;
-  medicalConditions: string;
-  parq?: Record<string, string>;
-  customTerms: string;
-  terms: TermClause[];
-  signatureDataUrl?: string | null;
-}
 
-function buildRegistrationFormPdf(args: BuildPdfArgs): Blob {
-  const { data, govIdType, govIdNumber, fitnessGoals, medicalConditions, parq, customTerms, terms, signatureDataUrl } = args;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const pageW = 210;
-  const pageH = 297;
-  const margin = 14;
-
-  // Header band
-  doc.setFillColor(99, 102, 241);
-  doc.rect(0, 0, pageW, 8, 'F');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(99, 102, 241);
-  doc.text((data.branchName || 'FITNESS CENTER').toUpperCase(), margin, 22);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Membership Registration & Agreement Form', margin, 28);
-
-  doc.setFontSize(9);
-  doc.text(`REG-${data.memberCode}`, pageW - margin, 22, { align: 'right' });
-  doc.text(`Date: ${format(new Date(), 'dd MMM yyyy')}`, pageW - margin, 28, { align: 'right' });
-
-  let y = 38;
-
-  const section = (title: string) => {
-    doc.setFillColor(241, 245, 249);
-    doc.rect(margin, y, pageW - margin * 2, 6, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(99, 102, 241);
-    doc.text(title.toUpperCase(), margin + 2, y + 4.2);
-    y += 8;
-  };
-
-  const fieldsTable = (rows: Array<[string, string]>) => {
-    autoTable(doc, {
-      startY: y,
-      body: rows.map(([k, v]) => [k, v || '—']),
-      theme: 'plain',
-      bodyStyles: { fontSize: 9, textColor: [30, 41, 59], cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 } },
-      columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 116, 139], cellWidth: 45 } },
-      margin: { left: margin, right: margin },
-    });
-    y = (doc as any).lastAutoTable.finalY + 4;
-  };
-
-  section('Member Information');
-  fieldsTable([
-    ['Full Name', data.memberName],
-    ['Member Code', data.memberCode],
-    ['Email', data.email || ''],
-    ['Phone', data.phone || ''],
-    ['Gender', data.gender || ''],
-    ['Date of Birth', data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : ''],
-    ['Address', [data.address, data.city, data.state].filter(Boolean).join(', ')],
-  ]);
-
-  section('Government ID');
-  fieldsTable([
-    ['ID Type', govIdType.toUpperCase()],
-    ['ID Number', govIdNumber],
-  ]);
-
-  section('Emergency Contact');
-  fieldsTable([
-    ['Name', data.emergencyContactName || ''],
-    ['Phone', data.emergencyContactPhone || ''],
-  ]);
-
-  section('Health & Fitness');
-  fieldsTable([
-    ['Fitness Goals', fitnessGoals],
-    ['Medical Conditions', medicalConditions || 'None declared'],
-  ]);
-
-  if (parq && Object.keys(parq).length) {
-    section('PAR-Q Health Screen');
-    autoTable(doc, {
-      startY: y,
-      head: [['#', 'Question', 'Answer']],
-      body: PARQ_QUESTIONS.map((q, i) => [String(i + 1), q, (parq[q] || 'no').toUpperCase()]),
-      theme: 'striped',
-      headStyles: { fillColor: [99, 102, 241], fontSize: 8.5, textColor: 255 },
-      bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59] },
-      columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 18, halign: 'center', fontStyle: 'bold' } },
-      margin: { left: margin, right: margin },
-    });
-    y = (doc as any).lastAutoTable.finalY + 4;
-  }
-
-  section('Membership Details');
-  fieldsTable([
-    ['Plan', data.planName || ''],
-    ['Amount', data.pricePaid ? `Rs. ${data.pricePaid.toLocaleString('en-IN')}` : ''],
-    ['Start Date', data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : ''],
-    ['End Date', data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : ''],
-    ['Branch', data.branchName || ''],
-  ]);
-
-  // Terms
-  section('Terms & Conditions');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  const allTerms: TermClause[] = customTerms
-    ? [...terms, { title: 'Custom Terms', body: customTerms }]
-    : terms;
-  const lineH = 3.4;
-  allTerms.forEach((t, i) => {
-    const titleStr = `${i + 1}. ${t.title}`;
-    const bodyLines = doc.splitTextToSize(t.body, pageW - margin * 2 - 4);
-    const blockH = lineH + bodyLines.length * lineH + 2;
-    if (y + blockH > pageH - 60) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.8);
-    doc.setTextColor(51, 65, 85);
-    doc.text(titleStr, margin + 2, y);
-    y += lineH;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.3);
-    doc.setTextColor(30, 41, 59);
-    doc.text(bodyLines, margin + 4, y);
-    y += bodyLines.length * lineH + 2;
-  });
-
-  // Member Declaration
-  if (y + 16 > pageH - 60) { doc.addPage(); y = 20; }
-  y += 2;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(99, 102, 241);
-  doc.text('MEMBER DECLARATION', margin + 2, y);
-  y += lineH + 1;
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  const decl = doc.splitTextToSize(MEMBER_DECLARATION, pageW - margin * 2 - 4);
-  doc.text(decl, margin + 2, y);
-  y += decl.length * lineH + 2;
-
-  // Signature section
-  if (y > pageH - 55) {
-    doc.addPage();
-    y = 20;
-  }
-  y += 8;
-  doc.setDrawColor(203, 213, 225);
-  doc.line(margin, y, pageW - margin, y);
-  y += 6;
-
-  const sigBoxW = (pageW - margin * 2 - 10) / 2;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  doc.text('MEMBER SIGNATURE', margin, y);
-  doc.text('AUTHORIZED STAFF', margin + sigBoxW + 10, y);
-  y += 3;
-
-  if (signatureDataUrl) {
-    try {
-      doc.addImage(signatureDataUrl, 'PNG', margin, y, sigBoxW, 22);
-    } catch {
-      // ignore
-    }
-  }
-
-  const sigLineY = y + 26;
-  doc.setDrawColor(30, 41, 59);
-  doc.line(margin, sigLineY, margin + sigBoxW, sigLineY);
-  doc.line(margin + sigBoxW + 10, sigLineY, pageW - margin, sigLineY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`${data.memberName} • ${format(new Date(), 'dd/MM/yyyy')}`, margin, sigLineY + 4);
-  doc.text('Date: ____________________', margin + sigBoxW + 10, sigLineY + 4);
-
-  // Footer
-  doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    `Generated ${new Date().toLocaleString('en-IN')}  •  REF: ${data.memberCode}  •  The Incline Life by Incline`,
-    pageW / 2,
-    pageH - 8,
-    { align: 'center' },
-  );
-
-  return doc.output('blob');
-}
-
-// Keep legacy export for backward compat
-export function printRegistrationForm(data: RegistrationFormData) {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) { alert('Please allow popups to print'); return; }
-
-  const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${e(data.memberName)}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
-    .header { text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 3px double #6366f1; }
-    .header h1 { color: #6366f1; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
-    .header p { color: #666; font-size: 12px; margin-top: 5px; }
-    .title { font-size: 18px; font-weight: bold; text-align: center; margin: 20px 0; text-decoration: underline; }
-    .section { margin-bottom: 20px; }
-    .section-title { font-size: 14px; font-weight: bold; color: #6366f1; margin-bottom: 10px; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .info-item { font-size: 13px; }
-    .info-item label { font-weight: 600; display: block; margin-bottom: 2px; color: #555; }
-    .info-item .value { padding: 6px 0; border-bottom: 1px dotted #ccc; min-height: 28px; }
-    .terms { background: #f9f9f9; padding: 15px; border: 1px solid #ddd; margin: 20px 0; font-size: 12px; }
-    .terms ol { margin-left: 18px; }
-    .terms li { margin-bottom: 6px; }
-    .signature-section { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-    .signature-box { text-align: center; }
-    .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 8px; font-size: 12px; }
-    .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #999; }
-    @media print { body { padding: 20px; } }
-  </style></head><body>
-    <div class="header"><h1>${e(data.branchName || 'FITNESS CENTER')}</h1><p>Membership Registration Form</p></div>
-    <div class="title">MEMBERSHIP AGREEMENT</div>
-    <div class="section"><div class="section-title">Member Details</div>
-      <div class="info-grid">
-        <div class="info-item"><label>Full Name</label><div class="value">${e(data.memberName)}</div></div>
-        <div class="info-item"><label>Member Code</label><div class="value">${e(data.memberCode)}</div></div>
-        <div class="info-item"><label>Email</label><div class="value">${e(data.email || '___')}</div></div>
-        <div class="info-item"><label>Phone</label><div class="value">${e(data.phone || '___')}</div></div>
-        <div class="info-item"><label>Gender</label><div class="value">${e(data.gender || '___')}</div></div>
-        <div class="info-item"><label>Date of Birth</label><div class="value">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '___'}</div></div>
-        <div class="info-item" style="grid-column:span 2"><label>Address</label><div class="value">${e(data.address || '___')}</div></div>
-      </div></div>
-    <div class="section"><div class="section-title">Emergency Contact</div>
-      <div class="info-grid">
-        <div class="info-item"><label>Name</label><div class="value">${e(data.emergencyContactName || '___')}</div></div>
-        <div class="info-item"><label>Phone</label><div class="value">${e(data.emergencyContactPhone || '___')}</div></div>
-      </div></div>
-    <div class="section"><div class="section-title">Membership Details</div>
-      <div class="info-grid">
-        <div class="info-item"><label>Plan</label><div class="value">${e(data.planName || '___')}</div></div>
-        <div class="info-item"><label>Amount</label><div class="value">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '___'}</div></div>
-        <div class="info-item"><label>Start Date</label><div class="value">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '___'}</div></div>
-        <div class="info-item"><label>End Date</label><div class="value">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '___'}</div></div>
-      </div></div>
-    <div class="terms"><div class="section-title" style="color:#333">Terms & Conditions</div>
-      <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}</ol>
-      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;font-size:11px"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div></div>
-    <div class="signature-section">
-      <div class="signature-box"><div class="signature-line">Member Signature<br/><small>Date: ___</small></div></div>
-      <div class="signature-box"><div class="signature-line">Staff Signature<br/><small>Date: ___</small></div></div>
-    </div>
-    <div class="footer"><p>Generated on ${new Date().toLocaleDateString('en-IN')}</p></div>
-  </body></html>`;
-
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.onload = () => printWindow.print();
-}
