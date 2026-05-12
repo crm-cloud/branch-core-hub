@@ -23,7 +23,9 @@ import {
   FileUp,
   FileText,
 } from "lucide-react";
-import { generatePlanPDF } from "@/utils/pdfGenerator";
+import { downloadPlanPdf } from "@/utils/planPdf";
+import { useBrandContext } from "@/lib/brand/useBrandContext";
+import { toast as sonnerToast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPlanTemplates,
@@ -69,6 +71,29 @@ export default function FitnessTemplatesPage() {
   const canCreate = hasAnyRole(["owner", "admin", "manager"]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { data: brand } = useBrandContext();
+
+  const handleDownloadTemplate = async (template: FitnessPlanTemplate) => {
+    if (template.source_kind === 'pdf' && template.pdf_url) {
+      window.open(template.pdf_url, '_blank', 'noopener');
+      return;
+    }
+    try {
+      await downloadPlanPdf(
+        {
+          name: template.name,
+          type: template.type,
+          description: template.description ?? undefined,
+          difficulty: template.difficulty ?? undefined,
+          goal: template.goal ?? undefined,
+          data: template.content,
+        } as any,
+        brand,
+      );
+    } catch (err: any) {
+      sonnerToast.error(err?.message || 'Failed to generate PDF');
+    }
+  };
 
   const [planType, setPlanType] = useState<"workout" | "diet">("workout");
   const [commonFilter, setCommonFilter] = useState<CommonFilter>("all");
@@ -207,17 +232,7 @@ export default function FitnessTemplatesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                if (isPdf && template.pdf_url) {
-                  window.open(template.pdf_url, '_blank', 'noopener');
-                } else {
-                  generatePlanPDF({
-                    name: template.name,
-                    type: template.type,
-                    data: template.content,
-                  });
-                }
-              }}
+              onClick={() => handleDownloadTemplate(template)}
               title={isPdf ? 'Open PDF' : 'Download PDF'}
             >
               <Download className="h-3.5 w-3.5" />
@@ -440,16 +455,7 @@ export default function FitnessTemplatesPage() {
               }
             : null
         }
-        onDownload={() =>
-          viewing &&
-          (viewing.source_kind === 'pdf' && viewing.pdf_url
-            ? window.open(viewing.pdf_url, '_blank', 'noopener')
-            : generatePlanPDF({
-                name: viewing.name,
-                type: viewing.type,
-                data: viewing.content,
-              }))
-        }
+        onDownload={() => viewing && handleDownloadTemplate(viewing)}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>

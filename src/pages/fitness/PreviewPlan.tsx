@@ -48,6 +48,7 @@ export default function PreviewPlanPage() {
       });
       setSavedTemplateId(tpl.id);
       queryClient.invalidateQueries({ queryKey: ['fitness-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['fitness-template-usage'] });
       toast.success(draft.isCommon ? 'Saved as Common Plan template' : 'Saved as template');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save template');
