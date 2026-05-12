@@ -23,6 +23,9 @@ export interface Product {
   category_id: string | null;
   branch_id: string | null;
   is_active: boolean;
+  requires_batch_tracking?: boolean;
+  requires_lab_report?: boolean;
+  default_shelf_life_days?: number | null;
   created_at: string;
 }
 

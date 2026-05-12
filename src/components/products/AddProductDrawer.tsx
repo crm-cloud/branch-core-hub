@@ -30,6 +30,9 @@ const EMPTY_FORM = {
   is_active: true,
   image_url: '',
   initial_quantity: '',
+  requires_batch_tracking: false,
+  requires_lab_report: false,
+  default_shelf_life_days: '',
 };
 
 export function AddProductDrawer({ open, onOpenChange, product }: AddProductDrawerProps) {
@@ -59,6 +62,9 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
         is_active: product.is_active ?? true,
         image_url: product.image_url || '',
         initial_quantity: '',
+        requires_batch_tracking: product.requires_batch_tracking ?? false,
+        requires_lab_report: product.requires_lab_report ?? false,
+        default_shelf_life_days: product.default_shelf_life_days ?? '',
       });
       setImagePreview(product.image_url || '');
     } else {
@@ -151,12 +157,18 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
         branch_id: formData.branch_id || null,
         is_active: formData.is_active,
         image_url: formData.image_url || null,
+        requires_batch_tracking: !!formData.requires_batch_tracking,
+        requires_lab_report: !!formData.requires_batch_tracking && !!formData.requires_lab_report,
+        default_shelf_life_days: formData.default_shelf_life_days
+          ? Number(formData.default_shelf_life_days)
+          : null,
       };
 
-      if (isEditing) return updateProduct(product.id, payload);
+      if (isEditing) return updateProduct(product.id, payload as any);
 
       const newProduct = await createProduct(payload as any);
-      if (formData.initial_quantity && Number(formData.initial_quantity) > 0) {
+      // Skip seeding inventory directly when batch tracking is on — stock comes from batches.
+      if (!formData.requires_batch_tracking && formData.initial_quantity && Number(formData.initial_quantity) > 0) {
         const quantity = Number(formData.initial_quantity);
         const branchId = formData.branch_id || branches[0]?.id;
         if (branchId) {
@@ -370,7 +382,7 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
               </Select>
             </div>
 
-            {!isEditing && (
+            {!isEditing && !formData.requires_batch_tracking && (
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="initial_quantity">Initial Stock Quantity *</Label>
                 <Input
@@ -380,10 +392,67 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
                   value={formData.initial_quantity}
                   onChange={(e) => setFormData({ ...formData, initial_quantity: e.target.value })}
                   placeholder="50"
-                  required
+                  required={!formData.requires_batch_tracking}
                 />
                 <p className="text-xs text-muted-foreground">Set the starting inventory for this product</p>
               </div>
+            )}
+          </div>
+
+          {/* Batch & Compliance */}
+          <div className="space-y-3 rounded-xl border bg-slate-50/60 p-4">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Batch & Compliance</h4>
+              <p className="text-xs text-slate-500">
+                Turn on for proteins, supplements and any product that needs expiry & lab reports.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="requires_batch_tracking">Track batches & expiry</Label>
+                <p className="text-xs text-muted-foreground">Stock is added per batch (FEFO at POS).</p>
+              </div>
+              <Switch
+                id="requires_batch_tracking"
+                checked={formData.requires_batch_tracking}
+                onCheckedChange={(checked) =>
+                  setFormData({
+                    ...formData,
+                    requires_batch_tracking: checked,
+                    requires_lab_report: checked ? formData.requires_lab_report : false,
+                  })
+                }
+              />
+            </div>
+
+            {formData.requires_batch_tracking && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="requires_lab_report">Require Lab Test Report (CoA)</Label>
+                    <p className="text-xs text-muted-foreground">Block batch creation without a report.</p>
+                  </div>
+                  <Switch
+                    id="requires_lab_report"
+                    checked={formData.requires_lab_report}
+                    onCheckedChange={(checked) => setFormData({ ...formData, requires_lab_report: checked })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="default_shelf_life_days">Default shelf life (days)</Label>
+                  <Input
+                    id="default_shelf_life_days"
+                    type="number"
+                    min="1"
+                    value={formData.default_shelf_life_days}
+                    onChange={(e) => setFormData({ ...formData, default_shelf_life_days: e.target.value })}
+                    placeholder="730"
+                  />
+                  <p className="text-xs text-muted-foreground">Auto-fills expiry date when entering a batch.</p>
+                </div>
+              </>
             )}
           </div>
 

@@ -9,7 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AddProductDrawer } from '@/components/products/AddProductDrawer';
+import { ProductBatchesTab } from '@/components/products/ProductBatchesTab';
 import { 
   Plus, 
   Package, 
@@ -22,7 +24,9 @@ import {
   Trash2,
   Image as ImageIcon,
   Archive,
-  BarChart3
+  BarChart3,
+  Layers,
+  ShieldCheck
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,6 +36,7 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [batchesProduct, setBatchesProduct] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<string>('all');
@@ -371,7 +376,19 @@ export default function ProductsPage() {
                                       )}
                                     </div>
                                     <div>
-                                      <p className="font-medium">{product.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium">{product.name}</p>
+                                        {product.requires_batch_tracking && (
+                                          <Badge className="bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-medium px-2 py-0">
+                                            <Layers className="h-3 w-3 mr-1" /> Batch
+                                          </Badge>
+                                        )}
+                                        {product.requires_lab_report && (
+                                          <Badge className="bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-medium px-2 py-0">
+                                            <ShieldCheck className="h-3 w-3 mr-1" /> CoA
+                                          </Badge>
+                                        )}
+                                      </div>
                                       {product.description && (
                                         <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">{product.description}</p>
                                       )}
@@ -417,6 +434,12 @@ export default function ProductsPage() {
                                         <Pencil className="h-4 w-4 mr-2" />
                                         Edit
                                       </DropdownMenuItem>
+                                      {product.requires_batch_tracking && (
+                                        <DropdownMenuItem onClick={() => setBatchesProduct(product)}>
+                                          <Layers className="h-4 w-4 mr-2" />
+                                          Manage Batches
+                                        </DropdownMenuItem>
+                                      )}
                                       <DropdownMenuItem
                                         className="text-destructive focus:text-destructive"
                                         onClick={() => deleteMutation.mutate(product.id)}
@@ -564,6 +587,20 @@ export default function ProductsPage() {
         onOpenChange={setDrawerOpen}
         product={editingProduct}
       />
+
+      <Sheet open={!!batchesProduct} onOpenChange={(o) => !o && setBatchesProduct(null)}>
+        <SheetContent className="sm:max-w-3xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Batches · {batchesProduct?.name}</SheetTitle>
+            <SheetDescription>Track manufacturing dates, expiry and lab test reports per batch.</SheetDescription>
+          </SheetHeader>
+          {batchesProduct && (
+            <div className="mt-6">
+              <ProductBatchesTab product={batchesProduct} />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
