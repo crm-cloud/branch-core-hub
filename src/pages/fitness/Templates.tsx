@@ -455,16 +455,7 @@ export default function FitnessTemplatesPage() {
               }
             : null
         }
-        onDownload={() =>
-          viewing &&
-          (viewing.source_kind === 'pdf' && viewing.pdf_url
-            ? window.open(viewing.pdf_url, '_blank', 'noopener')
-            : generatePlanPDF({
-                name: viewing.name,
-                type: viewing.type,
-                data: viewing.content,
-              }))
-        }
+        onDownload={() => viewing && handleDownloadTemplate(viewing)}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
