@@ -347,6 +347,8 @@ export async function generateFitnessPlan(
       type,
       memberInfo,
       durationWeeks: options?.durationWeeks || 4,
+      daysPerWeek: options?.daysPerWeek,
+      rotationIntervalDays: options?.rotationIntervalDays,
       caloriesTarget: options?.caloriesTarget,
       availableMeals: options?.availableMeals,
       availableEquipment: options?.availableEquipment,
