@@ -238,7 +238,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         fitnessGoals,
         medicalConditions,
         parq: parqMap,
-        parqQuestions: PARQ_QUESTIONS,
+        parqQuestions: [...PARQ_QUESTIONS],
         customTerms,
         terms: DEFAULT_TERMS,
         declaration: MEMBER_DECLARATION,
