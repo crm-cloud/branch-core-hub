@@ -382,7 +382,7 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
               </Select>
             </div>
 
-            {!isEditing && (
+            {!isEditing && !formData.requires_batch_tracking && (
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="initial_quantity">Initial Stock Quantity *</Label>
                 <Input
@@ -392,10 +392,67 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
                   value={formData.initial_quantity}
                   onChange={(e) => setFormData({ ...formData, initial_quantity: e.target.value })}
                   placeholder="50"
-                  required
+                  required={!formData.requires_batch_tracking}
                 />
                 <p className="text-xs text-muted-foreground">Set the starting inventory for this product</p>
               </div>
+            )}
+          </div>
+
+          {/* Batch & Compliance */}
+          <div className="space-y-3 rounded-xl border bg-slate-50/60 p-4">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Batch & Compliance</h4>
+              <p className="text-xs text-slate-500">
+                Turn on for proteins, supplements and any product that needs expiry & lab reports.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="requires_batch_tracking">Track batches & expiry</Label>
+                <p className="text-xs text-muted-foreground">Stock is added per batch (FEFO at POS).</p>
+              </div>
+              <Switch
+                id="requires_batch_tracking"
+                checked={formData.requires_batch_tracking}
+                onCheckedChange={(checked) =>
+                  setFormData({
+                    ...formData,
+                    requires_batch_tracking: checked,
+                    requires_lab_report: checked ? formData.requires_lab_report : false,
+                  })
+                }
+              />
+            </div>
+
+            {formData.requires_batch_tracking && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="requires_lab_report">Require Lab Test Report (CoA)</Label>
+                    <p className="text-xs text-muted-foreground">Block batch creation without a report.</p>
+                  </div>
+                  <Switch
+                    id="requires_lab_report"
+                    checked={formData.requires_lab_report}
+                    onCheckedChange={(checked) => setFormData({ ...formData, requires_lab_report: checked })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="default_shelf_life_days">Default shelf life (days)</Label>
+                  <Input
+                    id="default_shelf_life_days"
+                    type="number"
+                    min="1"
+                    value={formData.default_shelf_life_days}
+                    onChange={(e) => setFormData({ ...formData, default_shelf_life_days: e.target.value })}
+                    placeholder="730"
+                  />
+                  <p className="text-xs text-muted-foreground">Auto-fills expiry date when entering a batch.</p>
+                </div>
+              </>
             )}
           </div>
 
