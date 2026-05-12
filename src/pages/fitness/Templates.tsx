@@ -71,7 +71,7 @@ export default function FitnessTemplatesPage() {
   const canCreate = hasAnyRole(["owner", "admin", "manager"]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { brand } = useBrandContext();
+  const { data: brand } = useBrandContext();
 
   const handleDownloadTemplate = async (template: FitnessPlanTemplate) => {
     if (template.source_kind === 'pdf' && template.pdf_url) {
