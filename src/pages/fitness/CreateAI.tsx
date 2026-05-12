@@ -205,7 +205,7 @@ export default function CreateAIPage() {
           experience: audExperience[0] || 'beginner',
           preferences: [
             `Common (no-PT) plan targeting ${audAgeMin}-${audAgeMax}y, gender: ${audGender}, experience: ${audExperience.join('/')}`,
-            audDaysPerWeek && type === 'workout' && `${audDaysPerWeek} days/week`,
+            type === 'workout' && daysPerWeek && `${daysPerWeek} days/week`,
             audWeightMin && audWeightMax && `weight band ${audWeightMin}-${audWeightMax}kg`,
             type === 'diet' && audDietaryType && `diet: ${audDietaryType}`,
             type === 'diet' && audCuisine && `cuisine: ${audCuisine}`,
