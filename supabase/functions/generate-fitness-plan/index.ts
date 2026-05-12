@@ -108,7 +108,11 @@ serve(async (req) => {
       );
     }
 
-    const { type, memberInfo, durationWeeks = 4, caloriesTarget, availableMeals = [], availableEquipment = [], previousPlanContext } = await req.json() as GeneratePlanRequest;
+    const { type, memberInfo, durationWeeks = 4, daysPerWeek, rotationIntervalDays = 0, caloriesTarget, availableMeals = [], availableEquipment = [], previousPlanContext } = await req.json() as GeneratePlanRequest;
+    // Cap variants for cost — even at 30-day rotation across 24 weeks we limit to 4 distinct sessions per slot.
+    const variantCount = rotationIntervalDays && rotationIntervalDays > 0
+      ? Math.max(2, Math.min(4, Math.ceil((durationWeeks * 7) / rotationIntervalDays)))
+      : 0;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
