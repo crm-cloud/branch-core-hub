@@ -30,6 +30,9 @@ const EMPTY_FORM = {
   is_active: true,
   image_url: '',
   initial_quantity: '',
+  requires_batch_tracking: false,
+  requires_lab_report: false,
+  default_shelf_life_days: '',
 };
 
 export function AddProductDrawer({ open, onOpenChange, product }: AddProductDrawerProps) {
@@ -59,6 +62,9 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
         is_active: product.is_active ?? true,
         image_url: product.image_url || '',
         initial_quantity: '',
+        requires_batch_tracking: product.requires_batch_tracking ?? false,
+        requires_lab_report: product.requires_lab_report ?? false,
+        default_shelf_life_days: product.default_shelf_life_days ?? '',
       });
       setImagePreview(product.image_url || '');
     } else {
@@ -151,12 +157,18 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
         branch_id: formData.branch_id || null,
         is_active: formData.is_active,
         image_url: formData.image_url || null,
+        requires_batch_tracking: !!formData.requires_batch_tracking,
+        requires_lab_report: !!formData.requires_batch_tracking && !!formData.requires_lab_report,
+        default_shelf_life_days: formData.default_shelf_life_days
+          ? Number(formData.default_shelf_life_days)
+          : null,
       };
 
-      if (isEditing) return updateProduct(product.id, payload);
+      if (isEditing) return updateProduct(product.id, payload as any);
 
       const newProduct = await createProduct(payload as any);
-      if (formData.initial_quantity && Number(formData.initial_quantity) > 0) {
+      // Skip seeding inventory directly when batch tracking is on — stock comes from batches.
+      if (!formData.requires_batch_tracking && formData.initial_quantity && Number(formData.initial_quantity) > 0) {
         const quantity = Number(formData.initial_quantity);
         const branchId = formData.branch_id || branches[0]?.id;
         if (branchId) {
