@@ -252,10 +252,20 @@ export function buildInvoicePdf(data: InvoicePdfInput, brand?: BrandContext): Bl
   const head = showHsn
     ? [['Description', 'HSN', 'Qty', 'Rate', 'Amount']]
     : [['Description', 'Qty', 'Rate', 'Amount']];
-  const body = data.items.map(i => showHsn
-    ? [i.description, i.hsn_code || '-', String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)]
-    : [i.description, String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)],
-  );
+  const formatBatchSuffix = (batches?: Array<{ batch_number: string; exp_date?: string | null; quantity?: number }>): string => {
+    if (!batches || batches.length === 0) return '';
+    return '\n' + batches.map(b => {
+      const exp = b.exp_date ? ` · EXP ${new Date(b.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}` : '';
+      const q = (b.quantity && batches.length > 1) ? ` (×${b.quantity})` : '';
+      return `Batch: ${b.batch_number}${exp}${q}`;
+    }).join('\n');
+  };
+  const body = data.items.map(i => {
+    const desc = `${i.description}${formatBatchSuffix(i.batches)}`;
+    return showHsn
+      ? [desc, i.hsn_code || '-', String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)]
+      : [desc, String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)];
+  });
 
   autoTable(doc, {
     startY: y + 32,
