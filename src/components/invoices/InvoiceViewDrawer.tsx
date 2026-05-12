@@ -76,6 +76,18 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
 
   const buildPDFData = () => {
     const memberProfile = (invoice.members as any)?.profiles;
+    // Build a product_id → batches[] map from pos_sales.items (set by create_pos_sale RPC)
+    const posItems: any[] = Array.isArray((invoice as any).pos_sales?.items)
+      ? (invoice as any).pos_sales.items
+      : Array.isArray((invoice as any).pos_sales?.[0]?.items)
+        ? (invoice as any).pos_sales[0].items
+        : [];
+    const batchByProduct = new Map<string, any[]>();
+    posItems.forEach((it: any) => {
+      if (it?.product_id && Array.isArray(it.batches) && it.batches.length) {
+        batchByProduct.set(String(it.product_id), it.batches);
+      }
+    });
     return {
       invoice_number: invoice.invoice_number,
       created_at: invoice.created_at,
@@ -90,6 +102,7 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
       items: (invoice.invoice_items || []).map((i: any) => ({
         description: i.description, quantity: i.quantity || 1,
         unit_price: i.unit_price, total_amount: i.total_amount,
+        batches: i.reference_id ? batchByProduct.get(String(i.reference_id)) : undefined,
       })),
       member_name: memberProfile?.full_name || invoice.customer_name || 'Walk-in Customer',
       member_code: invoice.members?.member_code,
