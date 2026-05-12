@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getPlanTemplate, updatePlanTemplate } from '@/services/fitnessService';
 import type { DietPlanContent } from '@/types/fitnessPlan';
