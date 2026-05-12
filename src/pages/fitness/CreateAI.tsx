@@ -563,7 +563,7 @@ export default function CreateAIPage() {
                     <li>Weight band: <span className="text-foreground font-medium">{audWeightMin || '—'}–{audWeightMax || '—'} kg</span></li>
                   )}
                   {goal && <li>Goal: <span className="text-foreground font-medium">{goal}</span></li>}
-                  {type === 'workout' && <li>Days/week: <span className="text-foreground font-medium">{audDaysPerWeek || '—'}</span></li>}
+                  {type === 'workout' && <li>Days/week: <span className="text-foreground font-medium">{daysPerWeek || '—'}</span>{rotationIntervalDays > 0 && <> · Rotates every <span className="text-foreground font-medium">{rotationIntervalDays}d</span></>}</li>}
                 </ul>
                 <p className="text-[11px] text-muted-foreground pt-2 border-t">
                   After previewing, click <strong>Save as template</strong> to publish it as a Common Plan and auto-match
