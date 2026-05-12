@@ -269,7 +269,7 @@ export default function ManualDietEditor({ onMetaChange }: Props) {
     return null;
   };
 
-  const handleSaveTemplate = async () => {
+  const handleSaveTemplate = useCallback(async () => {
     const err = validateContent();
     if (err) { toast.error(err); return; }
     if (!templateId) return;
@@ -279,14 +279,16 @@ export default function ManualDietEditor({ onMetaChange }: Props) {
         description: description.trim() || null,
         content: buildContent(),
       });
+      queryClient.invalidateQueries({ queryKey: ['fitness-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['fitness-template-usage'] });
       toast.success('Template updated');
       navigate('/fitness/templates');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update template');
     }
-  };
+  }, [planName, description, templateId, navigate, queryClient, validateContent, buildContent]);
 
-  const handlePreview = () => {
+  const handlePreview = useCallback(() => {
     const err = validateContent();
     if (err) { toast.error(err); return; }
 
@@ -332,12 +334,18 @@ export default function ManualDietEditor({ onMetaChange }: Props) {
       createdAt: new Date().toISOString(),
     });
     navigate(`/fitness/preview/${id}`);
-  };
+  }, [planName, description, calTarget, dietaryType, cuisine, member, draftId, templateId, navigate, validateContent, buildContent]);
 
   const canSubmit = !!planName.trim() && !!dietaryType && !!cuisine
     && slots.reduce((s, m) => s + m.items.filter(i => i.food).length, 0) > 0;
-  const submit = editMode ? handleSaveTemplate : handlePreview;
-  const primaryLabel = editMode ? 'Save Template' : draftId ? 'Save & Back to Preview' : 'Continue to Preview';
+  const submit = useMemo(
+    () => (editMode ? handleSaveTemplate : handlePreview),
+    [editMode, handleSaveTemplate, handlePreview],
+  );
+  const primaryLabel = useMemo(
+    () => (editMode ? 'Save Template' : draftId ? 'Save & Back to Preview' : 'Continue to Preview'),
+    [editMode, draftId],
+  );
 
   useEffect(() => {
     onMetaChange?.({ canSubmit, submit, primaryLabel });
