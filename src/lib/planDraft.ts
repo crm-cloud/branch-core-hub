@@ -35,6 +35,10 @@ export interface PlanDraft {
   // Cuisine + dietary type for diet plans
   cuisine?: string;
   dietaryType?: string;
+  /** Workout sessions per week (1-7). Persisted on draft so preview/save can show it. */
+  daysPerWeek?: number;
+  /** If > 0, the plan rotates exercise variants every N days. */
+  rotationIntervalDays?: number;
   // The actual plan content payload (weeks/days/exercises or meals)
   content: any;
   /** Marks an audience-targeted Common (no-PT) plan — saved as is_common = true. */
