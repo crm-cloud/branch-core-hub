@@ -568,11 +568,15 @@ export async function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): P
         const dayLabel = day.day || day.label || `Day ${di + 1}`;
         const focusSuffix = day.focus ? ` — ${day.focus}` : '';
         const rows: any[] = (day.exercises || []).map((ex: any) => {
-          if (typeof ex === 'string') return [ex, '', '', '', '', ''];
+          if (typeof ex === 'string') return [{ content: '', _exercise: ex, _machine: '', styles: { minCellHeight: 9 } }, '', '', '', '', ''];
           const machine = ex.equipment ? String(ex.equipment) : '';
-          const exerciseCell = machine
-            ? { content: `${ex.name || ''}\n${machine}`, styles: { fontStyle: 'bold' as const } }
-            : { content: ex.name || '', styles: { fontStyle: 'bold' as const } };
+          const exerciseName = ex.name || ex.exercise || '';
+          const exerciseCell = {
+            content: '',
+            _exercise: exerciseName,
+            _machine: machine,
+            styles: { minCellHeight: machine ? 12 : 9 },
+          };
           const sets = ex.sets ? String(ex.sets) : '';
           const reps = ex.reps ? String(ex.reps) : '';
           const rest = ex.rest || (ex.rest_seconds ? `${ex.rest_seconds}s` : '');
