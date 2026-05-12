@@ -91,6 +91,42 @@ export default function POSPage() {
     },
   });
 
+  // Active, non-expired batches in the current branch — used for FEFO previews + stock for batch-tracked products.
+  const { data: batchRows = [] } = useQuery({
+    queryKey: ['pos-active-batches', effectiveBranchId],
+    enabled: !!effectiveBranchId,
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await (supabase as any)
+        .from('product_batches')
+        .select('id, product_id, batch_number, exp_date, quantity_remaining, status')
+        .eq('branch_id', effectiveBranchId)
+        .eq('status', 'active')
+        .gt('quantity_remaining', 0)
+        .or(`exp_date.is.null,exp_date.gte.${today}`)
+        .order('exp_date', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; product_id: string; batch_number: string; exp_date: string | null; quantity_remaining: number; status: string }>;
+    },
+  });
+
+  // Map: product_id -> { totalQty, nextBatch, expiringSoon }
+  const batchMap = (() => {
+    const m = new Map<string, { totalQty: number; nextBatch: { batch_number: string; exp_date: string | null }; expiringSoon: boolean }>();
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + 30);
+    for (const b of batchRows) {
+      const cur = m.get(b.product_id);
+      const exp = b.exp_date ? new Date(b.exp_date) : null;
+      const expiringSoon = !!exp && exp <= cutoff;
+      if (!cur) {
+        m.set(b.product_id, { totalQty: b.quantity_remaining, nextBatch: { batch_number: b.batch_number, exp_date: b.exp_date }, expiringSoon });
+      } else {
+        cur.totalQty += b.quantity_remaining;
+      }
+    }
+    return m;
+  })();
+
   const { data: categories = [] } = useQuery({
     queryKey: ['product-categories'],
     queryFn: async () => {
@@ -281,6 +317,10 @@ export default function POSPage() {
   });
 
   const getStock = (product: any): number | null => {
+    if (product.requires_batch_tracking) {
+      // Stock comes from active, non-expired batches only
+      return batchMap.get(product.id)?.totalQty ?? 0;
+    }
     const inv = product.inventory?.[0];
     if (!inv) return null; // No inventory tracked
     return inv.quantity ?? 0;
@@ -293,6 +333,10 @@ export default function POSPage() {
   const addToCart = (product: any) => {
     const stock = getStock(product);
     const existingQty = cart.find((item) => item.product.id === product.id)?.quantity || 0;
+    if (product.requires_batch_tracking && (stock === null || stock <= 0)) {
+      toast.error(`${product.name}: no active batch available. Add stock via a batch first.`);
+      return;
+    }
     if (stock !== null && existingQty + 1 > stock) {
       toast.error(`Only ${stock} in stock for ${product.name}`);
       return;
@@ -522,6 +566,20 @@ export default function POSPage() {
                           )}
                         </div>
                         <h3 className="font-medium text-sm truncate">{product.name}</h3>
+                        {product.requires_batch_tracking && (() => {
+                          const info = batchMap.get(product.id);
+                          if (!info) return (
+                            <p className="text-[10px] text-destructive mt-0.5">No active batch</p>
+                          );
+                          const expLabel = info.nextBatch.exp_date
+                            ? new Date(info.nextBatch.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+                            : '—';
+                          return (
+                            <p className={`text-[10px] mt-0.5 truncate ${info.expiringSoon ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                              Batch {info.nextBatch.batch_number} · EXP {expLabel}{info.expiringSoon ? ' ⚠' : ''}
+                            </p>
+                          );
+                        })()}
                         <div className="flex items-center justify-between">
                           <p className="text-lg font-bold text-primary">₹{product.price}</p>
                           {stock !== null && !isOutOfStock && (
@@ -670,6 +728,18 @@ export default function POSPage() {
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{item.product.name}</p>
                             <p className="text-sm text-muted-foreground">₹{item.product.price}</p>
+                            {item.product.requires_batch_tracking && (() => {
+                              const info = batchMap.get(item.product.id);
+                              if (!info) return <p className="text-[10px] text-destructive">No active batch</p>;
+                              const expLabel = info.nextBatch.exp_date
+                                ? new Date(info.nextBatch.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+                                : '—';
+                              return (
+                                <p className={`text-[10px] ${info.expiringSoon ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                                  FEFO: {info.nextBatch.batch_number} · EXP {expLabel}
+                                </p>
+                              );
+                            })()}
                           </div>
                           <div className="flex items-center gap-1">
                             <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => updateQuantity(item.product.id, -1)}>
