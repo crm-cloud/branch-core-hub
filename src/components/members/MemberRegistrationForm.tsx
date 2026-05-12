@@ -80,6 +80,7 @@ const MEMBER_DECLARATION = 'I have read, understood, and agree to abide by all t
 
 export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: MemberRegistrationFormProps) {
   const queryClient = useQueryClient();
+  const { data: brand } = useBrandContext(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
@@ -237,10 +238,12 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         fitnessGoals,
         medicalConditions,
         parq: parqMap,
+        parqQuestions: PARQ_QUESTIONS,
         customTerms,
         terms: DEFAULT_TERMS,
+        declaration: MEMBER_DECLARATION,
         signatureDataUrl,
-      });
+      }, brand);
 
       const fileName = `${data.memberId}/registration-form-${Date.now()}.pdf`;
       const { error: uploadError } = await supabase.storage
