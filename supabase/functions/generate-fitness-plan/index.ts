@@ -1,3 +1,4 @@
+// generate-fitness-plan v1.3.0 — adds daysPerWeek + rotationIntervalDays
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 const serve = Deno.serve;
