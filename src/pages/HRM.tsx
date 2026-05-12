@@ -38,8 +38,7 @@ import { fetchEmployees, fetchEmployeeContracts, calculatePayroll, fetchAllPayro
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { generateContractPDF } from '@/utils/pdfGenerator';
-import { buildPayslipPdf, downloadBlob } from '@/utils/pdfBlob';
+import { buildPayslipPdf, buildContractPdf, downloadBlob } from '@/utils/pdfBlob';
 import { useBrandContext } from '@/lib/brand/useBrandContext';
 
 const MONTH_VALUE_RE = /^\d{4}-\d{2}$/;
