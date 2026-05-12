@@ -185,7 +185,14 @@ export interface InvoicePdfInput {
   notes?: string | null;
   is_gst_invoice?: boolean | null;
   customer_gstin?: string | null;
-  items: Array<{ description: string; quantity: number; unit_price: number; total_amount: number; hsn_code?: string }>;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    total_amount: number;
+    hsn_code?: string;
+    batches?: Array<{ batch_number: string; exp_date?: string | null; quantity?: number }>;
+  }>;
   member_name: string;
   member_code?: string | null;
   member_email?: string | null;
