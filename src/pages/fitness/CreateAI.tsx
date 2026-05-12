@@ -275,7 +275,7 @@ export default function CreateAIPage() {
           target_weight_max_kg: audWeightMax ? parseFloat(audWeightMax) : null,
           target_goal: goal || null,
           duration_weeks: durationWeeks,
-          days_per_week: audDaysPerWeek ? parseInt(audDaysPerWeek) : null,
+          days_per_week: daysPerWeek || null,
         } : undefined,
         content: plan,
         createdAt: new Date().toISOString(),
