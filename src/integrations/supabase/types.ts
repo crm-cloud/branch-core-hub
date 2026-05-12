@@ -8415,6 +8415,93 @@ export type Database = {
           },
         ]
       }
+      product_batches: {
+        Row: {
+          batch_number: string
+          branch_id: string
+          cost_price: number | null
+          created_at: string
+          created_by: string | null
+          exp_date: string | null
+          id: string
+          invoice_ref: string | null
+          lab_report_filename: string | null
+          lab_report_uploaded_at: string | null
+          lab_report_url: string | null
+          lab_verified: boolean
+          lab_verified_by: string | null
+          mfg_date: string | null
+          notes: string | null
+          product_id: string
+          quantity_received: number
+          quantity_remaining: number
+          status: string
+          supplier: string | null
+          updated_at: string
+        }
+        Insert: {
+          batch_number: string
+          branch_id: string
+          cost_price?: number | null
+          created_at?: string
+          created_by?: string | null
+          exp_date?: string | null
+          id?: string
+          invoice_ref?: string | null
+          lab_report_filename?: string | null
+          lab_report_uploaded_at?: string | null
+          lab_report_url?: string | null
+          lab_verified?: boolean
+          lab_verified_by?: string | null
+          mfg_date?: string | null
+          notes?: string | null
+          product_id: string
+          quantity_received: number
+          quantity_remaining: number
+          status?: string
+          supplier?: string | null
+          updated_at?: string
+        }
+        Update: {
+          batch_number?: string
+          branch_id?: string
+          cost_price?: number | null
+          created_at?: string
+          created_by?: string | null
+          exp_date?: string | null
+          id?: string
+          invoice_ref?: string | null
+          lab_report_filename?: string | null
+          lab_report_uploaded_at?: string | null
+          lab_report_url?: string | null
+          lab_verified?: boolean
+          lab_verified_by?: string | null
+          mfg_date?: string | null
+          notes?: string | null
+          product_id?: string
+          quantity_received?: number
+          quantity_remaining?: number
+          status?: string
+          supplier?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_batches_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_batches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_categories: {
         Row: {
           created_at: string | null
@@ -8466,12 +8553,15 @@ export type Database = {
           category_id: string | null
           cost_price: number | null
           created_at: string
+          default_shelf_life_days: number | null
           description: string | null
           id: string
           image_url: string | null
           is_active: boolean | null
           name: string
           price: number
+          requires_batch_tracking: boolean
+          requires_lab_report: boolean
           sku: string | null
           tax_rate: number | null
           updated_at: string
@@ -8482,12 +8572,15 @@ export type Database = {
           category_id?: string | null
           cost_price?: number | null
           created_at?: string
+          default_shelf_life_days?: number | null
           description?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean | null
           name: string
           price: number
+          requires_batch_tracking?: boolean
+          requires_lab_report?: boolean
           sku?: string | null
           tax_rate?: number | null
           updated_at?: string
@@ -8498,12 +8591,15 @@ export type Database = {
           category_id?: string | null
           cost_price?: number | null
           created_at?: string
+          default_shelf_life_days?: number | null
           description?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean | null
           name?: string
           price?: number
+          requires_batch_tracking?: boolean
+          requires_lab_report?: boolean
           sku?: string | null
           tax_rate?: number | null
           updated_at?: string
@@ -9776,6 +9872,7 @@ export type Database = {
       }
       stock_movements: {
         Row: {
+          batch_id: string | null
           branch_id: string
           created_at: string | null
           created_by: string | null
@@ -9788,6 +9885,7 @@ export type Database = {
           reference_type: string | null
         }
         Insert: {
+          batch_id?: string | null
           branch_id: string
           created_at?: string | null
           created_by?: string | null
@@ -9800,6 +9898,7 @@ export type Database = {
           reference_type?: string | null
         }
         Update: {
+          batch_id?: string | null
           branch_id?: string
           created_at?: string | null
           created_by?: string | null
@@ -9812,6 +9911,13 @@ export type Database = {
           reference_type?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_movements_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stock_movements_branch_id_fkey"
             columns: ["branch_id"]
