@@ -185,7 +185,14 @@ export interface InvoicePdfInput {
   notes?: string | null;
   is_gst_invoice?: boolean | null;
   customer_gstin?: string | null;
-  items: Array<{ description: string; quantity: number; unit_price: number; total_amount: number; hsn_code?: string }>;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    total_amount: number;
+    hsn_code?: string;
+    batches?: Array<{ batch_number: string; exp_date?: string | null; quantity?: number }>;
+  }>;
   member_name: string;
   member_code?: string | null;
   member_email?: string | null;
@@ -245,10 +252,20 @@ export function buildInvoicePdf(data: InvoicePdfInput, brand?: BrandContext): Bl
   const head = showHsn
     ? [['Description', 'HSN', 'Qty', 'Rate', 'Amount']]
     : [['Description', 'Qty', 'Rate', 'Amount']];
-  const body = data.items.map(i => showHsn
-    ? [i.description, i.hsn_code || '-', String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)]
-    : [i.description, String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)],
-  );
+  const formatBatchSuffix = (batches?: Array<{ batch_number: string; exp_date?: string | null; quantity?: number }>): string => {
+    if (!batches || batches.length === 0) return '';
+    return '\n' + batches.map(b => {
+      const exp = b.exp_date ? ` · EXP ${new Date(b.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}` : '';
+      const q = (b.quantity && batches.length > 1) ? ` (×${b.quantity})` : '';
+      return `Batch: ${b.batch_number}${exp}${q}`;
+    }).join('\n');
+  };
+  const body = data.items.map(i => {
+    const desc = `${i.description}${formatBatchSuffix(i.batches)}`;
+    return showHsn
+      ? [desc, i.hsn_code || '-', String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)]
+      : [desc, String(i.quantity || 1), inr(i.unit_price), inr(i.total_amount)];
+  });
 
   autoTable(doc, {
     startY: y + 32,
@@ -1144,6 +1161,17 @@ export function buildThermalReceiptPdf(data: InvoicePdfInput, brand?: BrandConte
     doc.text(String(it.quantity || 1), W - margin - 14, y, { align: 'right' });
     doc.text(`Rs.${(it.total_amount || 0).toLocaleString('en-IN')}`, W - margin, y, { align: 'right' });
     y += nameLines.length * 3 + 0.5;
+    if (it.batches && it.batches.length) {
+      doc.setFontSize(7);
+      setColor(doc, BRAND.muted);
+      it.batches.forEach((b) => {
+        const exp = b.exp_date ? ` EXP ${new Date(b.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}` : '';
+        doc.text(`  Batch ${b.batch_number}${exp}`, margin, y);
+        y += 2.8;
+      });
+      doc.setFontSize(8);
+      setColor(doc, BRAND.text);
+    }
   });
   dash();
 
