@@ -127,6 +127,7 @@ serve(async (req) => {
            "description": "Brief description",
            "goal": "Primary goal",
            "difficulty": "beginner|intermediate|advanced",
+           "daysPerWeek": <integer matching the requested sessions per week>,
            "weeks": [
              {
                "week": 1,
@@ -143,8 +144,21 @@ serve(async (req) => {
                ]
              }
            ],
+           "rotation": {
+             "intervalDays": <integer — copy from request, or 0 if not requested>,
+             "variants": [
+               {
+                 "variantIndex": 0,
+                 "label": "Block A",
+                 "days": [
+                   { "day": "Monday", "focus": "...", "exercises": [ { "name": "...", "equipment": "...", "sets": 4, "reps": "8-10", "rest": "90s", "notes": "..." } ] }
+                 ]
+               }
+             ]
+           },
            "notes": "General advice and precautions"
-         }`
+         }
+         IMPORTANT: Only include the "rotation" key if the user explicitly requested rotation. Otherwise omit it entirely.`
       : `You are an expert nutritionist creating personalized diet plans. Generate detailed, balanced, and practical meal plans.
          For EACH meal, return: meal name, a TIME RANGE (e.g. "8:00–9:00 AM" — eating times vary per person), calories, and macros (protein/carbs/fat in grams). When possible also include micros: fiber, sodium (mg), sugar (g).
          Return a JSON object with the following structure:
