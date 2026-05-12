@@ -568,11 +568,15 @@ export async function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): P
         const dayLabel = day.day || day.label || `Day ${di + 1}`;
         const focusSuffix = day.focus ? ` — ${day.focus}` : '';
         const rows: any[] = (day.exercises || []).map((ex: any) => {
-          if (typeof ex === 'string') return [ex, '', '', '', '', ''];
+          if (typeof ex === 'string') return [{ content: '', _exercise: ex, _machine: '', styles: { minCellHeight: 9 } }, '', '', '', '', ''];
           const machine = ex.equipment ? String(ex.equipment) : '';
-          const exerciseCell = machine
-            ? { content: `${ex.name || ''}\n${machine}`, styles: { fontStyle: 'bold' as const } }
-            : { content: ex.name || '', styles: { fontStyle: 'bold' as const } };
+          const exerciseName = ex.name || ex.exercise || '';
+          const exerciseCell = {
+            content: '',
+            _exercise: exerciseName,
+            _machine: machine,
+            styles: { minCellHeight: machine ? 12 : 9 },
+          };
           const sets = ex.sets ? String(ex.sets) : '';
           const reps = ex.reps ? String(ex.reps) : '';
           const rest = ex.rest || (ex.rest_seconds ? `${ex.rest_seconds}s` : '');
@@ -597,10 +601,26 @@ export async function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): P
             5: { cellWidth: 'auto', textColor: BRAND.muted, fontSize: 8 },
           },
           margin: { left: 14, right: 14 },
-          didParseCell: (data) => {
-            // Render machine name on second line in muted style
-            if (data.section === 'body' && data.column.index === 0 && typeof data.cell.raw === 'object' && (data.cell.raw as any).content?.includes('\n')) {
-              data.cell.styles.fontSize = 9;
+          didDrawCell: (data) => {
+            // Custom-render exercise column: bold exercise name + muted machine sublabel
+            if (data.section === 'body' && data.column.index === 0) {
+              const raw = data.cell.raw as any;
+              if (raw && typeof raw === 'object' && '_exercise' in raw) {
+                const x = data.cell.x + 2;
+                const w = data.cell.width - 4;
+                let yy = data.cell.y + 4.5;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                setColor(doc, BRAND.text);
+                doc.text(String(raw._exercise || '—'), x, yy, { maxWidth: w });
+                if (raw._machine) {
+                  yy += 4;
+                  doc.setFont('helvetica', 'normal');
+                  doc.setFontSize(7.5);
+                  setColor(doc, BRAND.muted);
+                  doc.text(String(raw._machine), x, yy, { maxWidth: w });
+                }
+              }
             }
           },
         });
