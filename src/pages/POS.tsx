@@ -566,6 +566,20 @@ export default function POSPage() {
                           )}
                         </div>
                         <h3 className="font-medium text-sm truncate">{product.name}</h3>
+                        {product.requires_batch_tracking && (() => {
+                          const info = batchMap.get(product.id);
+                          if (!info) return (
+                            <p className="text-[10px] text-destructive mt-0.5">No active batch</p>
+                          );
+                          const expLabel = info.nextBatch.exp_date
+                            ? new Date(info.nextBatch.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+                            : '—';
+                          return (
+                            <p className={`text-[10px] mt-0.5 truncate ${info.expiringSoon ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                              Batch {info.nextBatch.batch_number} · EXP {expLabel}{info.expiringSoon ? ' ⚠' : ''}
+                            </p>
+                          );
+                        })()}
                         <div className="flex items-center justify-between">
                           <p className="text-lg font-bold text-primary">₹{product.price}</p>
                           {stock !== null && !isOutOfStock && (
