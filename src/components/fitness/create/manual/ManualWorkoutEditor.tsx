@@ -314,7 +314,7 @@ export default function ManualWorkoutEditor({ onMetaChange }: ManualWorkoutEdito
     }],
   });
 
-  const handleSaveTemplate = async () => {
+  const handleSaveTemplate = useCallback(async () => {
     if (!planName.trim()) { toast.error('Plan name is required'); return; }
     if (totalExercises === 0) { toast.error('Add at least one exercise'); return; }
     if (!templateId) return;
@@ -326,14 +326,16 @@ export default function ManualWorkoutEditor({ onMetaChange }: ManualWorkoutEdito
         goal: goal || null,
         content: buildContent(),
       });
+      queryClient.invalidateQueries({ queryKey: ['fitness-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['fitness-template-usage'] });
       toast.success('Template updated');
       navigate('/fitness/templates');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update template');
     }
-  };
+  }, [planName, description, difficulty, goal, totalExercises, templateId, navigate, queryClient, days]);
 
-  const handlePreview = () => {
+  const handlePreview = useCallback(() => {
     if (!planName.trim()) { toast.error('Plan name is required'); return; }
     if (totalExercises === 0) { toast.error('Add at least one exercise'); return; }
 
@@ -377,11 +379,17 @@ export default function ManualWorkoutEditor({ onMetaChange }: ManualWorkoutEdito
       createdAt: new Date().toISOString(),
     });
     navigate(`/fitness/preview/${id}`);
-  };
+  }, [planName, description, difficulty, goal, totalExercises, draftId, templateId, member, navigate, days]);
 
   const canSubmit = !!planName.trim() && totalExercises > 0;
-  const submit = editMode ? handleSaveTemplate : handlePreview;
-  const primaryLabel = editMode ? 'Save Template' : draftId ? 'Save & Back to Preview' : 'Continue to Preview';
+  const submit = useMemo(
+    () => (editMode ? handleSaveTemplate : handlePreview),
+    [editMode, handleSaveTemplate, handlePreview],
+  );
+  const primaryLabel = useMemo(
+    () => (editMode ? 'Save Template' : draftId ? 'Save & Back to Preview' : 'Continue to Preview'),
+    [editMode, draftId],
+  );
 
   useEffect(() => {
     onMetaChange?.({ canSubmit, submit, primaryLabel });
