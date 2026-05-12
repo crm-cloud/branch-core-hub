@@ -44,6 +44,11 @@ interface GeneratePlanRequest {
     preferences?: string;
   };
   durationWeeks?: number;
+  /** Workout sessions per week (1-7). */
+  daysPerWeek?: number;
+  /** If > 0, the workout plan must include a `rotation` array of variant
+   * blocks that the dashboard cycles through every N days. 0 = no rotation. */
+  rotationIntervalDays?: number;
   caloriesTarget?: number;
   /** Optional list of meals from the gym's meal_catalog the AI should
    * prefer when composing diet plans. Items the AI proposes outside of
