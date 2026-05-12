@@ -376,7 +376,19 @@ export default function ProductsPage() {
                                       )}
                                     </div>
                                     <div>
-                                      <p className="font-medium">{product.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium">{product.name}</p>
+                                        {product.requires_batch_tracking && (
+                                          <Badge className="bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-medium px-2 py-0">
+                                            <Layers className="h-3 w-3 mr-1" /> Batch
+                                          </Badge>
+                                        )}
+                                        {product.requires_lab_report && (
+                                          <Badge className="bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-medium px-2 py-0">
+                                            <ShieldCheck className="h-3 w-3 mr-1" /> CoA
+                                          </Badge>
+                                        )}
+                                      </div>
                                       {product.description && (
                                         <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">{product.description}</p>
                                       )}
@@ -422,6 +434,12 @@ export default function ProductsPage() {
                                         <Pencil className="h-4 w-4 mr-2" />
                                         Edit
                                       </DropdownMenuItem>
+                                      {product.requires_batch_tracking && (
+                                        <DropdownMenuItem onClick={() => setBatchesProduct(product)}>
+                                          <Layers className="h-4 w-4 mr-2" />
+                                          Manage Batches
+                                        </DropdownMenuItem>
+                                      )}
                                       <DropdownMenuItem
                                         className="text-destructive focus:text-destructive"
                                         onClick={() => deleteMutation.mutate(product.id)}
