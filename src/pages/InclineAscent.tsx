@@ -17,8 +17,33 @@ const LegalModal = lazy(() => import('@/components/ui/LegalModal'));
 const InclineAscent = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [mountScene, setMountScene] = useState(false);
+  const [mountModals, setMountModals] = useState(false);
   const interactionRootRef = useRef<HTMLDivElement | null>(null);
   const { handleScrollProgress } = useSoundEffects({ enabled: true });
+
+  // Defer mounting RegisterModal/LegalModal until first user interaction or
+  // browser idle. They're only opened via clicks, so there's no need to ship
+  // their JS/CSS in the first paint of the landing page.
+  useEffect(() => {
+    if (mountModals) return;
+    const onEngage = () => setMountModals(true);
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'touchstart', 'keydown', 'scroll'];
+    events.forEach(e => window.addEventListener(e, onEngage, { once: true, passive: true }));
+    const idle = (window as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout?: number }) => number)
+      | undefined;
+    const idleId = idle
+      ? idle(() => setMountModals(true), { timeout: 4000 })
+      : window.setTimeout(() => setMountModals(true), 3000);
+    return () => {
+      events.forEach(e => window.removeEventListener(e, onEngage));
+      if (idle && typeof (window as any).cancelIdleCallback === 'function') {
+        (window as any).cancelIdleCallback(idleId);
+      } else {
+        clearTimeout(idleId as unknown as number);
+      }
+    };
+  }, [mountModals]);
 
   // Defer mounting the 3D scene until (a) the browser is idle and (b) the
   // hero section is on-screen. On low-end mobiles we further defer until the
@@ -214,8 +239,12 @@ const InclineAscent = () => {
         </section>
       </div>
 
-      <RegisterModal />
-      <LegalModal />
+      {mountModals && (
+        <Suspense fallback={null}>
+          <RegisterModal />
+          <LegalModal />
+        </Suspense>
+      )}
     </div>
   );
 };
