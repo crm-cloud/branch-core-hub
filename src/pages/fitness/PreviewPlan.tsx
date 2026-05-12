@@ -132,6 +132,15 @@ export default function PreviewPlanPage() {
                 {draft.source === 'ai' && <Badge variant="outline" className="gap-1"><Sparkles className="h-3 w-3" />AI</Badge>}
                 {draft.difficulty && <Badge variant="secondary">{draft.difficulty}</Badge>}
                 {draft.goal && <Badge variant="secondary">{draft.goal}</Badge>}
+                {draft.daysPerWeek && (
+                  <Badge variant="secondary">{draft.daysPerWeek}× / week</Badge>
+                )}
+                {draft.rotationIntervalDays && draft.rotationIntervalDays > 0 && (
+                  <Badge variant="outline" className="border-primary/40 text-primary">
+                    Rotates every {draft.rotationIntervalDays}d
+                    {Array.isArray(draft.content?.rotation?.variants) && ` · ${draft.content.rotation.variants.length} variants`}
+                  </Badge>
+                )}
               </div>
               {draft.description && <p className="text-muted-foreground">{draft.description}</p>}
               <div className="space-y-1.5 pt-2 border-t">
