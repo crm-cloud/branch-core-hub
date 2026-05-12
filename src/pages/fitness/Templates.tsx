@@ -71,6 +71,29 @@ export default function FitnessTemplatesPage() {
   const canCreate = hasAnyRole(["owner", "admin", "manager"]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { brand } = useBrandContext();
+
+  const handleDownloadTemplate = async (template: FitnessPlanTemplate) => {
+    if (template.source_kind === 'pdf' && template.pdf_url) {
+      window.open(template.pdf_url, '_blank', 'noopener');
+      return;
+    }
+    try {
+      await downloadPlanPdf(
+        {
+          name: template.name,
+          type: template.type,
+          description: template.description ?? undefined,
+          difficulty: template.difficulty ?? undefined,
+          goal: template.goal ?? undefined,
+          data: template.content,
+        } as any,
+        brand,
+      );
+    } catch (err: any) {
+      sonnerToast.error(err?.message || 'Failed to generate PDF');
+    }
+  };
 
   const [planType, setPlanType] = useState<"workout" | "diet">("workout");
   const [commonFilter, setCommonFilter] = useState<CommonFilter>("all");
