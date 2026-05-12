@@ -133,6 +133,38 @@ export function InvoiceDetailDrawer({ invoice, open, onOpenChange, onPayNow }: I
             )}
           </div>
 
+          {batchLines.length > 0 && (
+            <>
+              <Separator />
+              <div>
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FlaskConical className="h-4 w-4 text-emerald-600" />
+                  Batch & Lab Reports
+                </h4>
+                <div className="space-y-2">
+                  {batchLines.map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/40">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{b.products?.name || 'Product'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Batch {b.batch_number}{b.exp_date ? ` · EXP ${format(new Date(b.exp_date), 'MMM yyyy')}` : ''}
+                        </p>
+                      </div>
+                      {b.lab_report_url ? (
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadLab(b.lab_report_url, b.lab_report_filename)}>
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          Lab report
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">On request</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
           <Separator />
 
           {/* Totals */}
