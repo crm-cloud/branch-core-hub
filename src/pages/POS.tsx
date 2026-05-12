@@ -728,6 +728,18 @@ export default function POSPage() {
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{item.product.name}</p>
                             <p className="text-sm text-muted-foreground">₹{item.product.price}</p>
+                            {item.product.requires_batch_tracking && (() => {
+                              const info = batchMap.get(item.product.id);
+                              if (!info) return <p className="text-[10px] text-destructive">No active batch</p>;
+                              const expLabel = info.nextBatch.exp_date
+                                ? new Date(info.nextBatch.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+                                : '—';
+                              return (
+                                <p className={`text-[10px] ${info.expiringSoon ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                                  FEFO: {info.nextBatch.batch_number} · EXP {expLabel}
+                                </p>
+                              );
+                            })()}
                           </div>
                           <div className="flex items-center gap-1">
                             <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => updateQuantity(item.product.id, -1)}>
