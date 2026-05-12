@@ -91,6 +91,42 @@ export default function POSPage() {
     },
   });
 
+  // Active, non-expired batches in the current branch — used for FEFO previews + stock for batch-tracked products.
+  const { data: batchRows = [] } = useQuery({
+    queryKey: ['pos-active-batches', effectiveBranchId],
+    enabled: !!effectiveBranchId,
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await (supabase as any)
+        .from('product_batches')
+        .select('id, product_id, batch_number, exp_date, quantity_remaining, status')
+        .eq('branch_id', effectiveBranchId)
+        .eq('status', 'active')
+        .gt('quantity_remaining', 0)
+        .or(`exp_date.is.null,exp_date.gte.${today}`)
+        .order('exp_date', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; product_id: string; batch_number: string; exp_date: string | null; quantity_remaining: number; status: string }>;
+    },
+  });
+
+  // Map: product_id -> { totalQty, nextBatch, expiringSoon }
+  const batchMap = (() => {
+    const m = new Map<string, { totalQty: number; nextBatch: { batch_number: string; exp_date: string | null }; expiringSoon: boolean }>();
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + 30);
+    for (const b of batchRows) {
+      const cur = m.get(b.product_id);
+      const exp = b.exp_date ? new Date(b.exp_date) : null;
+      const expiringSoon = !!exp && exp <= cutoff;
+      if (!cur) {
+        m.set(b.product_id, { totalQty: b.quantity_remaining, nextBatch: { batch_number: b.batch_number, exp_date: b.exp_date }, expiringSoon });
+      } else {
+        cur.totalQty += b.quantity_remaining;
+      }
+    }
+    return m;
+  })();
+
   const { data: categories = [] } = useQuery({
     queryKey: ['product-categories'],
     queryFn: async () => {
