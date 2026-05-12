@@ -60,6 +60,7 @@ interface Props {
 export default function ManualDietEditor({ onMetaChange }: Props) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const templateId = searchParams.get('template');
   const editMode = searchParams.get('edit') === '1' && !!templateId;
   const draftId = searchParams.get('draft');
