@@ -1,80 +1,86 @@
-## Goal
+# Public Site Performance Plan (no visual changes)
 
-On `/fitness/create/ai`, fix the duplicated/scattered "Days/week" + "Duration (weeks)" fields, make Days/week always available (not only audience mode), pass `daysPerWeek` to the AI generator, and add a new **Rotation interval (days)** control so the generated plan can auto-shuffle exercises/meals every N days (e.g. 10–15) for variety.
+## What Lighthouse is actually saying
 
-## Problem today
+- **TTFB: 0 ms** — server is fine.
+- **Element render delay: 8,680 ms** — the LCP element (the H1 "WHERE GLOBAL STRENGTH MEETS CLINICAL SERENITY") is rendered by React, so it cannot paint until the entry JS chunk downloads, parses and runs. That is 100% of the LCP budget.
+- **Critical chain (10 s)**: HTML → `index-*.css` → Google Fonts CSS → `gstatic` woff2 → `index-*.js`. Two of those hops are Google Fonts, which we don't actually need on the critical path.
+- **Cache lifetime warnings**: `flock.js` (Lovable preview banner — irrelevant in prod) and `/incline-logo.png` (no `Cache-Control`).
 
-- `Days/week` only appears inside the **audience targeting** card (workout only).
-- `Duration (weeks)` appears in the main "Plan Setup" area.
-- For member-mode workouts, there's **no** Days/week input — AI guesses session count.
-- `daysPerWeek` is stuffed into a free-text `preferences` string, never sent as a structured option to the edge function.
-- No way to tell the AI "rotate the same routine every 12 days so members don't repeat the exact same session".
+The single biggest win is killing the render-delay by giving the browser the LCP element in the initial HTML, before React boots.
 
-## Plan
+## Changes
 
-### 1. Consolidate Days/week + Duration into one "Schedule & Rotation" row (CreateAI.tsx)
+### 1. Inline a static hero shell into `index.html`
 
-Replace the current scattered layout with a single 3-column row, always visible (both member + audience modes, workout only — diet keeps Calorie Target):
+Add the exact same logo + H1 + paragraph markup that `InclineAscent.tsx` already renders for the static SEO hero, into `<body>` before `<div id="root">`. Use the same Tailwind classes (compiled CSS still applies) so it is visually identical.
 
+- LCP element exists at first HTML byte → render delay collapses from ~8.7 s to ~0 ms.
+- React mounts into `#root` and renders its own copy on top (the existing fixed `-z-10` SEO hero already overlays cleanly, and the Scene3D canvas covers it once mounted), so users see no flicker.
+- Add `aria-hidden="true"` to the inline shell so it is invisible to AT once React paints.
+
+### 2. Preload the LCP image
+
+Add to `<head>`:
 ```
-[ Days / week ]   [ Duration (weeks) ]   [ Rotate plan every (days) ]
-   1–7              1–24                    off / 7 / 10 / 14 / 21
+<link rel="preload" as="image" href="/incline-logo.png" fetchpriority="high" />
 ```
+Logo paints with the inline shell instead of waiting for React's render pass.
 
-- Move `Days/week` out of the audience card. In audience mode keep the same state var (`audDaysPerWeek`) but in member mode introduce `daysPerWeek` (default 4) so member workouts also send it.
-- Add new state `rotationIntervalDays` (default `0` = off). Dropdown options: Off, 7, 10, 14, 21, 30 + custom number.
-- For diet plans, hide Days/week + Rotation, keep Duration + Calorie Target as today.
+### 3. Drop Google Fonts from the critical path
 
-### 2. Wire new fields through to the AI generator
+Today the chain is `index.html → fonts.googleapis.com/css2 → fonts.gstatic.com/...woff2`. Two extra cross-origin hops on the critical path.
 
-Update `handleGenerate` payload (`generate.mutateAsync`):
+- Self-host Oswald 400/500/600/700 woff2 under `public/fonts/oswald/`.
+- Replace the Google Fonts `<link rel="preload" as="style">` with a single inline `@font-face` block in `<style>` inside `<head>` pointing at the local files, `font-display: swap`.
+- Add `<link rel="preload" as="font" type="font/woff2" href="/fonts/oswald/oswald-600.woff2" crossorigin>` for the weight used in the H1.
+- Remove the `preconnect`/`dns-prefetch` to `fonts.googleapis.com` and `fonts.gstatic.com` — no longer needed.
 
-```ts
-options: {
-  durationWeeks,
-  daysPerWeek,            // NEW — structured field
-  rotationIntervalDays,   // NEW — 0 = no rotation
-  caloriesTarget,
-  availableMeals,
-  availableEquipment,
-  previousPlanContext,
-}
-```
+Net effect: removes the ~7.3 s + ~2.7 s chained Google requests from the critical path on first paint.
 
-Stop relying on the free-text `preferences: "${audDaysPerWeek} days/week"` hack.
+### 4. Lazy-mount public-only modals
 
-### 3. Edge function — `supabase/functions/generate-fitness-plan/index.ts`
+`RegisterModal` and `LegalModal` are currently imported eagerly by `InclineAscent.tsx`, so they sit in the entry chunk for the landing page even though they are only used after a click.
 
-- Extend `GeneratePlanRequest` with `daysPerWeek?: number` and `rotationIntervalDays?: number`.
-- Update the workout system/user prompt:
-  - Hard-instruct: "Generate exactly **{daysPerWeek}** training days per week × **{durationWeeks}** weeks. Label rest days explicitly."
-  - If `rotationIntervalDays > 0`:
-    - Generate **N variant blocks** where `N = ceil(durationWeeks * 7 / rotationIntervalDays)` (cap at 4 to keep token cost sane).
-    - Each variant must hit the same muscle groups / movement patterns but **swap exercises** (e.g. Barbell Bench → Dumbbell Press, Back Squat → Goblet Squat) so members don't repeat identical sessions.
-    - Return them in a new `rotation` array on the plan: `rotation: [{ variantIndex, exercises: [...] }, ...]` plus a `rotationIntervalDays` field so the dashboard can pick the active variant by `floor(daysSinceStart / rotationIntervalDays) % rotation.length`.
-- For diet plans, ignore rotation entirely.
+- Convert both to `const RegisterModal = lazy(() => import('@/components/ui/RegisterModal'))` (same for LegalModal).
+- Wrap with `<Suspense fallback={null}>` and only mount them after first user interaction (reuse the existing `pointerdown`/`touchstart` listener pattern already in `InclineAscent.tsx`).
 
-### 4. Plan draft + preview
+Trims a few KB off the entry chunk and removes their CSS work from initial paint.
 
-- `src/lib/planDraft.ts` — extend `PlanDraft` with `daysPerWeek?: number` and `rotationIntervalDays?: number`; persist on save.
-- `src/pages/fitness/PreviewPlan.tsx` — show a small "Rotates every X days · Y variants" badge near plan name when rotation is active. (No layout overhaul; just a `<Badge>` line.)
-- `src/components/fitness/AssignPlanDrawer.tsx` — already reads `getPlanDurationWeeks`; no change needed.
+### 5. Long-cache `/incline-logo.png` (and friends)
 
-### 5. Audience save path
+Lighthouse flags `/incline-logo.png` as having no cache TTL. Two options, both invisible to users:
 
-In the `audience: { ... }` object saved to draft, add `days_per_week: daysPerWeek` (single source) and drop the separate `audDaysPerWeek` state — both modes now share `daysPerWeek`.
+- If we control a `_headers` / `vercel.json` / `netlify.toml` for the public deploy, add:
+  ```
+  /incline-logo.png
+    Cache-Control: public, max-age=31536000, immutable
+  /favicon.ico
+    Cache-Control: public, max-age=2592000
+  /fonts/*
+    Cache-Control: public, max-age=31536000, immutable
+  ```
+- Otherwise, this is the exact case the existing `docs/cloudflare-setup.md` "Cache Rule for static assets" was written for — extend that rule to also match `/incline-logo.png`, `/favicon.ico`, `/fonts/*`. No code change needed; it's a Cloudflare dashboard checklist update.
 
-## Out of scope
+(The Lovable preview's `flock.js` warning is preview-only and never ships to `theincline.in` — ignore.)
 
-- No DB migration. `rotation` rides inside the existing plan JSON.
-- No changes to manual plan builder or templates list UI beyond reading the new optional field.
-- Member dashboard's "today's session" picker that consumes `rotation` can be a follow-up — this PR only ensures the data is generated and stored.
+## Out of scope (intentionally)
 
-## Files to touch
+- No Tailwind / component / copy changes.
+- No restructuring of `Scene3D`, `ScrollProgressBar`, `SEO`, or any visible component.
+- No changes to authenticated app routes, bundling rules in `vite.config.ts`, or vendor chunks.
+- No font-family changes (Oswald stays Oswald, just self-hosted).
 
-- `src/pages/fitness/CreateAI.tsx` — UI consolidation, new state, payload.
-- `supabase/functions/generate-fitness-plan/index.ts` — accept + use new fields, emit `rotation`.
-- `src/lib/planDraft.ts` — extend type.
-- `src/pages/fitness/PreviewPlan.tsx` — small rotation badge.
+## Files touched
 
-Estimated diff: ~150 lines, mostly in `CreateAI.tsx` and the edge function prompt.
+- `index.html` — inline hero shell, preload tags, self-hosted `@font-face`, drop Google Fonts links.
+- `public/fonts/oswald/*.woff2` — new self-hosted font files (downloaded from Google Fonts).
+- `src/pages/InclineAscent.tsx` — lazy-mount `RegisterModal` and `LegalModal` behind first interaction.
+- (Optional) `public/_headers` or Cloudflare dashboard rule — long-cache static assets.
+
+## Expected result
+
+- LCP on `/`: **~8.7 s → ~1–2 s** (element exists in initial HTML; logo preloaded).
+- Critical chain max latency: **~10 s → ~3 s** (no chained Google Fonts hops).
+- Repeat-visit byte savings: ~13 KB (logo + fonts now long-cached).
+- Zero visual difference on the landing page or anywhere else.
