@@ -601,10 +601,26 @@ export async function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): P
             5: { cellWidth: 'auto', textColor: BRAND.muted, fontSize: 8 },
           },
           margin: { left: 14, right: 14 },
-          didParseCell: (data) => {
-            // Render machine name on second line in muted style
-            if (data.section === 'body' && data.column.index === 0 && typeof data.cell.raw === 'object' && (data.cell.raw as any).content?.includes('\n')) {
-              data.cell.styles.fontSize = 9;
+          didDrawCell: (data) => {
+            // Custom-render exercise column: bold exercise name + muted machine sublabel
+            if (data.section === 'body' && data.column.index === 0) {
+              const raw = data.cell.raw as any;
+              if (raw && typeof raw === 'object' && '_exercise' in raw) {
+                const x = data.cell.x + 2;
+                const w = data.cell.width - 4;
+                let yy = data.cell.y + 4.5;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                setColor(doc, BRAND.text);
+                doc.text(String(raw._exercise || '—'), x, yy, { maxWidth: w });
+                if (raw._machine) {
+                  yy += 4;
+                  doc.setFont('helvetica', 'normal');
+                  doc.setFontSize(7.5);
+                  setColor(doc, BRAND.muted);
+                  doc.text(String(raw._machine), x, yy, { maxWidth: w });
+                }
+              }
             }
           },
         });
