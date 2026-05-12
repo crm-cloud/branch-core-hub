@@ -13,7 +13,7 @@ import { Printer, Save, FileSignature, Eraser, Dumbbell, Shield, HeartPulse, Use
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { buildRegistrationFormPdf, printBlob, type RegistrationFormPdfInput } from '@/utils/pdfBlob';
+import { buildRegistrationFormPdf, printBlob } from '@/utils/pdfBlob';
 import { useBrandContext } from '@/lib/brand/useBrandContext';
 import {
   PARQ_QUESTIONS,
