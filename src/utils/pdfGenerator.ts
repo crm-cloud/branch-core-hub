@@ -102,6 +102,12 @@ function renderContractTermsHtml(terms: unknown, startDate?: string, companyAddr
   return htmlLines.join('');
 }
 
+/**
+ * @deprecated For fitness plans use `downloadPlanPdf` from `src/utils/planPdf.ts`
+ * (jsPDF/autoTable, branded, identical to what we send members). This legacy
+ * print-window generator is retained only for HRM/contracts/invoices that still
+ * rely on the print-dialog UX. Do NOT add new fitness callers here.
+ */
 export function generatePlanPDF(plan: PlanData): void {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
