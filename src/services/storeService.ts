@@ -12,6 +12,9 @@ export interface Product {
   tax_rate: number | null;
   is_active: boolean | null;
   branch_id: string | null;
+  requires_batch_tracking?: boolean | null;
+  requires_lab_report?: boolean | null;
+  default_shelf_life_days?: number | null;
 }
 
 export interface CartItem {
