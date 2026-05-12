@@ -332,7 +332,18 @@ serve(async (req) => {
       console.log(`Catalog match: ${matchedCount}/${totalCount} meals mapped to catalog ids.`);
     }
 
-    console.log(`Successfully generated ${type} plan:`, plan.name);
+    // Workout post-process: stamp daysPerWeek + rotation interval on the plan
+    // so the dashboard can pick the right session even if the AI omitted them.
+    if (type === "workout") {
+      if (daysPerWeek && !plan.daysPerWeek) plan.daysPerWeek = daysPerWeek;
+      if (variantCount > 0) {
+        plan.rotation = plan.rotation || {};
+        plan.rotation.intervalDays = rotationIntervalDays;
+        if (!Array.isArray(plan.rotation.variants)) plan.rotation.variants = [];
+      }
+    }
+
+    console.log(`Successfully generated ${type} plan:`, plan.name, `daysPerWeek=${daysPerWeek}, rotation=${variantCount}`);
 
     return new Response(
       JSON.stringify({ success: true, plan }),
