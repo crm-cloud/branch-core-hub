@@ -193,8 +193,10 @@ serve(async (req) => {
          - Fitness Goals: ${memberInfo.fitnessGoals || "General fitness"}
          - Health Conditions: ${memberInfo.healthConditions || "None reported"}
          - Experience Level: ${memberInfo.experience || "Beginner"}
+         ${daysPerWeek ? `- Sessions per week: EXACTLY ${daysPerWeek} training days. Mark the remaining ${7 - daysPerWeek} day(s) explicitly as { "day": "...", "focus": "Rest", "exercises": [] }.` : ""}
          - Preferences: ${memberInfo.preferences || "None"}
-         
+         ${variantCount > 0 ? `\n         ROTATION REQUIRED — produce a "rotation" object with intervalDays=${rotationIntervalDays} and exactly ${variantCount} variants (Block A, Block B${variantCount >= 3 ? ", Block C" : ""}${variantCount >= 4 ? ", Block D" : ""}). Each variant must cover the SAME muscle groups / movement patterns as the base "weeks[0]" but SWAP the exercises (e.g. Barbell Bench → Dumbbell Press, Back Squat → Goblet Squat, Lat Pulldown → Seated Row). The dashboard will rotate variants every ${rotationIntervalDays} days so members never repeat the identical session back-to-back.` : ""}
+
          Create a progressive, balanced workout plan suitable for their level.`
       : `Create a weekly meal plan for:
          - Name: ${memberInfo.name || "Member"}
