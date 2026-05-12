@@ -16,12 +16,15 @@ Here's exactly what to enable (and what to skip) in the Cloudflare dashboard.
 **Caching → Cache Rules → Create rule**
 - Name: `Long-cache hashed assets`
 - If incoming request matches: **URI Path** `starts with` `/assets/`
-  (optionally also: OR URI Path matches `\.(js|css|woff2|png|jpg|svg|webp)$`)
+  OR URI Path `starts with` `/fonts/`
+  OR URI Path `equals` `/incline-logo.png`
+  OR URI Path `equals` `/favicon.ico`
+  OR URI Path matches `\.(js|css|woff2|png|jpg|svg|webp)$`
 - Then:
   - Cache eligibility: **Eligible for cache**
   - Edge TTL: **1 year**
   - Browser TTL: **1 year**
-- Effect: silences Lighthouse "Use efficient cache lifetimes".
+- Effect: silences Lighthouse "Use efficient cache lifetimes" for `/incline-logo.png`, self-hosted Oswald fonts under `/fonts/`, and all hashed Vite assets.
 
 ### 3. Brotli
 **Speed → Optimization → Content Optimization → Brotli**: ON (default).
