@@ -11322,6 +11322,31 @@ export type Database = {
         }
         Relationships: []
       }
+      product_batch_availability: {
+        Row: {
+          active_batch_count: number | null
+          available_quantity: number | null
+          branch_id: string | null
+          nearest_expiry: string | null
+          product_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_batches_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_batches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers_public: {
         Row: {
           avatar_url: string | null
@@ -11652,6 +11677,18 @@ export type Database = {
           status: string
           work_date: string
         }[]
+      }
+      consume_batch_stock: {
+        Args: {
+          p_branch_id: string
+          p_preferred_batch_id?: string
+          p_product_id: string
+          p_quantity: number
+          p_reference_id?: string
+          p_reference_type?: string
+          p_sold_by?: string
+        }
+        Returns: Json
       }
       consume_coupon: {
         Args: {
