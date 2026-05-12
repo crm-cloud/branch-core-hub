@@ -14,8 +14,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { e } from '@/utils/htmlEscape';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { buildRegistrationFormPdf, printBlob, type RegistrationFormPdfInput } from '@/utils/pdfBlob';
+import { useBrandContext } from '@/lib/brand/useBrandContext';
 import {
   PARQ_QUESTIONS,
   PRIMARY_GOALS,
