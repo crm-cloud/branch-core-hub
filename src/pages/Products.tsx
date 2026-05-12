@@ -587,6 +587,20 @@ export default function ProductsPage() {
         onOpenChange={setDrawerOpen}
         product={editingProduct}
       />
+
+      <Sheet open={!!batchesProduct} onOpenChange={(o) => !o && setBatchesProduct(null)}>
+        <SheetContent className="sm:max-w-3xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Batches · {batchesProduct?.name}</SheetTitle>
+            <SheetDescription>Track manufacturing dates, expiry and lab test reports per batch.</SheetDescription>
+          </SheetHeader>
+          {batchesProduct && (
+            <div className="mt-6">
+              <ProductBatchesTab product={batchesProduct} />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
