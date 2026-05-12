@@ -317,6 +317,10 @@ export default function POSPage() {
   });
 
   const getStock = (product: any): number | null => {
+    if (product.requires_batch_tracking) {
+      // Stock comes from active, non-expired batches only
+      return batchMap.get(product.id)?.totalQty ?? 0;
+    }
     const inv = product.inventory?.[0];
     if (!inv) return null; // No inventory tracked
     return inv.quantity ?? 0;
@@ -329,6 +333,10 @@ export default function POSPage() {
   const addToCart = (product: any) => {
     const stock = getStock(product);
     const existingQty = cart.find((item) => item.product.id === product.id)?.quantity || 0;
+    if (product.requires_batch_tracking && (stock === null || stock <= 0)) {
+      toast.error(`${product.name}: no active batch available. Add stock via a batch first.`);
+      return;
+    }
     if (stock !== null && existingQty + 1 > stock) {
       toast.error(`Only ${stock} in stock for ${product.name}`);
       return;
