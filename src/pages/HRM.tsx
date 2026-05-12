@@ -277,23 +277,27 @@ export default function HRMPage() {
   const openContractPdf = (contract: any) => {
     const employeeName = contract._resolvedName || 'Employee';
     const employeeCode = contract._resolvedCode || '-';
+    const termsRaw = contract.terms;
+    const termsString = typeof termsRaw === 'string'
+      ? termsRaw
+      : (termsRaw && typeof termsRaw === 'object'
+          ? (typeof (termsRaw as any).conditions === 'string' ? (termsRaw as any).conditions : JSON.stringify(termsRaw, null, 2))
+          : '');
 
-    generateContractPDF({
-      employeeName,
-      employeeCode,
-      employeeEmail: contract._resolvedEmail || undefined,
-      employeePhone: contract._resolvedPhone || undefined,
+    const blob = buildContractPdf({
+      contract_number: contract.contract_number || contract.id,
+      employee_name: employeeName,
+      employee_code: employeeCode,
       position: contract._resolvedPosition || undefined,
       department: contract._resolvedDepartment || undefined,
-      startDate: contract.start_date,
-      endDate: contract.end_date || undefined,
+      contract_type: String(contract.contract_type || '').replace('_', ' '),
+      start_date: contract.start_date,
+      end_date: contract.end_date || null,
       salary: Number(contract.base_salary || contract.salary || 0),
-      salaryType: 'Monthly',
-      contractType: String(contract.contract_type || '').replace('_', ' '),
-      terms: contract.terms,
-      companyName: 'Incline',
-      companyAddress: 'Udaipur, Rajasthan',
-    });
+      salary_type: 'Monthly',
+      terms: termsString,
+    }, brand);
+    downloadBlob(blob, `Contract-${employeeCode}.pdf`);
   };
 
   const createContractSignLink = async (contract: any) => {
