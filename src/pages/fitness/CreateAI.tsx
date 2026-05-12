@@ -279,6 +279,8 @@ export default function CreateAIPage() {
           duration_weeks: durationWeeks,
           days_per_week: daysPerWeek || null,
         } : undefined,
+        daysPerWeek: type === 'workout' ? daysPerWeek : undefined,
+        rotationIntervalDays: type === 'workout' ? rotationIntervalDays : undefined,
         content: plan,
         createdAt: new Date().toISOString(),
       });
