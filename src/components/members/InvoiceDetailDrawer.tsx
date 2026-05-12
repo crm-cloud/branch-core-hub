@@ -4,7 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
-import { FileText, Download, CreditCard, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { FileText, Download, CreditCard, CheckCircle, Clock, XCircle, FlaskConical } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { signLabReport } from '@/services/batchService';
+import { toast } from 'sonner';
 
 interface InvoiceDetailDrawerProps {
   invoice: any;
