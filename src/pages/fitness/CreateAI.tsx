@@ -37,6 +37,8 @@ export default function CreateAIPage() {
   const [planName, setPlanName] = useState('');
   const [goal, setGoal] = useState('');
   const [durationWeeks, setDurationWeeks] = useState(4);
+  const [daysPerWeek, setDaysPerWeek] = useState<number>(4);
+  const [rotationIntervalDays, setRotationIntervalDays] = useState<number>(0);
   const [caloriesTarget, setCaloriesTarget] = useState('');
   const [proteinTarget, setProteinTarget] = useState('');
   const [carbsTarget, setCarbsTarget] = useState('');
