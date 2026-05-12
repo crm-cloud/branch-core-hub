@@ -24,7 +24,7 @@ interface InvoiceViewDrawerProps {
 
 export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayment, onSendPaymentLink }: InvoiceViewDrawerProps) {
   const [shareOpen, setShareOpen] = useState(false);
-  const brand = useBrandContext();
+  const { data: brand } = useBrandContext(null);
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: async () => {
