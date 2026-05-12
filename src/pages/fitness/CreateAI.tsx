@@ -219,6 +219,8 @@ export default function CreateAIPage() {
         memberInfo,
         options: {
           durationWeeks,
+          daysPerWeek: type === 'workout' ? daysPerWeek : undefined,
+          rotationIntervalDays: type === 'workout' ? rotationIntervalDays : undefined,
           caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined,
           availableMeals: type === 'diet'
             ? catalogMeals.slice(0, 80).map((m) => ({
