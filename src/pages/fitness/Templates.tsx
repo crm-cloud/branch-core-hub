@@ -232,17 +232,7 @@ export default function FitnessTemplatesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                if (isPdf && template.pdf_url) {
-                  window.open(template.pdf_url, '_blank', 'noopener');
-                } else {
-                  generatePlanPDF({
-                    name: template.name,
-                    type: template.type,
-                    data: template.content,
-                  });
-                }
-              }}
+              onClick={() => handleDownloadTemplate(template)}
               title={isPdf ? 'Open PDF' : 'Download PDF'}
             >
               <Download className="h-3.5 w-3.5" />
