@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import ScrollProgressBar from '@/components/ui/ScrollProgressBar';
-import RegisterModal from '@/components/ui/RegisterModal';
-import LegalModal from '@/components/ui/LegalModal';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import SEO from '@/components/seo/SEO';
 import { PUBLIC_BRANCHES, PUBLIC_FAQS } from '@/config/publicSite';
@@ -13,6 +11,8 @@ const INCLINE_LOGO = '/incline-logo.png';
 // Lazy-load Scene3D so the heavy Three.js / drei bundle does not block the
 // main thread during initial paint. This dramatically reduces Max Potential FID.
 const Scene3D = lazy(() => import('@/components/3d/Scene3D'));
+const RegisterModal = lazy(() => import('@/components/ui/RegisterModal'));
+const LegalModal = lazy(() => import('@/components/ui/LegalModal'));
 
 const InclineAscent = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
