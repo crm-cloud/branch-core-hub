@@ -125,9 +125,9 @@ serve(async (req) => {
                  {
                    "day": "Monday",
                    "focus": "Chest & Triceps",
-                   "exercises": [
-                     {"name": "Bench Press", "sets": 4, "reps": "8-10", "rest": "90s", "notes": "Focus on form"}
-                   ],
+                    "exercises": [
+                      {"name": "Leg Press", "equipment": "Super Leg Press 45°", "sets": 4, "reps": "8-10", "rest": "90s", "notes": "Focus on form"}
+                    ],
                    "warmup": "5 min cardio + dynamic stretches",
                    "cooldown": "5 min stretching"
                  }
