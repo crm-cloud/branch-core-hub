@@ -53,7 +53,7 @@ export default function CreateAIPage() {
   const [audExperience, setAudExperience] = useState<string[]>(['beginner']);
   const [audWeightMin, setAudWeightMin] = useState<string>('');
   const [audWeightMax, setAudWeightMax] = useState<string>('');
-  const [audDaysPerWeek, setAudDaysPerWeek] = useState<string>('4');
+  // Days/week is now shared between member + audience modes (see `daysPerWeek`).
   const [audDietaryType, setAudDietaryType] = useState<string>('');
   const [audCuisine, setAudCuisine] = useState<string>('');
   const [audEquipmentHint, setAudEquipmentHint] = useState<string>('');
