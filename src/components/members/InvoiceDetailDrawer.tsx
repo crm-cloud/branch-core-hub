@@ -18,9 +18,6 @@ interface InvoiceDetailDrawerProps {
 }
 
 export function InvoiceDetailDrawer({ invoice, open, onOpenChange, onPayNow }: InvoiceDetailDrawerProps) {
-  if (!invoice) return null;
-
-export function InvoiceDetailDrawer({ invoice, open, onOpenChange, onPayNow }: InvoiceDetailDrawerProps) {
   // Look up batch info + lab report paths for this invoice (POS sales only).
   const { data: batchLines = [] } = useQuery({
     queryKey: ['invoice-batches', invoice?.id],
