@@ -306,108 +306,23 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { toast.error('Please allow popups'); return; }
-
     const signatureDataUrl = hasSigned ? canvasRef.current?.toDataURL('image/png') : null;
-
-    const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${e(data.memberName)}</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; color: #1e293b; max-width: 800px; margin: 0 auto; font-size: 13px; }
-      .header { text-align: center; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 3px double #6366f1; }
-      .header h1 { color: #6366f1; font-size: 22px; text-transform: uppercase; letter-spacing: 3px; }
-      .header p { color: #64748b; font-size: 11px; margin-top: 4px; }
-      .badge { display: inline-block; background: #6366f1; color: white; padding: 2px 10px; border-radius: 10px; font-size: 10px; margin-top: 4px; }
-      .title { font-size: 16px; font-weight: bold; text-align: center; margin: 16px 0; color: #334155; }
-      .section { margin-bottom: 16px; }
-      .section-title { font-size: 12px; font-weight: bold; color: #6366f1; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-      .field label { font-weight: 600; display: block; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-      .field .val { padding: 4px 0; border-bottom: 1px dotted #cbd5e1; min-height: 22px; font-size: 13px; }
-      .full { grid-column: span 2; }
-      .terms { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; margin: 16px 0; }
-      .terms ol { margin-left: 16px; }
-      .terms li { margin-bottom: 4px; font-size: 11px; line-height: 1.4; }
-      .sig-section { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-      .sig-box { text-align: center; }
-      .sig-img { max-height: 60px; margin: 0 auto; }
-      .sig-line { border-top: 1px solid #334155; margin-top: 40px; padding-top: 6px; font-size: 11px; color: #64748b; }
-      .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
-      @media print { body { padding: 15px; } }
-    </style></head><body>
-      <div class="header">
-        <h1>${e(data.branchName || 'FITNESS CENTER')}</h1>
-        <p>Membership Registration & Agreement Form</p>
-        <div class="badge">REG-${e(data.memberCode)}</div>
-      </div>
-      <div class="title">MEMBERSHIP AGREEMENT</div>
-      <div class="section">
-        <div class="section-title">👤 Member Information</div>
-        <div class="grid">
-          <div class="field"><label>Full Name</label><div class="val">${e(data.memberName)}</div></div>
-          <div class="field"><label>Member Code</label><div class="val">${e(data.memberCode)}</div></div>
-          <div class="field"><label>Email</label><div class="val">${e(data.email || '—')}</div></div>
-          <div class="field"><label>Phone</label><div class="val">${e(data.phone || '—')}</div></div>
-          <div class="field"><label>Gender</label><div class="val">${e(data.gender || '—')}</div></div>
-          <div class="field"><label>Date of Birth</label><div class="val">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field full"><label>Address</label><div class="val">${e([data.address, data.city, data.state].filter(Boolean).join(', ') || '—')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">🪪 Government ID</div>
-        <div class="grid">
-          <div class="field"><label>ID Type</label><div class="val">${e(govIdType.toUpperCase())}</div></div>
-          <div class="field"><label>ID Number</label><div class="val">${e(govIdNumber || '—')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">🚨 Emergency Contact</div>
-        <div class="grid">
-          <div class="field"><label>Name</label><div class="val">${e(data.emergencyContactName || '—')}</div></div>
-          <div class="field"><label>Phone</label><div class="val">${e(data.emergencyContactPhone || '—')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">💪 Health & Fitness</div>
-        <div class="grid">
-          <div class="field full"><label>Fitness Goals</label><div class="val">${e(fitnessGoals || '—')}</div></div>
-          <div class="field full"><label>Medical Conditions</label><div class="val">${e(medicalConditions || 'None declared')}</div></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">📋 Membership Details</div>
-        <div class="grid">
-          <div class="field"><label>Plan</label><div class="val">${e(data.planName || '—')}</div></div>
-          <div class="field"><label>Amount</label><div class="val">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '—'}</div></div>
-          <div class="field"><label>Start Date</label><div class="val">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field"><label>End Date</label><div class="val">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field"><label>Registration Date</label><div class="val">${format(new Date(), 'dd MMM yyyy')}</div></div>
-          <div class="field"><label>Branch</label><div class="val">${e(data.branchName || '—')}</div></div>
-        </div>
-      </div>
-      <div class="terms">
-        <div class="section-title" style="color:#334155;">📜 Terms & Conditions</div>
-        <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}${customTerms ? `<li style="margin-bottom:6px"><strong>Custom Terms</strong><br/><span>${e(customTerms)}</span></li>` : ''}</ol>
-        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:11px;color:#334155"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div>
-      </div>
-      <div class="sig-section">
-        <div class="sig-box">
-          ${signatureDataUrl ? `<img src="${signatureDataUrl}" class="sig-img" />` : ''}
-          <div class="sig-line">Member Signature<br/><small>Date: ${format(new Date(), 'dd/MM/yyyy')}</small></div>
-        </div>
-        <div class="sig-box">
-          <div class="sig-line">Authorized Staff Signature<br/><small>Date: _______________</small></div>
-        </div>
-      </div>
-      <div class="footer">
-        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • REF: ${e(data.memberCode)} • This is a computer-generated document</p>
-      </div>
-    </body></html>`;
-
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.onload = () => printWindow.print();
+    const parqMap: Record<string, string> = {};
+    PARQ_QUESTIONS.forEach((q, i) => { parqMap[q] = parq[`q${i}`] || 'no'; });
+    const blob = buildRegistrationFormPdf({
+      data,
+      govIdType,
+      govIdNumber,
+      fitnessGoals,
+      medicalConditions,
+      parq: parqMap,
+      parqQuestions: [...PARQ_QUESTIONS],
+      customTerms,
+      terms: DEFAULT_TERMS,
+      declaration: MEMBER_DECLARATION,
+      signatureDataUrl,
+    }, brand);
+    printBlob(blob);
   };
 
   return (
