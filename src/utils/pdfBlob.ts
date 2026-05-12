@@ -1161,6 +1161,17 @@ export function buildThermalReceiptPdf(data: InvoicePdfInput, brand?: BrandConte
     doc.text(String(it.quantity || 1), W - margin - 14, y, { align: 'right' });
     doc.text(`Rs.${(it.total_amount || 0).toLocaleString('en-IN')}`, W - margin, y, { align: 'right' });
     y += nameLines.length * 3 + 0.5;
+    if (it.batches && it.batches.length) {
+      doc.setFontSize(7);
+      setColor(doc, BRAND.muted);
+      it.batches.forEach((b) => {
+        const exp = b.exp_date ? ` EXP ${new Date(b.exp_date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}` : '';
+        doc.text(`  Batch ${b.batch_number}${exp}`, margin, y);
+        y += 2.8;
+      });
+      doc.setFontSize(8);
+      setColor(doc, BRAND.text);
+    }
   });
   dash();
 
