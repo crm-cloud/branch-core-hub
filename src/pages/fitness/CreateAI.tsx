@@ -526,9 +526,6 @@ export default function CreateAIPage() {
                   AI will generate multiple exercise variants and rotate them every {rotationIntervalDays} days so members never repeat the exact same session back-to-back.
                 </p>
               )}
-                  </div>
-                )}
-              </div>
 
               {type === 'diet' && (
                 <div className="grid gap-3 sm:grid-cols-3">
