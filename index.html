@@ -235,12 +235,26 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Remove the static LCP shell once React has hydrated the real hero,
-      // to avoid duplicate DOM. Runs after main.tsx executes.
-      window.addEventListener('load', function () {
-        var shell = document.getElementById('lcp-shell');
-        if (shell) setTimeout(function () { shell.remove(); }, 100);
-      });
+      // Remove the static LCP shell only once the React Scene3D Canvas is
+      // actually painted, so users never see a gap between the static hero
+      // and the live 3D scene. Falls back after 4s as a safety net.
+      (function () {
+        var removed = false;
+        function dropShell() {
+          if (removed) return;
+          removed = true;
+          var shell = document.getElementById('lcp-shell');
+          if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
+        }
+        window.addEventListener('scene3d:ready', function () {
+          // Tiny delay so the canvas has painted at least one frame.
+          setTimeout(dropShell, 80);
+        }, { once: true });
+        // Hard fallback — if Scene3D never mounts (low-end device, WebGL
+        // disabled, prefers-reduced-motion) the React hero already covers
+        // the same area, so removing the shell is safe after 4s.
+        setTimeout(dropShell, 4000);
+      })();
     </script>
   </body>
 </html>

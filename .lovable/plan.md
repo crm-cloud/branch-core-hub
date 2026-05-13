@@ -1,86 +1,103 @@
-# Public Site Performance Plan (no visual changes)
+# Deep Scan & Audit — Plan
 
-## What Lighthouse is actually saying
+## Findings
 
-- **TTFB: 0 ms** — server is fine.
-- **Element render delay: 8,680 ms** — the LCP element (the H1 "WHERE GLOBAL STRENGTH MEETS CLINICAL SERENITY") is rendered by React, so it cannot paint until the entry JS chunk downloads, parses and runs. That is 100% of the LCP budget.
-- **Critical chain (10 s)**: HTML → `index-*.css` → Google Fonts CSS → `gstatic` woff2 → `index-*.js`. Two of those hops are Google Fonts, which we don't actually need on the critical path.
-- **Cache lifetime warnings**: `flock.js` (Lovable preview banner — irrelevant in prod) and `/incline-logo.png` (no `Cache-Control`).
+### A. Front-website color flash on load / hard refresh (issues #1 & #3)
 
-The single biggest win is killing the render-delay by giving the browser the LCP element in the initial HTML, before React boots.
+Root cause: the static **LCP shell** we inlined into `index.html` last round is **visually different** from the real React `InclineAscent` experience.
 
-## Changes
+- `index.html` shell uses a **light gradient** (`#f8fafc → #e2e8f0 → #f1f5f9`) with **dark navy + amber** text and a **black** Incline logo (`filter: brightness(0)`). This is exactly what the screenshot you sent shows.
+- The React `InclineAscent` page renders the same hero copy, **then** mounts a full-screen 3D `<Canvas>` on top (dark scene with its own background) once idle/in-view.
+- Result on hard refresh:
+  1. **t=0**: light shell paints (the screenshot you sent — "different colored" flash).
+  2. **t≈300–800 ms**: React boots, renders an identical light hero in `#root`.
+  3. **t≈1–2 s**: 3D Scene3D lazy-loads and covers the hero with the dark experience.
+  4. **t = window load + 100 ms**: shell gets `.remove()`d.
+- `<meta name="theme-color" content="#000000">` also conflicts with the light shell, causing the iOS/Chrome chrome to flash dark→light→dark.
 
-### 1. Inline a static hero shell into `index.html`
+### B. SystemHealth error log (issue #2)
 
-Add the exact same logo + H1 + paragraph markup that `InclineAscent.tsx` already renders for the static SEO hero, into `<body>` before `<div id="root">`. Use the same Tailwind classes (compiled CSS still applies) so it is visually identical.
+Top unresolved errors in `error_logs` (last 7 days):
 
-- LCP element exists at first HTML byte → render delay collapses from ~8.7 s to ~0 ms.
-- React mounts into `#root` and renders its own copy on top (the existing fixed `-z-10` SEO hero already overlays cleanly, and the Scene3D canvas covers it once mounted), so users see no flicker.
-- Add `aria-hidden="true"` to the inline shell so it is invisible to AT once React paints.
+| count | route | message | source |
+|---|---|---|---|
+| 4 | /system-health | "Network error - check your internet connection" | frontend |
+| 3 | /dashboard | "Load failed" | frontend |
+| 3 | /all-bookings | "Network error..." | frontend |
+| 2 | / | **"Error creating WebGL context."** (critical) | frontend |
+| 1 | / | **"Cannot read properties of undefined (reading 'add')"** (critical) | frontend |
+| 1 | /auth | "Setup check failed: Failed to send a request to the Edge Function" | frontend |
+| 1 | /attendance-dashboard | MIPS `212.38.94.228:9000` TCP timeout | edge_function |
+| 1 | /incline | 404 route | frontend |
+| 1 | /dashboard | Stale dynamic import chunk | frontend |
 
-### 2. Preload the LCP image
+The two **critical** ones are both Scene3D / Three.js related and only happen on `/` — same area as issue A.
 
-Add to `<head>`:
-```
-<link rel="preload" as="image" href="/incline-logo.png" fetchpriority="high" />
-```
-Logo paints with the inline shell instead of waiting for React's render pass.
+### C. Audit scope (issue #4)
 
-### 3. Drop Google Fonts from the critical path
+Member · Membership · Payroll · HRM · Invoice · Finance · WhatsApp · AI Brain. This is a large surface — proposing a **read-only audit pass** (no code changes in plan mode), reporting findings per dashboard with severity + recommended fix. No business-logic rewrites unless you approve them after the report.
 
-Today the chain is `index.html → fonts.googleapis.com/css2 → fonts.gstatic.com/...woff2`. Two extra cross-origin hops on the critical path.
+---
 
-- Self-host Oswald 400/500/600/700 woff2 under `public/fonts/oswald/`.
-- Replace the Google Fonts `<link rel="preload" as="style">` with a single inline `@font-face` block in `<style>` inside `<head>` pointing at the local files, `font-display: swap`.
-- Add `<link rel="preload" as="font" type="font/woff2" href="/fonts/oswald/oswald-600.woff2" crossorigin>` for the weight used in the H1.
-- Remove the `preconnect`/`dns-prefetch` to `fonts.googleapis.com` and `fonts.gstatic.com` — no longer needed.
+## Plan
 
-Net effect: removes the ~7.3 s + ~2.7 s chained Google requests from the critical path on first paint.
+### Step 1 — Eliminate landing-page flash (no public visual change)
 
-### 4. Lazy-mount public-only modals
+1. **Make the LCP shell visually neutral & match the final dark scene.** Change the shell background to a near-black gradient (`#0a0a0a → #111827`), text color to light, and **remove the light gradient**. The shell will then look like the loaded Scene3D, not a different page.
+2. Keep the H1 copy + Incline logo for LCP/SEO, but invert logo to white (`brightness(0) invert(1)`) and switch heading text color to slate-100 / amber.
+3. Hide the React-rendered light hero on `/` until Scene3D is ready (it's already `aria-hidden={mountScene}`, but it's still painted — gate it with `opacity-0` while `!mountScene` and the shell is still present).
+4. Remove the shell **only when Scene3D actually mounts** (listen for a custom `scene3d:ready` event dispatched from `Scene3D` `onCreated`), with a hard fallback at 4 s. This kills the "100ms after window.load" race that produces the flicker.
+5. Drop `<meta name="theme-color" content="#000000">` duplication or align it to the shell color so the browser chrome doesn't strobe.
 
-`RegisterModal` and `LegalModal` are currently imported eagerly by `InclineAscent.tsx`, so they sit in the entry chunk for the landing page even though they are only used after a click.
+### Step 2 — Fix the two critical `/` errors
 
-- Convert both to `const RegisterModal = lazy(() => import('@/components/ui/RegisterModal'))` (same for LegalModal).
-- Wrap with `<Suspense fallback={null}>` and only mount them after first user interaction (reuse the existing `pointerdown`/`touchstart` listener pattern already in `InclineAscent.tsx`).
+- **WebGL context error**: in `Scene3D` add a `<canvas>`-level `webglcontextlost` / `webglcontextrestored` listener and a `failIfMajorPerformanceCaveat: false` GL prop, and gate mounting on `WebGLRenderingContext` availability. Show the static hero permanently if WebGL is unavailable.
+- **"Cannot read properties of undefined (reading 'add')"**: this is a Three.js cleanup race when the component unmounts before the scene finished initializing. Wrap the `useEffect` cleanup that calls `scene.add` / `group.add` with null checks and cancel pending RAFs in a `cancelled` flag.
 
-Trims a few KB off the entry chunk and removes their CSS work from initial paint.
+### Step 3 — Quiet the noisy non-critical errors
 
-### 5. Long-cache `/incline-logo.png` (and friends)
+- `/system-health` & `/all-bookings` "Network error": add an `onError` filter in `errorReporter` that drops `TypeError: Failed to fetch` / `Load failed` when `navigator.onLine === false` (these are user-side connectivity, not app bugs).
+- `/auth` "Setup check failed": already non-fatal — downgrade severity from `error` to `warn` in `check-setup` invocation in `Auth.tsx`.
+- `/incline` 404: add a redirect `/incline → /` in the router (legacy link from somewhere).
+- Stale dynamic-import chunk: add the standard `vite:preloadError` listener in `main.tsx` that does `location.reload()` once per session.
+- MIPS TCP timeout from `212.38.94.228:9000`: not an app bug, it's a customer device offline. Suppress repeated entries by deduping on `(branch_id, device_ip)` for 30 min in the MIPS edge function's `log_error_event` call.
 
-Lighthouse flags `/incline-logo.png` as having no cache TTL. Two options, both invisible to users:
+### Step 4 — Dashboard audit (read-only, deliverable = report)
 
-- If we control a `_headers` / `vercel.json` / `netlify.toml` for the public deploy, add:
-  ```
-  /incline-logo.png
-    Cache-Control: public, max-age=31536000, immutable
-  /favicon.ico
-    Cache-Control: public, max-age=2592000
-  /fonts/*
-    Cache-Control: public, max-age=31536000, immutable
-  ```
-- Otherwise, this is the exact case the existing `docs/cloudflare-setup.md` "Cache Rule for static assets" was written for — extend that rule to also match `/incline-logo.png`, `/favicon.ico`, `/fonts/*`. No code change needed; it's a Cloudflare dashboard checklist update.
+For each of: **Members, Memberships, Payroll, HRM, Invoices, Finance, WhatsApp, AI Brain** I will check:
 
-(The Lovable preview's `flock.js` warning is preview-only and never ships to `theincline.in` — ignore.)
+- RBAC enforcement (does Staff/Trainer ever see Owner-only widgets?)
+- `branch_id` filter on every TanStack query
+- `useAuthReady`-style gate before first authenticated query (root cause for the "wrong content flashes" pattern in your stack-overflow note)
+- Loading skeleton + error fallback presence
+- Numeric correctness for finance: `pending_dues = total - paid` always derived
+- N+1 query / RLS recursion risk
+- Drawer-vs-Dialog policy compliance
+- Realtime subscription cleanup
 
-## Out of scope (intentionally)
+Output: a single markdown report posted in chat with a per-dashboard table (Severity / Finding / Suggested Fix). I will **not** modify those dashboards in this round; you pick which findings to fix.
 
-- No Tailwind / component / copy changes.
-- No restructuring of `Scene3D`, `ScrollProgressBar`, `SEO`, or any visible component.
-- No changes to authenticated app routes, bundling rules in `vite.config.ts`, or vendor chunks.
-- No font-family changes (Oswald stays Oswald, just self-hosted).
+---
 
-## Files touched
+## Files that will change in Step 1–3
 
-- `index.html` — inline hero shell, preload tags, self-hosted `@font-face`, drop Google Fonts links.
-- `public/fonts/oswald/*.woff2` — new self-hosted font files (downloaded from Google Fonts).
-- `src/pages/InclineAscent.tsx` — lazy-mount `RegisterModal` and `LegalModal` behind first interaction.
-- (Optional) `public/_headers` or Cloudflare dashboard rule — long-cache static assets.
+- `index.html` — shell colors, theme-color, removal trigger
+- `src/pages/InclineAscent.tsx` — hero opacity gating, scene3d:ready event
+- `src/components/3d/Scene3D.tsx` — context-loss handlers, dispatch ready event, cleanup null-checks
+- `src/main.tsx` — `vite:preloadError` reload
+- `src/lib/errorReporter.ts` — offline filter, severity downgrade helper
+- `src/pages/Auth.tsx` — downgrade setup-check severity
+- `src/App.tsx` (router) — `/incline → /` redirect
+- `supabase/functions/mips-proxy/index.ts` (or wherever the MIPS device call lives) — dedupe device-offline log
 
-## Expected result
+No backend schema changes. No public copy or layout changes. Visual outcome on `/`: identical to today **after** Scene3D loads, but **without** the light flash beforehand.
 
-- LCP on `/`: **~8.7 s → ~1–2 s** (element exists in initial HTML; logo preloaded).
-- Critical chain max latency: **~10 s → ~3 s** (no chained Google Fonts hops).
-- Repeat-visit byte savings: ~13 KB (logo + fonts now long-cached).
-- Zero visual difference on the landing page or anywhere else.
+---
+
+## What I need from you before building
+
+Please confirm:
+
+1. Approve Step 1 visual change to the LCP shell (shell becomes **dark** instead of light — matches final loaded state, eliminates flash). Public design unchanged after Scene3D loads.
+2. Approve Steps 2 & 3 error fixes as listed.
+3. For Step 4 — you want a **report first** (recommended) or want me to fix as I find?

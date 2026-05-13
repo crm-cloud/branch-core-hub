@@ -166,6 +166,7 @@ function RoutedContent() {
         <Routes location={displayLocation}>
           {/* Public Website — InclineAscent 3D experience */}
           <Route path="/" element={<InclineAscent />} />
+          <Route path="/incline" element={<Navigate to="/" replace />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/terms-of-service" element={<TermsPage />} />
