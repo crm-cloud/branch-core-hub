@@ -40,7 +40,22 @@ async function flushErrors() {
   }
 }
 
+function shouldDrop(msg: string): boolean {
+  if (!msg) return true;
+  // Don't log connectivity issues — these are user-side, not app bugs.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg === 'Load failed') {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  }
+  // Stale chunk errors trigger an auto-reload via main.tsx — don't double-log.
+  if (msg.includes('Failed to fetch dynamically imported module')) return true;
+  // Browser extension noise.
+  if (msg.includes('ResizeObserver loop') || msg.includes('Non-Error promise rejection captured')) return true;
+  return false;
+}
+
 function queueError(entry: typeof errorQueue[0]) {
+  if (shouldDrop(entry.error_message)) return;
   // Dedup: skip if last error has same message within 5s
   const last = errorQueue[errorQueue.length - 1];
   if (last && last.error_message === entry.error_message) return;
