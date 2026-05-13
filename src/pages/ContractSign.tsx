@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { FileSignature, ShieldCheck } from 'lucide-react';
 
+import { useNoindex } from '@/lib/seo/useNoindex';
 function extractTerms(terms: any): string {
   if (!terms) return 'No contract terms available.';
   if (typeof terms === 'string') return terms;
@@ -21,6 +22,7 @@ function extractTerms(terms: any): string {
 }
 
 export default function ContractSignPage() {
+  useNoindex('Sign Contract | The Incline Life');
   const { token } = useParams();
   const [signedName, setSignedName] = useState('');
   const [signerContact, setSignerContact] = useState('');

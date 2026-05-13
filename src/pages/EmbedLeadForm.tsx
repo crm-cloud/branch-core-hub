@@ -6,7 +6,9 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+import { useNoindex } from '@/lib/seo/useNoindex';
 export default function EmbedLeadForm() {
+  useNoindex('Lead Form | The Incline Life');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');

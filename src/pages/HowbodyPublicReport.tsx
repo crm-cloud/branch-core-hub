@@ -6,9 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Loader2, AlertTriangle, Activity, Scan } from "lucide-react";
 
+import { useNoindex } from '@/lib/seo/useNoindex';
 interface Props { reportType: "body" | "posture" }
 
 export default function HowbodyPublicReport({ reportType }: Props) {
+  useNoindex('Body Scan Report | The Incline Life');
   const { token } = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<any>(null);

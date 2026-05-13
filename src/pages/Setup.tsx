@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { Shield, Eye, EyeOff } from 'lucide-react';
 
+import { useNoindex } from '@/lib/seo/useNoindex';
 const setupSchema = z.object({
   email: z.string().email('Valid email required'),
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -29,6 +30,7 @@ const setupSchema = z.object({
 type SetupFormData = z.infer<typeof setupSchema>;
 
 export default function SetupPage() {
+  useNoindex('Setup | The Incline Life');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
