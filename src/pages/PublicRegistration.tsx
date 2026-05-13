@@ -168,6 +168,11 @@ export default function PublicRegistration() {
       className="relative min-h-[100dvh] w-full overflow-hidden bg-[#08060f] text-white"
       style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
     >
+      <SEO
+        title="Become a Member | The Incline Life Udaipur"
+        description="Join Udaipur's premium 24/7 fitness & recovery club. Quick OTP signup, digital health waiver and instant access to memberships, classes and recovery facilities."
+        path="/register"
+      />
       {/* Hero background */}
       <div className="pointer-events-none absolute inset-0">
         <img
