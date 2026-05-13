@@ -17,10 +17,14 @@ A state-level benchmark luxury fitness & recovery club located in Sector 14, Uda
 - Address: Sector 14, Udaipur, Rajasthan, 313001, India
 - Geo: 24.546845, 73.701003
 
-## Key Pages
-- Home: https://www.theincline.in/
-- Member Login / Sign Up: https://www.theincline.in/auth
-- Public Registration: https://www.theincline.in/register
+## Pages
+- [Home](/): Luxury fitness and recovery club homepage with 3D hero experience.
+- [Member Login](/auth): Secure login portal for existing members and staff.
+- [Public Registration](/register): Self-service onboarding for new members with OTP and digital waiver.
+- [Privacy Policy](/privacy): Data privacy and collection policy.
+- [Terms of Service](/terms): Membership terms, conditions, and liabilities.
+- [Feedback](/feedback): Member experience feedback and Google review requests.
+- [3D Body Scan Report](/scan-report): Public Howbody 3D body composition and posture report viewer.
 
 ## SEO Keywords
 luxury gym Udaipur, best gym in Udaipur, 24 hours gym Udaipur, fitness club Udaipur, fitness in Udaipur, recovery club Udaipur, infrared sauna Udaipur, ice bath Udaipur, 3D body scanner Udaipur, posture correction Udaipur, Panatta equipment Udaipur, personal training Udaipur, biometric recovery Rajasthan, premium wellness club Udaipur.
