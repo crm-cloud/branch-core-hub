@@ -20,6 +20,7 @@ import {
   Sparkles, RefreshCw, ChevronDown, MapPin,
 } from "lucide-react";
 import heroImage from "@/assets/registration-hero-v2.jpg";
+import SEO from "@/components/seo/SEO";
 import {
   PARQ_QUESTIONS,
   PRIMARY_GOALS,
