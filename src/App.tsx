@@ -22,7 +22,7 @@ import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
-const InclineAscent = lazy(() => import("./pages/InclineAscent"));
+import InclineAscent from "./pages/InclineAscent";
 import EmbedLeadForm from "./pages/EmbedLeadForm";
 import PrivacyPolicyPage from "./pages/PrivacyPolicy";
 import TermsPage from "./pages/Terms";
