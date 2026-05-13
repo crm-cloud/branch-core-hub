@@ -1,8 +1,24 @@
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import HeroDumbbell from './HeroDumbbell';
 import FloatingWords from './FloatingWords';
 import ScrollOverlay from '../ui/ScrollOverlay';
+
+// Quick WebGL availability probe — avoids mounting the Canvas on devices
+// that will throw "Error creating WebGL context." Logged previously as a
+// critical error on `/`.
+function hasWebGL(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const c = document.createElement('canvas');
+    return !!(
+      window.WebGLRenderingContext &&
+      (c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'))
+    );
+  } catch {
+    return false;
+  }
+}
 
 interface SceneContentProps {
   isMobile: boolean;
@@ -76,18 +92,27 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
           WebGL canvas. They animate via CSS keyframes — no per-frame work. */}
       <FloatingWords scrollProgress={scrollProgress} />
 
-      <div className="fixed inset-0 z-[2] pointer-events-none" style={{ height: '100dvh' }}>
-        <Canvas
-          camera={{ position: [0, 0, 5], fov: 50 }}
-          dpr={isMobile ? [1, 1.25] : [1, 1.75]}
-          gl={{ antialias: !isMobile, alpha: true, powerPreference: 'high-performance' }}
-          style={{ background: 'transparent' }}
-        >
-          <Suspense fallback={null}>
-            <SceneContent isMobile={isMobile} scrollProgress={scrollProgress} />
-          </Suspense>
-        </Canvas>
-      </div>
+      {webglOk && (
+        <div className="fixed inset-0 z-[2] pointer-events-none" style={{ height: '100dvh' }}>
+          <Canvas
+            camera={{ position: [0, 0, 5], fov: 50 }}
+            dpr={isMobile ? [1, 1.25] : [1, 1.75]}
+            gl={{
+              antialias: !isMobile,
+              alpha: true,
+              powerPreference: 'high-performance',
+              failIfMajorPerformanceCaveat: false,
+            }}
+            style={{ background: 'transparent' }}
+            onCreated={onCanvasCreated}
+            onError={() => setWebglOk(false)}
+          >
+            <Suspense fallback={null}>
+              <SceneContent isMobile={isMobile} scrollProgress={scrollProgress} />
+            </Suspense>
+          </Canvas>
+        </div>
+      )}
 
       <div className="relative z-[3]">
         <ScrollOverlay />
