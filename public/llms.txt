@@ -13,7 +13,7 @@ A state-level benchmark luxury fitness & recovery club located in Sector 14, Uda
 - Opening: June 22, 2026.
 - Hours: Open 24 hours, 7 days a week.
 - Services: Membership subject to 5% GST.
-- Website: https://www.theincline.in
+- Website: https://theincline.in
 - Address: Sector 14, Udaipur, Rajasthan, 313001, India
 - Geo: 24.546845, 73.701003
 
