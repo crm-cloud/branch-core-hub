@@ -60,7 +60,7 @@ export default function AuthPage() {
     <div className="incline-auth min-h-dvh w-full bg-slate-50 lg:grid lg:grid-cols-2">
       <SEO
         title="Sign in | The Incline Life"
-        description="Sign in to your Incline account."
+        description="Sign in to your Incline membership portal to book classes, manage your plan, view invoices and access recovery sessions."
         path="/auth"
         noindex
       />
