@@ -1,6 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 
-const SITE_URL = 'https://www.theincline.in';
+const SITE_URL = 'https://theincline.in';
 const DEFAULT_OG_IMAGE =
   'https://storage.googleapis.com/gpt-engineer-file-uploads/0ouy66fX8iWTS70TdUu55fd7fhv1/social-images/social-1772792815982-Incline.webp';
 
