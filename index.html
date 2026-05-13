@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#f8fafc" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://www.theincline.in/" />
     <link rel="preconnect" href="https://iyqqpbvnszyrrgerniog.supabase.co" crossorigin />
@@ -43,61 +43,9 @@
       /* Critical hero styles — inlined so the LCP element paints from the
          initial HTML response, before the main app CSS/JS are parsed. The
          React app renders an identical hero on top once it boots. */
-      .lcp-shell {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        padding: 0 1rem;
-        background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
-        pointer-events: none;
-        z-index: 0;
-      }
-      .lcp-shell-inner {
-        width: 100%;
-        max-width: 80rem;
-        margin: 0 auto;
-        display: flex;
-        justify-content: flex-end;
-      }
-      .lcp-shell-text {
-        max-width: 28rem;
-        text-align: right;
-        margin-right: 2rem;
-        color: #0f172a;
-      }
-      @media (min-width: 768px) { .lcp-shell-text { margin-right: 8rem; } }
-      .lcp-shell-h1 {
-        font-size: 1.5rem;
-        line-height: 1.15;
-        font-weight: 900;
-        letter-spacing: -0.02em;
-        margin: 0 0 1.5rem;
-      }
-      @media (min-width: 768px) { .lcp-shell-h1 { font-size: 1.875rem; } }
-      @media (min-width: 1024px) { .lcp-shell-h1 { font-size: 2.25rem; } }
-      .lcp-shell-h1 .accent { color: hsl(43 74% 49%); }
-      .lcp-shell-p {
-        font-size: 1rem;
-        line-height: 1.6;
-        color: #64748b;
-        margin: 0;
-      }
-      .lcp-shell-logo {
-        position: fixed;
-        top: 1.5rem;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 50;
-        height: 4rem;
-        width: auto;
-        filter: brightness(0);
-        pointer-events: none;
-      }
-      @media (min-width: 640px) { .lcp-shell-logo { height: 5rem; } }
-      @media (min-width: 768px) {
-        .lcp-shell-logo { height: 7rem; left: 2rem; transform: none; }
-      }
+      /* Pre-paint background matches the React landing wrapper so there is
+         no color flash between initial HTML and React hydration. */
+      html, body { background: #f1f5f9; }
     </style>
 
     <title>The Incline Life | Luxury Fitness &amp; Recovery Club in Udaipur</title>
@@ -212,49 +160,7 @@
   </head>
 
   <body>
-    <!-- Static LCP shell: paints from initial HTML so LCP is ~TTFB instead of
-         waiting for the React bundle. React mounts an identical hero into
-         #root and the 3D Canvas covers it once ready, so users see no flicker.
-         Marked aria-hidden so AT only sees the React-rendered version. -->
-    <div id="lcp-shell" aria-hidden="true">
-      <img class="lcp-shell-logo" src="/incline-logo.png" alt="" width="224" height="128" fetchpriority="high" decoding="async" />
-      <section class="lcp-shell">
-        <div class="lcp-shell-inner">
-          <div class="lcp-shell-text">
-            <h1 class="lcp-shell-h1">
-              WHERE <span class="accent">GLOBAL STRENGTH</span><br />
-              MEETS <span class="accent">CLINICAL SERENITY.</span>
-            </h1>
-            <p class="lcp-shell-p">
-              Rajasthan's new benchmark for excellence. An elevated sanctuary designed for the driven&mdash;delivering Italian biomechanics in every rep, and advanced restoration in every recovery.
-            </p>
-          </div>
-        </div>
-      </section>
-    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Remove the static LCP shell only once the React Scene3D Canvas is
-      // actually painted, so users never see a gap between the static hero
-      // and the live 3D scene. Falls back after 4s as a safety net.
-      (function () {
-        var removed = false;
-        function dropShell() {
-          if (removed) return;
-          removed = true;
-          var shell = document.getElementById('lcp-shell');
-          if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
-        }
-        window.addEventListener('scene3d:ready', function () {
-          // Tiny delay so the canvas has painted at least one frame.
-          setTimeout(dropShell, 80);
-        }, { once: true });
-        // Hard fallback — if Scene3D never mounts (low-end device, WebGL
-        // disabled, prefers-reduced-motion) the React hero already covers
-        // the same area, so removing the shell is safe after 4s.
-        setTimeout(dropShell, 4000);
-      })();
-    </script>
   </body>
 </html>
