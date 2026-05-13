@@ -121,7 +121,7 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
             }}
             style={{ background: 'transparent' }}
             onCreated={onCanvasCreated}
-            onError={() => setWebglOk(false)}
+            
           >
             <Suspense fallback={null}>
               <SceneContent isMobile={isMobile} scrollProgress={scrollProgress} />
