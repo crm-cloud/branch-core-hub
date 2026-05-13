@@ -32,7 +32,9 @@ export default function AuthPage() {
         if (error) throw error;
         if (data?.needsSetup) setNeedsSetup(true);
       } catch (error) {
-        console.error('Setup check failed:', error);
+        // Non-fatal: setup-check is best-effort. Use warn so the global
+        // console-error interceptor doesn't write it to error_logs.
+        console.warn('Setup check skipped:', error);
       } finally {
         setCheckingSetup(false);
       }
