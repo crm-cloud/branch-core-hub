@@ -8,6 +8,7 @@ import { GymLoader } from '@/components/ui/gym-loader';
 import { CheckCircle, CreditCard, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+import { useNoindex } from '@/lib/seo/useNoindex';
   initializePayment,
   openRazorpayCheckout,
   verifyRazorpayPayment,
@@ -46,6 +47,7 @@ interface InvoiceInfo {
  * also reflects async webhook confirmations.
  */
 export default function MemberCheckout() {
+  useNoindex('Checkout | The Incline Life');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
