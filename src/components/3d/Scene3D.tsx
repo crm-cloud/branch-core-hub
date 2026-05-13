@@ -48,7 +48,23 @@ interface Scene3DProps {
 const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
   const [isMobile, setIsMobile] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [webglOk, setWebglOk] = useState<boolean>(() => hasWebGL());
   const onScrollProgressRef = useRef(onScrollProgress);
+
+  // Notify index.html shell that the live scene is up so it can drop the
+  // static LCP shell without a visual gap. Also wire context-loss handlers
+  // so we gracefully fall back to the static hero.
+  const onCanvasCreated = useCallback((state: { gl: { domElement: HTMLCanvasElement } }) => {
+    try {
+      window.dispatchEvent(new CustomEvent('scene3d:ready'));
+    } catch { /* ignore */ }
+    const canvas = state.gl.domElement;
+    const handleLost = (e: Event) => {
+      e.preventDefault();
+      setWebglOk(false);
+    };
+    canvas.addEventListener('webglcontextlost', handleLost as EventListener, false);
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
